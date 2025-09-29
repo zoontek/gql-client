@@ -1,7 +1,6 @@
 import type { DocumentNode } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { Future, Option, Result } from "@swan-io/boxed";
-import { Request, badStatusToError, emptyToError } from "@swan-io/request";
 import {
   ClientCache,
   readOperationFromCache,
@@ -19,6 +18,7 @@ import {
   inlineFragments,
 } from "./graphql/ast";
 import { print } from "./graphql/print";
+import { Request, badStatusToError, emptyToError } from "./request";
 import type { Connection, Edge } from "./types";
 
 type RequestConfig = {
@@ -48,14 +48,12 @@ const makeRequest: (
 }: RequestConfig) => {
   return Request.make({
     url,
-    method: "POST",
-    type: "json",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
       ...headers,
     },
-    ...(credentials != undefined ? { credentials } : null),
+    ...(credentials != undefined && { credentials }),
     body: JSON.stringify({
       operationName,
       query: print(document),

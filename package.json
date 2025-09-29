@@ -51,8 +51,7 @@
   "dependencies": {
     "@0no-co/graphql.web": "^1.2.0",
     "@graphql-typed-document-node/core": "^3.2.0",
-    "@swan-io/boxed": "^3.2.0",
-    "@swan-io/request": "^3.1.0"
+    "@swan-io/boxed": "^3.2.0"
   },
   "peerDependencies": {
     "react": ">=18.2.0"
