@@ -11,7 +11,6 @@ Similar to [`useQuery`](./use-query), but requires a manual call to `query`.
 
 - `query`: your query document node
 - `config` (optional)
-  - `optimize`: adapt query to only require data that's missing from the cache (default: `false`)
 
 ### Returns
 

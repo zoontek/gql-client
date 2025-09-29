@@ -1,14 +1,10 @@
 import {
-  DocumentNode,
-  InlineFragmentNode,
   Kind,
-  OperationDefinitionNode,
-  SelectionNode,
-  SelectionSetNode,
+  type DocumentNode,
+  type SelectionSetNode,
 } from "@0no-co/graphql.web";
 import { Array, Option, Result } from "@swan-io/boxed";
 import {
-  addIdIfPreviousSelected,
   getCacheKeyFromOperationNode,
   getFieldName,
   getFieldNameWithArguments,
@@ -48,15 +44,6 @@ const getFromCacheOrReturnValue = (
     }
   }
   return Option.Some(valueOrKey);
-};
-
-const getFromCacheOrReturnValueWithoutKeyFilter = (
-  cache: ClientCache,
-  valueOrKey: unknown,
-): Option<unknown> => {
-  return typeof valueOrKey === "symbol"
-    ? cache.getFromCacheWithoutKey(valueOrKey).flatMap(Option.fromNullable)
-    : Option.Some(valueOrKey);
 };
 
 const STABILITY_CACHE = new WeakMap<DocumentNode, Map<string, unknown>>();
@@ -269,162 +256,5 @@ export const readOperationFromCache = (
         STABILITY_CACHE.set(document, documentCache);
         return valueToCache;
       }
-    });
-};
-
-export const optimizeQuery = (
-  cache: ClientCache,
-  document: DocumentNode,
-  variables: Record<string, unknown>,
-): Option<DocumentNode> => {
-  const traverse = (
-    selections: SelectionSetNode,
-    data: Record<PropertyKey, unknown>,
-    parentSelectedKeys: Set<symbol>,
-  ): Option<SelectionSetNode> => {
-    const nextSelections = Array.filterMap<SelectionNode, SelectionNode>(
-      selections.selections,
-      (selection) => {
-        switch (selection.kind) {
-          case Kind.FIELD: {
-            const fieldNode = selection;
-            const fieldNameWithArguments = getFieldNameWithArguments(
-              fieldNode,
-              variables,
-            );
-
-            if (data == undefined) {
-              return Option.Some(fieldNode);
-            }
-
-            const cacheHasKey = hasOwnProperty.call(
-              data,
-              fieldNameWithArguments,
-            );
-
-            if (!cacheHasKey) {
-              return Option.Some(fieldNode);
-            }
-
-            if (parentSelectedKeys.has(fieldNameWithArguments)) {
-              const valueOrKeyFromCache = data[fieldNameWithArguments];
-
-              const subFieldSelectedKeys = getSelectedKeys(
-                fieldNode,
-                variables,
-              );
-              if (Array.isArray(valueOrKeyFromCache)) {
-                return valueOrKeyFromCache.reduce((acc, valueOrKey) => {
-                  const value = getFromCacheOrReturnValueWithoutKeyFilter(
-                    cache,
-                    valueOrKey,
-                  );
-
-                  if (value.isNone()) {
-                    return Option.Some(fieldNode);
-                  }
-
-                  const originalSelectionSet = fieldNode.selectionSet;
-                  if (originalSelectionSet != null) {
-                    return traverse(
-                      originalSelectionSet,
-                      value.get() as Record<PropertyKey, unknown>,
-                      subFieldSelectedKeys,
-                    ).map((selectionSet) => ({
-                      ...fieldNode,
-                      selectionSet: addIdIfPreviousSelected(
-                        originalSelectionSet,
-                        selectionSet,
-                      ),
-                    }));
-                  } else {
-                    return acc;
-                  }
-                }, Option.None());
-              } else {
-                const value = getFromCacheOrReturnValueWithoutKeyFilter(
-                  cache,
-                  valueOrKeyFromCache,
-                );
-
-                if (value.isNone()) {
-                  return Option.Some(fieldNode);
-                }
-
-                const originalSelectionSet = fieldNode.selectionSet;
-                if (originalSelectionSet != null) {
-                  return traverse(
-                    originalSelectionSet,
-                    value.get() as Record<PropertyKey, unknown>,
-                    subFieldSelectedKeys,
-                  ).map((selectionSet) => ({
-                    ...fieldNode,
-                    selectionSet: addIdIfPreviousSelected(
-                      originalSelectionSet,
-                      selectionSet,
-                    ),
-                  }));
-                } else {
-                  return Option.None();
-                }
-              }
-            } else {
-              return Option.Some(fieldNode);
-            }
-          }
-          case Kind.INLINE_FRAGMENT: {
-            const inlineFragmentNode = selection;
-            return traverse(
-              inlineFragmentNode.selectionSet,
-              data as Record<PropertyKey, unknown>,
-              parentSelectedKeys,
-            ).map(
-              (selectionSet) =>
-                ({ ...inlineFragmentNode, selectionSet }) as InlineFragmentNode,
-            );
-          }
-          default:
-            return Option.None();
-        }
-      },
-    );
-    if (nextSelections.length > 0) {
-      return Option.Some({ ...selections, selections: nextSelections });
-    } else {
-      return Option.None();
-    }
-  };
-
-  return Array.findMap(document.definitions, (definition) =>
-    definition.kind === Kind.OPERATION_DEFINITION
-      ? Option.Some(definition)
-      : Option.None(),
-  )
-    .flatMap((operation) =>
-      getCacheKeyFromOperationNode(operation).map((cacheKey) => ({
-        operation,
-        cacheKey,
-      })),
-    )
-    .flatMap(({ operation, cacheKey }) => {
-      const selectedKeys = getSelectedKeys(operation, variables);
-      return cache
-        .getFromCache(cacheKey, selectedKeys)
-        .map((cache) => ({ cache, operation, selectedKeys }));
-    })
-    .flatMap(({ operation, cache, selectedKeys }) => {
-      return traverse(
-        operation.selectionSet,
-        cache as Record<PropertyKey, unknown>,
-        selectedKeys,
-      ).map((selectionSet) => ({
-        ...document,
-        definitions: [
-          {
-            ...operation,
-            selectionSet,
-          } as OperationDefinitionNode,
-        ],
-      }));
     });
 };

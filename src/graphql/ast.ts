@@ -1,17 +1,17 @@
 import {
-  ASTNode,
-  DirectiveNode,
-  DocumentNode,
-  FieldNode,
-  FragmentDefinitionNode,
-  InlineFragmentNode,
   Kind,
-  OperationDefinitionNode,
   OperationTypeNode,
-  SelectionNode,
-  SelectionSetNode,
-  ValueNode,
   visit,
+  type ASTNode,
+  type DirectiveNode,
+  type DocumentNode,
+  type FieldNode,
+  type FragmentDefinitionNode,
+  type InlineFragmentNode,
+  type OperationDefinitionNode,
+  type SelectionNode,
+  type SelectionSetNode,
+  type ValueNode,
 } from "@0no-co/graphql.web";
 import { Array, Option } from "@swan-io/boxed";
 
@@ -260,31 +260,6 @@ const getIdFieldNode = (selection: SelectionNode): Option<SelectionNode> => {
     default:
       return Option.None();
   }
-};
-
-export const addIdIfPreviousSelected = (
-  oldSelectionSet: SelectionSetNode,
-  newSelectionSet: SelectionSetNode,
-): SelectionSetNode => {
-  const idSelection = Array.findMap(oldSelectionSet.selections, getIdFieldNode);
-  const idSelectionInNew = Array.findMap(
-    newSelectionSet.selections,
-    getIdFieldNode,
-  );
-
-  if (idSelectionInNew.isSome()) {
-    return newSelectionSet;
-  }
-
-  return idSelection
-    .map((selection) => ({
-      ...newSelectionSet,
-      selections: [
-        selection,
-        ...newSelectionSet.selections,
-      ] as readonly SelectionNode[],
-    }))
-    .getOr(newSelectionSet);
 };
 
 export const isExcluded = (

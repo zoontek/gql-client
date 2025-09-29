@@ -1,10 +1,10 @@
-import { ASTNode } from "@0no-co/graphql.web";
+import type { ASTNode } from "@0no-co/graphql.web";
 
-export const printString = (string: string) => {
+const printString = (string: string) => {
   return JSON.stringify(string);
 };
 
-export const printBlockString = (string: string) => {
+const printBlockString = (string: string) => {
   return '"""' + string.replace(/"""/g, '\\"""') + '"""';
 };
 

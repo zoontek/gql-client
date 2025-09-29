@@ -7,14 +7,13 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { RequestOverrides } from "../client";
+import type { RequestOverrides } from "../client";
 import { ClientError } from "../errors";
-import { TypedDocumentNode } from "../types";
+import type { TypedDocumentNode } from "../types";
 import { deepEqual } from "../utils";
 import { ClientContext } from "./ClientContext";
 
 export type DeferredQueryConfig = {
-  optimize?: boolean;
   normalize?: boolean;
   debounce?: number;
 };
@@ -34,7 +33,7 @@ export type DeferredQuery<Data, Variables> = readonly [
 
 export const useDeferredQuery = <Data, Variables>(
   query: TypedDocumentNode<Data, Variables>,
-  { optimize = false, normalize = true, debounce }: DeferredQueryConfig = {},
+  { normalize = true, debounce }: DeferredQueryConfig = {},
 ): DeferredQuery<Data, Variables> => {
   const client = useContext(ClientContext);
 
@@ -78,10 +77,10 @@ export const useDeferredQuery = <Data, Variables>(
         }),
       );
       return client
-        .request(stableQuery, variables, { optimize, overrides })
+        .request(stableQuery, variables, { overrides })
         .tap(() => setIsQuerying(false));
     },
-    [client, optimize, stableQuery],
+    [client, stableQuery],
   );
 
   const [isQuerying, setIsQuerying] = useState(false);

@@ -1,16 +1,14 @@
 import { Option, Result } from "@swan-io/boxed";
 import { expect, test } from "vitest";
-import { Connection } from "../src";
+import type { Connection } from "../src";
 import { ClientCache } from "../src/cache/cache";
-import { optimizeQuery, readOperationFromCache } from "../src/cache/read";
+import { readOperationFromCache } from "../src/cache/read";
 import { writeOperationToCache } from "../src/cache/write";
 import { addTypenames, inlineFragments } from "../src/graphql/ast";
-import { print } from "../src/graphql/print";
 import {
   OnboardingInfo,
   addMembership,
   appQuery,
-  appQueryWithExtraArrayInfo,
   appQueryWithMoreAccountInfo,
   appQueryWithoutMoreAccountInfo,
   bindAccountMembershipMutation,
@@ -20,7 +18,6 @@ import {
   brandingResponse,
   getAppQueryResponse,
   onboardingInfoResponse,
-  otherAppQuery,
 } from "./data";
 
 test("Write & read in cache", () => {
@@ -61,11 +58,6 @@ test("Write & read in cache", () => {
 
   const preparedBindAccountMembershipMutation = inlineFragments(
     addTypenames(bindAccountMembershipMutation),
-  );
-
-  const preparedOtherAppQuery = inlineFragments(addTypenames(otherAppQuery));
-  const preparedAppQueryWithExtraArrayInfo = inlineFragments(
-    addTypenames(appQueryWithExtraArrayInfo),
   );
 
   writeOperationToCache(
@@ -172,18 +164,6 @@ test("Write & read in cache", () => {
   } else {
     expect(true).toBe(false);
   }
-
-  expect(
-    optimizeQuery(cache, preparedOtherAppQuery, { id: "1" })
-      .map(print)
-      .getOr("no delta"),
-  ).toMatchSnapshot();
-
-  expect(
-    optimizeQuery(cache, preparedAppQueryWithExtraArrayInfo, { id: "1" })
-      .map(print)
-      .getOr("no delta"),
-  ).toMatchSnapshot();
 
   const cache2 = new ClientCache({ interfaceToTypes: {} });
 

@@ -42,7 +42,6 @@ This structure avoids any ambuguity as to what the current state of the data is.
 - `config` (optional)
   - `suspense`: use React Suspense (default: `false`)
   - `overrides`: custom request configuration (`url`, `headers` and/or `withCredentials`)
-  - `optimize`: (⚠️ experimental) adapt query to only require data that's missing from the cache (default: `false`)
 
 ### Returns
 

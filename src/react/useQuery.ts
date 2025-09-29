@@ -8,15 +8,14 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { RequestOverrides } from "../client";
+import type { RequestOverrides } from "../client";
 import { ClientError } from "../errors";
-import { TypedDocumentNode } from "../types";
+import type { TypedDocumentNode } from "../types";
 import { deepEqual } from "../utils";
 import { ClientContext } from "./ClientContext";
 
 export type QueryConfig = {
   suspense?: boolean;
-  optimize?: boolean;
   normalize?: boolean;
   overrides?: RequestOverrides;
 };
@@ -49,12 +48,7 @@ const usePreviousValue = <A, T extends AsyncData<A>>(value: T): T => {
 export const useQuery = <Data, Variables>(
   query: TypedDocumentNode<Data, Variables>,
   variables: NoInfer<Variables>,
-  {
-    suspense = false,
-    optimize = false,
-    normalize = true,
-    overrides,
-  }: QueryConfig = {},
+  { suspense = false, normalize = true, overrides }: QueryConfig = {},
 ): Query<Data, Variables> => {
   const client = useContext(ClientContext);
 
@@ -117,7 +111,6 @@ export const useQuery = <Data, Variables>(
     }
     const request = client
       .query(stableQuery, stableVariables[1], {
-        optimize,
         overrides: stableOverrides,
         normalize,
       })
@@ -126,7 +119,6 @@ export const useQuery = <Data, Variables>(
   }, [
     client,
     suspense,
-    optimize,
     normalize,
     stableOverrides,
     stableQuery,
@@ -173,7 +165,7 @@ export const useQuery = <Data, Variables>(
     asyncDataToExpose.isLoading()
   ) {
     throw client
-      .query(stableQuery, stableVariables[1], { optimize, normalize })
+      .query(stableQuery, stableVariables[1], { normalize })
       .toPromise();
   }
 

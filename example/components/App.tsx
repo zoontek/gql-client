@@ -14,14 +14,11 @@ const AllFilmsQuery = graphql(`
 `);
 
 export const App = () => {
-  const [optimize, setOptimize] = useState(false);
   const [activeFilm, setActiveFilm] = useState<Option<string>>(Option.None());
 
-  const [data, { isLoading, setVariables }] = useQuery(
-    AllFilmsQuery,
-    { first: 3 },
-    { optimize },
-  );
+  const [data, { isLoading, setVariables }] = useQuery(AllFilmsQuery, {
+    first: 3,
+  });
 
   return (
     <div className="App">
@@ -38,14 +35,6 @@ export const App = () => {
               return (
                 <div className="Main">
                   <div className="Sidebar">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={optimize}
-                        onChange={() => setOptimize((x) => !x)}
-                      />
-                      Optimize
-                    </label>
                     <FilmList
                       films={allFilms}
                       onNextPage={(after) => setVariables({ after })}
@@ -59,9 +48,7 @@ export const App = () => {
                   <div className="Contents">
                     {activeFilm.match({
                       None: () => <div>No film selected</div>,
-                      Some: (filmId) => (
-                        <FilmDetails filmId={filmId} optimize={optimize} />
-                      ),
+                      Some: (filmId) => <FilmDetails filmId={filmId} />,
                     })}
                   </div>
                 </div>

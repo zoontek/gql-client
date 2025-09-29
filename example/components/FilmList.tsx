@@ -1,6 +1,6 @@
 import { Option } from "@swan-io/boxed";
 import { useForwardPagination } from "../../src";
-import { FragmentType, graphql, useFragment } from "../gql";
+import { type FragmentType, graphql, useFragment } from "../gql";
 import { Film } from "./Film";
 
 const FilmsConnectionFragment = graphql(`

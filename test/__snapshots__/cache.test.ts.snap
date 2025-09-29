@@ -463,11 +463,7 @@ Map {
 }
 `;
 
-exports[`Write & read in cache 4`] = `"query App($id: ID!) {accountMembership(id: $id) {id user {id ... on User {birthDate mobilePhoneNumber}}}}"`;
-
-exports[`Write & read in cache 5`] = `"query App($id: ID!) {accountMembership(id: $id) {id user {id ... on User {birthDate mobilePhoneNumber}}} accountMemberships(first: 2) {edges {node {id createdAt account {bankDetails}}}}}"`;
-
-exports[`Write & read in cache 6`] = `
+exports[`Write & read in cache 4`] = `
 Map {
   Symbol(Query) => {
     Symbol(__requestedKeys): Set {
@@ -705,7 +701,7 @@ Map {
 }
 `;
 
-exports[`Write & read in cache 7`] = `
+exports[`Write & read in cache 5`] = `
 {
   "tag": "Some",
   "value": {

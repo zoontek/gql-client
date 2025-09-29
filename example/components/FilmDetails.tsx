@@ -29,17 +29,15 @@ const ProducersQuery = graphql(`
 
 type Props = {
   filmId: string;
-  optimize: boolean;
 };
 
-export const FilmDetails = ({ filmId, optimize }: Props) => {
+export const FilmDetails = ({ filmId }: Props) => {
   const [data, { isLoading, reload, setVariables }] = useQuery(
     FilmDetailsQuery,
     {
       filmId,
       first: 5,
     },
-    { optimize },
   );
 
   const [producers, { query: queryProducers }] = useDeferredQuery(

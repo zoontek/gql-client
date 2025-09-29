@@ -1,8 +1,8 @@
-import { DocumentNode } from "@0no-co/graphql.web";
+import type { DocumentNode } from "@0no-co/graphql.web";
 import { Future, Option, Result } from "@swan-io/boxed";
 import { Request, badStatusToError, emptyToError } from "@swan-io/request";
-import { ClientCache, SchemaConfig } from "./cache/cache";
-import { optimizeQuery, readOperationFromCache } from "./cache/read";
+import { ClientCache, type SchemaConfig } from "./cache/cache";
+import { readOperationFromCache } from "./cache/read";
 import { writeOperationToCache } from "./cache/write";
 import {
   ClientError,
@@ -15,7 +15,7 @@ import {
   inlineFragments,
 } from "./graphql/ast";
 import { print } from "./graphql/print";
-import { Connection, Edge, TypedDocumentNode } from "./types";
+import type { Connection, Edge, TypedDocumentNode } from "./types";
 
 export type RequestConfig = {
   url: string;
@@ -117,7 +117,6 @@ export type RequestOverrides = Partial<
 >;
 
 type RequestOptions<Data, Variables> = {
-  optimize?: boolean;
   normalize?: boolean;
   connectionUpdates?: GetConnectionUpdate<Data, Variables>[] | undefined;
   overrides?: RequestOverrides | undefined;
@@ -181,7 +180,6 @@ export class Client {
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
     {
-      optimize = false,
       normalize = true,
       connectionUpdates,
       overrides,
@@ -196,27 +194,10 @@ export class Client {
 
     const variablesAsRecord = variables as Record<string, unknown>;
 
-    const possiblyOptimizedQuery = optimize
-      ? optimizeQuery(this.cache, transformedDocument, variablesAsRecord).map(
-          addTypenames,
-        )
-      : Option.Some(transformedDocumentsForRequest);
-
-    if (possiblyOptimizedQuery.isNone()) {
-      const operationResult = readOperationFromCache(
-        this.cache,
-        transformedDocument,
-        variablesAsRecord,
-      );
-      if (operationResult.isSome()) {
-        return Future.value(operationResult.get() as Result<Data, ClientError>);
-      }
-    }
-
     return this.makeRequest({
       url: this.url,
       operationName,
-      document: possiblyOptimizedQuery.getOr(transformedDocumentsForRequest),
+      document: transformedDocumentsForRequest,
       variables: variablesAsRecord,
       ...overrides,
       headers: {
