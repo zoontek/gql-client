@@ -2,9 +2,12 @@ import type { DocumentNode } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { Future, Option, Result } from "@swan-io/boxed";
 import { Request, badStatusToError, emptyToError } from "@swan-io/request";
-import { ClientCache, type SchemaConfig } from "./cache/cache";
-import { readOperationFromCache } from "./cache/read";
-import { writeOperationToCache } from "./cache/write";
+import {
+  ClientCache,
+  readOperationFromCache,
+  writeOperationToCache,
+  type SchemaConfig,
+} from "./cache";
 import {
   ClientError,
   InvalidGraphQLResponseError,

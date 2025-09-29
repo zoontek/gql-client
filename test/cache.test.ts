@@ -1,9 +1,11 @@
 import { Option, Result } from "@swan-io/boxed";
 import { expect, test } from "vitest";
 import type { Connection } from "../src";
-import { ClientCache } from "../src/cache/cache";
-import { readOperationFromCache } from "../src/cache/read";
-import { writeOperationToCache } from "../src/cache/write";
+import {
+  ClientCache,
+  readOperationFromCache,
+  writeOperationToCache,
+} from "../src/cache";
 import { addTypenames, inlineFragments } from "../src/graphql/ast";
 import {
   OnboardingInfo,
