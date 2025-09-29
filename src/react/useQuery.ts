@@ -14,11 +14,11 @@ import { ClientError } from "../errors";
 import { deepEqual } from "../utils";
 import { ClientContext } from "./ClientContext";
 
-export type QueryConfig = {
+type QueryConfig = {
   overrides?: RequestOverrides;
 };
 
-export type Query<Data, Variables> = readonly [
+type Query<Data, Variables> = readonly [
   AsyncData<Result<Data, ClientError>>,
   {
     isLoading: boolean;

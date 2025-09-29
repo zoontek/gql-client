@@ -12,9 +12,9 @@ import { ClientError } from "../errors";
 import { deepEqual } from "../utils";
 import { ClientContext } from "./ClientContext";
 
-export type DeferredQueryExtraConfig = { overrides?: RequestOverrides };
+type DeferredQueryExtraConfig = { overrides?: RequestOverrides };
 
-export type DeferredQuery<Data, Variables> = readonly [
+type DeferredQuery<Data, Variables> = readonly [
   AsyncData<Result<Data, ClientError>>,
   {
     query: (

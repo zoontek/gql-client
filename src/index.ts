@@ -3,12 +3,19 @@ export type {
   TypedDocumentNode,
 } from "@graphql-typed-document-node/core";
 
-export * from "./client";
-export * from "./errors";
+export { Client } from "./client";
+export {
+  ClientError,
+  InvalidGraphQLResponseError,
+  parseGraphQLError,
+} from "./errors";
 export { print } from "./graphql/print";
-export * from "./react/ClientContext";
-export * from "./react/useDeferredQuery";
-export * from "./react/useMutation";
-export * from "./react/usePagination";
-export * from "./react/useQuery";
-export * from "./types";
+export { ClientContext } from "./react/ClientContext";
+export { useDeferredQuery } from "./react/useDeferredQuery";
+export { useMutation } from "./react/useMutation";
+export {
+  useBackwardPagination,
+  useForwardPagination,
+} from "./react/usePagination";
+export { useQuery } from "./react/useQuery";
+export type { Connection, Edge } from "./types";

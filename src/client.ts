@@ -18,7 +18,7 @@ import {
 import { print } from "./graphql/print";
 import type { Connection, Edge } from "./types";
 
-export type RequestConfig = {
+type RequestConfig = {
   url: string;
   headers: Record<string, string>;
   operationName: string;
@@ -27,11 +27,11 @@ export type RequestConfig = {
   credentials?: RequestCredentials;
 };
 
-export type MakeRequest = (
+type MakeRequest = (
   config: RequestConfig,
 ) => Future<Result<unknown, ClientError>>;
 
-export type ClientConfig = {
+type ClientConfig = {
   url: string;
   headers?: Record<string, string>;
   makeRequest?: MakeRequest;

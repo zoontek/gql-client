@@ -5,9 +5,9 @@ import type { GetConnectionUpdate, RequestOverrides } from "../client";
 import { ClientError } from "../errors";
 import { ClientContext } from "./ClientContext";
 
-export type MutationExtraConfig = { overrides?: RequestOverrides };
+type MutationExtraConfig = { overrides?: RequestOverrides };
 
-export type Mutation<Data, Variables> = readonly [
+type Mutation<Data, Variables> = readonly [
   (
     variables: Variables,
     config?: MutationExtraConfig,
@@ -16,7 +16,7 @@ export type Mutation<Data, Variables> = readonly [
   { reset: () => void },
 ];
 
-export type MutationConfig<Data, Variables> = {
+type MutationConfig<Data, Variables> = {
   connectionUpdates?: GetConnectionUpdate<Data, Variables>[] | undefined;
 };
 
