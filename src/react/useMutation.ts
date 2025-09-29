@@ -1,8 +1,8 @@
+import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { AsyncData, Future, Result } from "@swan-io/boxed";
 import { useCallback, useContext, useRef, useState } from "react";
 import type { GetConnectionUpdate, RequestOverrides } from "../client";
 import { ClientError } from "../errors";
-import type { TypedDocumentNode } from "../types";
 import { ClientContext } from "./ClientContext";
 
 export type MutationExtraConfig = { overrides?: RequestOverrides };

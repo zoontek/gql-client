@@ -1,3 +1,4 @@
+import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { AsyncData, Future, Option, Result } from "@swan-io/boxed";
 import {
   useCallback,
@@ -8,7 +9,6 @@ import {
 } from "react";
 import type { RequestOverrides } from "../client";
 import { ClientError } from "../errors";
-import type { TypedDocumentNode } from "../types";
 import { deepEqual } from "../utils";
 import { ClientContext } from "./ClientContext";
 

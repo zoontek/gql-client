@@ -1,4 +1,5 @@
 import type { DocumentNode } from "@0no-co/graphql.web";
+import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { Future, Option, Result } from "@swan-io/boxed";
 import { Request, badStatusToError, emptyToError } from "@swan-io/request";
 import { ClientCache, type SchemaConfig } from "./cache/cache";
@@ -15,7 +16,7 @@ import {
   inlineFragments,
 } from "./graphql/ast";
 import { print } from "./graphql/print";
-import type { Connection, Edge, TypedDocumentNode } from "./types";
+import type { Connection, Edge } from "./types";
 
 export type RequestConfig = {
   url: string;
