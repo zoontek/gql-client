@@ -1,4 +1,4 @@
-import { Array, Option, Result } from "@swan-io/boxed";
+import { Array as BoxedArray, Option, Result } from "@swan-io/boxed";
 import { useCallback, useContext, useRef, useSyncExternalStore } from "react";
 import type { Connection } from "../types";
 import { CONNECTION_REF, deepEqual } from "../utils";
@@ -75,7 +75,7 @@ const createPaginationHook = (direction: Mode) => {
     // Get fresh data from cache
     const getSnapshot = useCallback(() => {
       const value = Option.all(
-        Array.filterMap(connectionRefs.current, (id) =>
+        BoxedArray.filterMap(connectionRefs.current, (id) =>
           Option.fromNullable(client.cache.connectionCache.get(id)),
         ).flatMap((info) =>
           client

@@ -13,7 +13,7 @@ import {
   type SelectionSetNode,
   type ValueNode,
 } from "@0no-co/graphql.web";
-import { Array, Option } from "@swan-io/boxed";
+import { Array as BoxedArray, Option } from "@swan-io/boxed";
 
 /**
  * Returns a Set<string> with all keys selected within the direct selection sets
@@ -240,7 +240,7 @@ export const addTypenames = (documentNode: DocumentNode): DocumentNode => {
 };
 
 export const getExecutableOperationName = (document: DocumentNode) => {
-  return Array.findMap(document.definitions, (definition) => {
+  return BoxedArray.findMap(document.definitions, (definition) => {
     if (definition.kind === Kind.OPERATION_DEFINITION) {
       return Option.fromNullable(definition.name).map((name) => name.value);
     } else {
@@ -256,7 +256,10 @@ const getIdFieldNode = (selection: SelectionNode): Option<SelectionNode> => {
         ? Option.Some(selection)
         : Option.None();
     case Kind.INLINE_FRAGMENT:
-      return Array.findMap(selection.selectionSet.selections, getIdFieldNode);
+      return BoxedArray.findMap(
+        selection.selectionSet.selections,
+        getIdFieldNode,
+      );
     default:
       return Option.None();
   }

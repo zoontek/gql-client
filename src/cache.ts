@@ -243,7 +243,7 @@ const getCacheEntryKey = (json: unknown): Option<symbol> => {
 
 const getTypename = (json: unknown): string | undefined => {
   if (typeof json === "object" && json != null) {
-    if (BoxedArray.isArray(json)) {
+    if (Array.isArray(json)) {
       return getTypename(json[0]);
     }
     if ("__typename" in json && typeof json.__typename === "string") {
@@ -347,7 +347,7 @@ export const readOperationFromCache = (
             });
           }
 
-          if (BoxedArray.isArray(valueOrKeyFromCache)) {
+          if (Array.isArray(valueOrKeyFromCache)) {
             const selectedKeys = getSelectedKeys(fieldNode, variables);
             return Option.all(
               valueOrKeyFromCache.map((valueOrKey) => {
@@ -554,7 +554,7 @@ export const writeOperationToCache = (
       return;
     }
     // array with selection
-    if (BoxedArray.isArray(fieldValue)) {
+    if (Array.isArray(fieldValue)) {
       const arrayCache =
         parentCache[fieldNameWithArguments] ?? Array(fieldValue.length);
       // @ts-expect-error it's an array
