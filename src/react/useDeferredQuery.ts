@@ -1,9 +1,8 @@
-import { AsyncData, Deferred, Future, Option, Result } from "@swan-io/boxed";
+import { AsyncData, Future, Option, Result } from "@swan-io/boxed";
 import {
   useCallback,
   useContext,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -12,10 +11,6 @@ import { ClientError } from "../errors";
 import type { TypedDocumentNode } from "../types";
 import { deepEqual } from "../utils";
 import { ClientContext } from "./ClientContext";
-
-export type DeferredQueryConfig = {
-  debounce?: number;
-};
 
 export type DeferredQueryExtraConfig = { overrides?: RequestOverrides };
 
@@ -32,7 +27,6 @@ export type DeferredQuery<Data, Variables> = readonly [
 
 export const useDeferredQuery = <Data, Variables>(
   query: TypedDocumentNode<Data, Variables>,
-  { debounce }: DeferredQueryConfig = {},
 ): DeferredQuery<Data, Variables> => {
   const client = useContext(ClientContext);
 
@@ -43,8 +37,6 @@ export const useDeferredQuery = <Data, Variables>(
   const [stableVariables, setStableVariables] = useState<Option<Variables>>(
     Option.None(),
   );
-
-  const timeoutRef = useRef<number | undefined>(undefined);
 
   // Get data from cache
   const getSnapshot = useCallback(() => {
@@ -66,6 +58,7 @@ export const useDeferredQuery = <Data, Variables>(
 
   const runQuery = useCallback(
     (variables: Variables, { overrides }: DeferredQueryExtraConfig = {}) => {
+      setIsQuerying(true);
       setStableVariables((stableVariables) =>
         stableVariables.match({
           None: () => Option.Some(variables),
@@ -83,28 +76,6 @@ export const useDeferredQuery = <Data, Variables>(
   );
 
   const [isQuerying, setIsQuerying] = useState(false);
-  const exposedRunQuery = useCallback(
-    (variables: Variables, config?: DeferredQueryExtraConfig) => {
-      if (timeoutRef.current !== undefined) {
-        clearTimeout(timeoutRef.current);
-      }
-      setIsQuerying(true);
-      if (debounce === undefined) {
-        return runQuery(variables, config);
-      } else {
-        const [future, resolve] = Deferred.make<Result<Data, ClientError>>();
-        timeoutRef.current = window.setTimeout(
-          (variables: Variables) => {
-            runQuery(variables, config).tap(resolve);
-          },
-          debounce,
-          variables,
-        );
-        return future;
-      }
-    },
-    [runQuery, debounce],
-  );
 
   const reset = useCallback(() => {
     setIsQuerying(false);
@@ -113,5 +84,5 @@ export const useDeferredQuery = <Data, Variables>(
 
   const asyncDataToExpose = isQuerying ? AsyncData.Loading() : asyncData;
 
-  return [asyncDataToExpose, { query: exposedRunQuery, reset }];
+  return [asyncDataToExpose, { query: runQuery, reset }];
 };
