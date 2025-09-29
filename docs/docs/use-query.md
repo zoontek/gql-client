@@ -40,7 +40,6 @@ This structure avoids any ambuguity as to what the current state of the data is.
 - `query`: your query document node
 - `variables`: your query variables
 - `config` (optional)
-  - `suspense`: use React Suspense (default: `false`)
   - `overrides`: custom request configuration (`url`, `headers` and/or `withCredentials`)
 
 ### Returns
@@ -60,10 +59,6 @@ const [data, {isLoading, refresh, reload, setVariables}] = useQuery(...)
 ### Lifecycle
 
 Any time the provided `variables` structurally change (meaning they're not deeply equal to the previous ones), the query will fully reload.
-
-### Suspense
-
-You can optionally provide a `suspense` flag to activate the feature, but the exposed `data` will still be an `AsyncData<Result<Data, ClientError>>` so that your component isn't tied to a particular rendering context: it'll always be capable of handling its own loading state if not suspended.
 
 ## Example
 

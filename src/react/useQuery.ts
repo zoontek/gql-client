@@ -15,7 +15,6 @@ import { deepEqual } from "../utils";
 import { ClientContext } from "./ClientContext";
 
 export type QueryConfig = {
-  suspense?: boolean;
   overrides?: RequestOverrides;
 };
 
@@ -47,7 +46,7 @@ const usePreviousValue = <A, T extends AsyncData<A>>(value: T): T => {
 export const useQuery = <Data, Variables>(
   query: TypedDocumentNode<Data, Variables>,
   variables: NoInfer<Variables>,
-  { suspense = false, overrides }: QueryConfig = {},
+  { overrides }: QueryConfig = {},
 ): Query<Data, Variables> => {
   const client = useContext(ClientContext);
 
@@ -97,14 +96,9 @@ export const useQuery = <Data, Variables>(
 
   const previousAsyncData = usePreviousValue(asyncData);
 
-  const isSuspenseFirstFetch = useRef(true);
   const isReloadingManually = useRef(false);
 
   useEffect(() => {
-    if (suspense && isSuspenseFirstFetch.current) {
-      isSuspenseFirstFetch.current = false;
-      return;
-    }
     if (isReloadingManually.current) {
       return;
     }
@@ -114,7 +108,7 @@ export const useQuery = <Data, Variables>(
       })
       .tap(() => setIsReloading(false));
     return () => request.cancel();
-  }, [client, suspense, stableOverrides, stableQuery, stableVariables]);
+  }, [client, stableOverrides, stableQuery, stableVariables]);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refresh = useCallback(() => {
@@ -147,14 +141,6 @@ export const useQuery = <Data, Variables>(
     : isLoading
       ? previousAsyncData
       : asyncData;
-
-  if (
-    suspense &&
-    isSuspenseFirstFetch.current &&
-    asyncDataToExpose.isLoading()
-  ) {
-    throw client.query(stableQuery, stableVariables[1]).toPromise();
-  }
 
   const setVariables = useCallback((variables: Partial<Variables>) => {
     setStableVariables((prev) => {
