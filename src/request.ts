@@ -44,7 +44,7 @@ type Config = {
   url: string;
 };
 
-export type Response<T> = {
+type Response<T> = {
   status: number;
   ok: boolean;
   response: Option<T>;
