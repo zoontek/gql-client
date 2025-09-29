@@ -186,7 +186,7 @@ export class Client {
       this.getTransformedDocumentsForRequest(document);
 
     const operationName =
-      getExecutableOperationName(transformedDocument).getOr("Untitled");
+      getExecutableOperationName(transformedDocument) ?? "Untitled";
 
     const variablesAsRecord = variables as Record<string, unknown>;
 

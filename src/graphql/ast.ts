@@ -13,7 +13,6 @@ import {
   type SelectionSetNode,
   type ValueNode,
 } from "@0no-co/graphql.web";
-import { Array as BoxedArray, Option } from "@swan-io/boxed";
 
 /**
  * Returns a Set<string> with all keys selected within the direct selection sets
@@ -144,7 +143,7 @@ const extractValue = (
  * @param fieldNode
  * @returns field name
  */
-export const getFieldName = (fieldNode: FieldNode) => {
+export const getFieldName = (fieldNode: FieldNode): string => {
   return fieldNode.alias ? fieldNode.alias.value : fieldNode.name.value;
 };
 
@@ -239,36 +238,38 @@ export const addTypenames = (documentNode: DocumentNode): DocumentNode => {
   });
 };
 
-export const getExecutableOperationName = (document: DocumentNode) => {
-  return BoxedArray.findMap(document.definitions, (definition) => {
+export const getExecutableOperationName = (
+  document: DocumentNode,
+): string | undefined => {
+  for (const definition of document.definitions) {
     if (definition.kind === Kind.OPERATION_DEFINITION) {
-      return Option.fromNullable(definition.name).map((name) => name.value);
-    } else {
-      return Option.None();
+      return definition.name?.value;
     }
-  });
+  }
 };
 
-const getIdFieldNode = (selection: SelectionNode): Option<SelectionNode> => {
-  switch (selection.kind) {
-    case Kind.FIELD:
-      return selection.name.value === "id"
-        ? Option.Some(selection)
-        : Option.None();
-    case Kind.INLINE_FRAGMENT:
-      return BoxedArray.findMap(
-        selection.selectionSet.selections,
-        getIdFieldNode,
-      );
-    default:
-      return Option.None();
+const getIdFieldNode = (
+  selection: SelectionNode,
+): SelectionNode | undefined => {
+  if (selection.kind === Kind.FIELD) {
+    return selection.name.value === "id" ? selection : undefined;
+  }
+
+  if (selection.kind === Kind.INLINE_FRAGMENT) {
+    for (const item of selection.selectionSet.selections) {
+      const value = getIdFieldNode(item);
+
+      if (value != null) {
+        return value;
+      }
+    }
   }
 };
 
 export const isExcluded = (
   fieldNode: FieldNode,
   variables: Record<string, unknown>,
-) => {
+): boolean => {
   if (!Array.isArray(fieldNode.directives)) {
     return false;
   }
@@ -288,13 +289,11 @@ export const isExcluded = (
 
 export const getCacheKeyFromOperationNode = (
   operationNode: OperationDefinitionNode,
-): Option<symbol> => {
-  switch (operationNode.operation) {
-    case OperationTypeNode.QUERY:
-      return Option.Some(Symbol.for("Query"));
-    case OperationTypeNode.SUBSCRIPTION:
-      return Option.Some(Symbol.for("Subscription"));
-    default:
-      return Option.None();
+): symbol | undefined => {
+  if (operationNode.operation === OperationTypeNode.QUERY) {
+    return Symbol.for("Query");
+  }
+  if (operationNode.operation === OperationTypeNode.SUBSCRIPTION) {
+    return Symbol.for("Subscription");
   }
 };

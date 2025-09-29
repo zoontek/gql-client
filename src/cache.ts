@@ -456,10 +456,12 @@ export const readOperationFromCache = (
       : Option.None(),
   )
     .flatMap((operation) =>
-      getCacheKeyFromOperationNode(operation).map((cacheKey) => ({
-        operation,
-        cacheKey,
-      })),
+      Option.fromNullable(getCacheKeyFromOperationNode(operation)).map(
+        (cacheKey) => ({
+          operation,
+          cacheKey,
+        }),
+      ),
     )
     .flatMap(({ operation, cacheKey }) => {
       return cache
