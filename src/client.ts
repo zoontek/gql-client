@@ -30,18 +30,15 @@ type RequestConfig = {
   credentials?: RequestCredentials;
 };
 
-type MakeRequest = (
-  config: RequestConfig,
-) => Future<Result<unknown, ClientError>>;
-
 type ClientConfig = {
   url: string;
   headers?: Record<string, string>;
-  makeRequest?: MakeRequest;
   schemaConfig: SchemaConfig;
 };
 
-const defaultMakeRequest: MakeRequest = ({
+const makeRequest: (
+  config: RequestConfig,
+) => Future<Result<unknown, ClientError>> = ({
   url,
   headers,
   operationName,
@@ -53,7 +50,11 @@ const defaultMakeRequest: MakeRequest = ({
     url,
     method: "POST",
     type: "json",
-    headers,
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...headers,
+    },
     ...(credentials != undefined ? { credentials } : null),
     body: JSON.stringify({
       operationName,
@@ -130,7 +131,6 @@ export class Client {
   headers: Record<string, string>;
   cache: ClientCache;
   schemaConfig: SchemaConfig;
-  makeRequest: MakeRequest;
 
   subscribers: Set<() => void>;
 
@@ -148,7 +148,6 @@ export class Client {
 
     this.schemaConfig = config.schemaConfig;
     this.cache = new ClientCache(config.schemaConfig);
-    this.makeRequest = config.makeRequest ?? defaultMakeRequest;
     this.subscribers = new Set();
     this.transformedDocuments = new Map();
     this.transformedDocumentsForRequest = new Map();
@@ -193,7 +192,7 @@ export class Client {
 
     const variablesAsRecord = variables as Record<string, unknown>;
 
-    return this.makeRequest({
+    return makeRequest({
       url: this.url,
       operationName,
       document: transformedDocumentsForRequest,
