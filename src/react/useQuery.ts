@@ -16,7 +16,6 @@ import { ClientContext } from "./ClientContext";
 
 export type QueryConfig = {
   suspense?: boolean;
-  normalize?: boolean;
   overrides?: RequestOverrides;
 };
 
@@ -48,7 +47,7 @@ const usePreviousValue = <A, T extends AsyncData<A>>(value: T): T => {
 export const useQuery = <Data, Variables>(
   query: TypedDocumentNode<Data, Variables>,
   variables: NoInfer<Variables>,
-  { suspense = false, normalize = true, overrides }: QueryConfig = {},
+  { suspense = false, overrides }: QueryConfig = {},
 ): Query<Data, Variables> => {
   const client = useContext(ClientContext);
 
@@ -82,8 +81,8 @@ export const useQuery = <Data, Variables>(
 
   // Get data from cache
   const getSnapshot = useCallback(() => {
-    return client.readFromCache(stableQuery, stableVariables[1], { normalize });
-  }, [client, stableQuery, stableVariables, normalize]);
+    return client.readFromCache(stableQuery, stableVariables[1]);
+  }, [client, stableQuery, stableVariables]);
 
   const data = useSyncExternalStore(
     (func) => client.subscribe(func),
@@ -112,18 +111,10 @@ export const useQuery = <Data, Variables>(
     const request = client
       .query(stableQuery, stableVariables[1], {
         overrides: stableOverrides,
-        normalize,
       })
       .tap(() => setIsReloading(false));
     return () => request.cancel();
-  }, [
-    client,
-    suspense,
-    normalize,
-    stableOverrides,
-    stableQuery,
-    stableVariables,
-  ]);
+  }, [client, suspense, stableOverrides, stableQuery, stableVariables]);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refresh = useCallback(() => {
@@ -131,10 +122,9 @@ export const useQuery = <Data, Variables>(
     return client
       .query(stableQuery, stableVariables[1], {
         overrides: stableOverrides,
-        normalize,
       })
       .tap(() => setIsRefreshing(false));
-  }, [client, stableQuery, stableOverrides, stableVariables, normalize]);
+  }, [client, stableQuery, stableOverrides, stableVariables]);
 
   const [isReloading, setIsReloading] = useState(false);
   const reload = useCallback(() => {
@@ -144,13 +134,12 @@ export const useQuery = <Data, Variables>(
     return client
       .query(stableQuery, stableVariables[0], {
         overrides: stableOverrides,
-        normalize,
       })
       .tap(() => {
         setIsReloading(false);
         isReloadingManually.current = false;
       });
-  }, [client, stableQuery, stableOverrides, stableVariables, normalize]);
+  }, [client, stableQuery, stableOverrides, stableVariables]);
 
   const isLoading = isRefreshing || isReloading || asyncData.isLoading();
   const asyncDataToExpose = isReloading
@@ -164,9 +153,7 @@ export const useQuery = <Data, Variables>(
     isSuspenseFirstFetch.current &&
     asyncDataToExpose.isLoading()
   ) {
-    throw client
-      .query(stableQuery, stableVariables[1], { normalize })
-      .toPromise();
+    throw client.query(stableQuery, stableVariables[1]).toPromise();
   }
 
   const setVariables = useCallback((variables: Partial<Variables>) => {

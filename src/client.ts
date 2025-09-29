@@ -117,7 +117,6 @@ export type RequestOverrides = Partial<
 >;
 
 type RequestOptions<Data, Variables> = {
-  normalize?: boolean;
   connectionUpdates?: GetConnectionUpdate<Data, Variables>[] | undefined;
   overrides?: RequestOverrides | undefined;
 };
@@ -179,11 +178,7 @@ export class Client {
   request<Data, Variables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
-    {
-      normalize = true,
-      connectionUpdates,
-      overrides,
-    }: RequestOptions<Data, Variables> = {},
+    { connectionUpdates, overrides }: RequestOptions<Data, Variables> = {},
   ): Future<Result<Data, ClientError>> {
     const transformedDocument = this.getTransformedDocument(document);
     const transformedDocumentsForRequest =
@@ -207,14 +202,12 @@ export class Client {
     })
       .mapOk((data) => data as Data)
       .tapOk((data) => {
-        if (normalize) {
-          writeOperationToCache(
-            this.cache,
-            transformedDocument,
-            data,
-            variablesAsRecord,
-          );
-        }
+        writeOperationToCache(
+          this.cache,
+          transformedDocument,
+          data,
+          variablesAsRecord,
+        );
       })
       .tapOk((data) => {
         if (connectionUpdates !== undefined) {
@@ -242,7 +235,6 @@ export class Client {
   readFromCache<Data, Variables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
-    { normalize = true }: { normalize?: boolean },
   ) {
     const variablesAsRecord = variables as Record<string, unknown>;
     const transformedDocument = this.getTransformedDocument(document);
@@ -252,9 +244,6 @@ export class Client {
     );
 
     if (cached.isSome() && cached.get().isError()) {
-      return cached;
-    }
-    if (cached.isSome() && cached.get().isOk() && normalize === false) {
       return cached;
     }
     return readOperationFromCache(

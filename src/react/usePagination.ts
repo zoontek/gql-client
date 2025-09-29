@@ -79,7 +79,7 @@ const createPaginationHook = (direction: mode) => {
           Option.fromNullable(client.cache.connectionCache.get(id)),
         ).flatMap((info) =>
           client
-            .readFromCache(info.document, info.variables, {})
+            .readFromCache(info.document, info.variables)
             .map((query) =>
               query.map((query) => ({ query, pathInQuery: info.pathInQuery })),
             ),
