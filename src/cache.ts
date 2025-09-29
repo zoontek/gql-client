@@ -32,7 +32,7 @@ export type SchemaConfig = {
   interfaceToTypes: Record<string, string[]>;
 };
 
-export type CacheEntry = Record<symbol, unknown> & {
+type CacheEntry = Record<symbol, unknown> & {
   [REQUESTED_KEYS]: Set<symbol>;
   [CONNECTION_REF]?: number;
 };
