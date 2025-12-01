@@ -108,9 +108,10 @@ const createPaginationHook = (direction: Mode) => {
     }, [client]);
 
     const data = useSyncExternalStore(
-      (func) => client.subscribe(func),
+      client.subscribe,
       getSnapshot,
-    ) as Option<T[]>;
+      getSnapshot,
+    );
 
     return data
       .map(([first, ...rest]) =>

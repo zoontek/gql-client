@@ -83,10 +83,7 @@ export const useQuery = <Data, Variables>(
     return client.readFromCache(stableQuery, stableVariables[1]);
   }, [client, stableQuery, stableVariables]);
 
-  const data = useSyncExternalStore(
-    (func) => client.subscribe(func),
-    getSnapshot,
-  );
+  const data = useSyncExternalStore(client.subscribe, getSnapshot, getSnapshot);
 
   const asyncData = useMemo(() => {
     return data

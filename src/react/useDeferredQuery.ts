@@ -45,10 +45,7 @@ export const useDeferredQuery = <Data, Variables>(
     );
   }, [client, stableQuery, stableVariables]);
 
-  const data = useSyncExternalStore(
-    (func) => client.subscribe(func),
-    getSnapshot,
-  );
+  const data = useSyncExternalStore(client.subscribe, getSnapshot, getSnapshot);
 
   const asyncData = useMemo(() => {
     return data
