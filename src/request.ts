@@ -34,6 +34,48 @@ export class CanceledError extends Error {
   }
 }
 
+export class BadStatusError extends Error {
+  url: string;
+  status: number;
+  response: unknown;
+  constructor(url: string, status: number, response?: unknown) {
+    super(`Request to ${url} gave status ${status}`);
+    Object.setPrototypeOf(this, BadStatusError.prototype);
+    this.name = "BadStatusError";
+    this.url = url;
+    this.status = status;
+    this.response = response;
+  }
+}
+
+export const badStatusToError = <T>(
+  response: Response<T>,
+): Result<Response<T>, BadStatusError> => {
+  return response.ok
+    ? Result.Ok(response)
+    : Result.Error(
+        new BadStatusError(
+          response.url,
+          response.status,
+          response.response.toUndefined(),
+        ),
+      );
+};
+
+export class EmptyResponseError extends Error {
+  url: string;
+  constructor(url: string) {
+    super(`Request to ${url} gave an empty response`);
+    Object.setPrototypeOf(this, EmptyResponseError.prototype);
+    this.name = "EmptyResponseError";
+    this.url = url;
+  }
+}
+
+export const emptyToError = <T>(response: Response<T>) => {
+  return response.response.toResult(new EmptyResponseError(response.url));
+};
+
 // TODO: use RequestInit | () => RequestInit (similar to urql)
 type Config = {
   body: BodyInit | null;
@@ -54,7 +96,7 @@ type Response<T> = {
 
 const resolvedPromise = Promise.resolve();
 
-const make = ({
+export const request = ({
   body,
   credentials = "same-origin",
   headers,
@@ -120,50 +162,4 @@ const make = ({
       };
     },
   );
-};
-
-export class BadStatusError extends Error {
-  url: string;
-  status: number;
-  response: unknown;
-  constructor(url: string, status: number, response?: unknown) {
-    super(`Request to ${url} gave status ${status}`);
-    Object.setPrototypeOf(this, BadStatusError.prototype);
-    this.name = "BadStatusError";
-    this.url = url;
-    this.status = status;
-    this.response = response;
-  }
-}
-
-export const badStatusToError = <T>(
-  response: Response<T>,
-): Result<Response<T>, BadStatusError> => {
-  return response.ok
-    ? Result.Ok(response)
-    : Result.Error(
-        new BadStatusError(
-          response.url,
-          response.status,
-          response.response.toUndefined(),
-        ),
-      );
-};
-
-export class EmptyResponseError extends Error {
-  url: string;
-  constructor(url: string) {
-    super(`Request to ${url} gave an empty response`);
-    Object.setPrototypeOf(this, EmptyResponseError.prototype);
-    this.name = "EmptyResponseError";
-    this.url = url;
-  }
-}
-
-export const emptyToError = <T>(response: Response<T>) => {
-  return response.response.toResult(new EmptyResponseError(response.url));
-};
-
-export const Request = {
-  make,
 };
