@@ -38,6 +38,11 @@ export const useDeferredQuery = <Data, Variables>(
     Option.None(),
   );
 
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => client.subscribe(onStoreChange),
+    [],
+  );
+
   // Get data from cache
   const getSnapshot = useCallback(() => {
     return stableVariables.flatMap((variables) =>
@@ -45,7 +50,7 @@ export const useDeferredQuery = <Data, Variables>(
     );
   }, [client, stableQuery, stableVariables]);
 
-  const data = useSyncExternalStore(client.subscribe, getSnapshot, getSnapshot);
+  const data = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   const asyncData = useMemo(() => {
     return data

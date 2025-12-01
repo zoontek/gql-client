@@ -9,7 +9,6 @@ export {
   InvalidGraphQLResponseError,
   parseGraphQLError,
 } from "./errors";
-export { print } from "./graphql/print";
 export { ClientContext } from "./react/ClientContext";
 export { useDeferredQuery } from "./react/useDeferredQuery";
 export { useMutation } from "./react/useMutation";

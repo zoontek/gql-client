@@ -78,12 +78,17 @@ export const useQuery = <Data, Variables>(
     }
   }, [stableOverrides, overrides]);
 
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => client.subscribe(onStoreChange),
+    [],
+  );
+
   // Get data from cache
   const getSnapshot = useCallback(() => {
     return client.readFromCache(stableQuery, stableVariables[1]);
   }, [client, stableQuery, stableVariables]);
 
-  const data = useSyncExternalStore(client.subscribe, getSnapshot, getSnapshot);
+  const data = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   const asyncData = useMemo(() => {
     return data

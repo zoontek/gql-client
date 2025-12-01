@@ -1,4 +1,4 @@
-import type { DocumentNode } from "@0no-co/graphql.web";
+import { print, type DocumentNode } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { Future, Option, Result } from "@swan-io/boxed";
 import {
@@ -17,8 +17,7 @@ import {
   getExecutableOperationName,
   inlineFragments,
 } from "./graphql/ast";
-import { print } from "./graphql/print";
-import { Request, badStatusToError, emptyToError } from "./request";
+import { badStatusToError, emptyToError, request } from "./request";
 import type { Connection, Edge } from "./types";
 
 type RequestConfig = {
@@ -46,7 +45,7 @@ const makeRequest: (
   document,
   variables,
 }: RequestConfig) => {
-  return Request.make({
+  return request({
     url,
     headers: {
       Accept: "application/json",
