@@ -41,7 +41,7 @@
     "typecheck": "tsc --noEmit",
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "prepack": "bun typecheck && bun test && bun run build",
-    "codegen": "graphql-codegen --config codegen.ts"
+    "codegen": "graphql-codegen && bin/generate-schema-config 'https://swapi-graphql.netlify.app/.netlify/functions/index' example/schema.json"
   },
   "prettier": {
     "plugins": [
