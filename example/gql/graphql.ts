@@ -1336,6 +1336,7 @@ export type FilmDetailsQuery = {
     id: string;
     title?: string | null;
     director?: string | null;
+    producers?: Array<string | null> | null;
     openingCrawl?: string | null;
     releaseDate?: string | null;
     characterConnection?:
@@ -1345,19 +1346,6 @@ export type FilmDetailsQuery = {
           };
         })
       | null;
-  } | null;
-};
-
-export type ProducersQueryVariables = Exact<{
-  filmId: Scalars["ID"]["input"];
-}>;
-
-export type ProducersQuery = {
-  __typename?: "Root";
-  film?: {
-    __typename?: "Film";
-    id: string;
-    producers?: Array<string | null> | null;
   } | null;
 };
 
@@ -1713,6 +1701,7 @@ export const FilmDetailsDocument = {
                 { kind: "Field", name: { kind: "Name", value: "id" } },
                 { kind: "Field", name: { kind: "Name", value: "title" } },
                 { kind: "Field", name: { kind: "Name", value: "director" } },
+                { kind: "Field", name: { kind: "Name", value: "producers" } },
                 {
                   kind: "Field",
                   name: { kind: "Name", value: "openingCrawl" },
@@ -1804,52 +1793,3 @@ export const FilmDetailsDocument = {
     },
   ],
 } as unknown as DocumentNode<FilmDetailsQuery, FilmDetailsQueryVariables>;
-export const ProducersDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "query",
-      name: { kind: "Name", value: "Producers" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "filmId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "film" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "id" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "filmId" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "producers" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<ProducersQuery, ProducersQueryVariables>;

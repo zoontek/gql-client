@@ -1,5 +1,4 @@
-import { useEffect } from "react";
-import { useDeferredQuery, useQuery } from "../../src";
+import { useQuery } from "../../src";
 import { graphql } from "../gql";
 import { FilmCharacterList } from "./FilmCharacterList";
 
@@ -9,20 +8,12 @@ const FilmDetailsQuery = graphql(`
       id
       title
       director
+      producers
       openingCrawl
       characterConnection(first: $first, after: $after) {
         ...FilmCharactersConnection
       }
       releaseDate
-    }
-  }
-`);
-
-const ProducersQuery = graphql(`
-  query Producers($filmId: ID!) {
-    film(id: $filmId) {
-      id
-      producers
     }
   }
 `);
@@ -41,25 +32,6 @@ export const FilmDetails = ({ filmId, optimize }: Props) => {
     },
     { optimize },
   );
-
-  const [producers, { query: queryProducers }] = useDeferredQuery(
-    ProducersQuery,
-    {
-      debounce: 500,
-    },
-  );
-
-  useEffect(() => {
-    // try debounced
-    const a = queryProducers({ filmId: "1" });
-    const b = queryProducers({ filmId: "2" });
-    const c = queryProducers({ filmId });
-    return () => {
-      a.cancel();
-      b.cancel();
-      c.cancel();
-    };
-  }, [filmId, queryProducers]);
 
   return (
     <div className="FilmDetails" style={{ opacity: isLoading ? 0.5 : 1 }}>
@@ -86,23 +58,7 @@ export const FilmDetails = ({ filmId, optimize }: Props) => {
                   <div>Director: {film.director}</div>
                   <div>Release date: {film.releaseDate}</div>
                   <div>
-                    Producers:{" "}
-                    {producers.match({
-                      NotAsked: () => null,
-                      Loading: () => <span>Loading ...</span>,
-                      Done: (result) =>
-                        result.match({
-                          Error: () => <span>Error</span>,
-                          Ok: ({ film }) => (
-                            <span
-                              style={{ cursor: "pointer" }}
-                              onClick={() => queryProducers({ filmId })}
-                            >
-                              {film?.producers?.join(", ")}
-                            </span>
-                          ),
-                        }),
-                    })}
+                    Producers: <span>{film.producers?.join(", ")}</span>
                   </div>
                   <div>
                     Opening crawl:
