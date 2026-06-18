@@ -8,9 +8,9 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { RequestOverrides } from "../client";
+import type { RequestOverrides } from "../client";
 import { ClientError } from "../errors";
-import { TypedDocumentNode } from "../types";
+import type { TypedDocumentNode } from "../types";
 import { deepEqual } from "../utils";
 import { ClientContext } from "./ClientContext";
 

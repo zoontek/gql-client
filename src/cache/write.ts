@@ -12,7 +12,7 @@ import {
 } from "../graphql/ast";
 import { getCacheEntryKey } from "../json/cacheEntryKey";
 import { CONNECTION_REF, isRecord, REQUESTED_KEYS } from "../utils";
-import { type ClientCache } from "./cache";
+import type { ClientCache } from "./cache";
 import { createEmptyCacheEntry, type CacheEntry } from "./entry";
 
 export const writeOperationToCache = (

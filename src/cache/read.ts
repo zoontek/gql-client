@@ -1,10 +1,10 @@
 import {
-  DocumentNode,
-  InlineFragmentNode,
   Kind,
-  OperationDefinitionNode,
-  SelectionNode,
-  SelectionSetNode,
+  type DocumentNode,
+  type InlineFragmentNode,
+  type OperationDefinitionNode,
+  type SelectionNode,
+  type SelectionSetNode,
 } from "@0no-co/graphql.web";
 import { Array, Option, Result } from "@bloodyowl/boxed";
 import {

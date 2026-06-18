@@ -1,6 +1,6 @@
 import { Option, Result } from "@bloodyowl/boxed";
 import { expect, test } from "bun:test";
-import { Connection } from "../src";
+import type { Connection } from "../src";
 import { ClientCache } from "../src/cache/cache";
 import { optimizeQuery, readOperationFromCache } from "../src/cache/read";
 import { writeOperationToCache } from "../src/cache/write";

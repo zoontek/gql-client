@@ -1,4 +1,4 @@
-import { DocumentNode } from "@0no-co/graphql.web";
+import type { DocumentNode } from "@0no-co/graphql.web";
 
 export interface DocumentTypeDecoration<TResult, TVariables> {
   /**

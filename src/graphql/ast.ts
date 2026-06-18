@@ -1,17 +1,17 @@
 import {
-  ASTNode,
-  DirectiveNode,
-  DocumentNode,
-  FieldNode,
-  FragmentDefinitionNode,
-  InlineFragmentNode,
   Kind,
-  OperationDefinitionNode,
   OperationTypeNode,
-  SelectionNode,
-  SelectionSetNode,
-  ValueNode,
   visit,
+  type ASTNode,
+  type DirectiveNode,
+  type DocumentNode,
+  type FieldNode,
+  type FragmentDefinitionNode,
+  type InlineFragmentNode,
+  type OperationDefinitionNode,
+  type SelectionNode,
+  type SelectionSetNode,
+  type ValueNode,
 } from "@0no-co/graphql.web";
 import { Array, Option } from "@bloodyowl/boxed";
 

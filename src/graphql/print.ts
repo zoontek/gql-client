@@ -1,4 +1,4 @@
-import { ASTNode } from "@0no-co/graphql.web";
+import type { ASTNode } from "@0no-co/graphql.web";
 
 export const printString = (string: string) => {
   return JSON.stringify(string);

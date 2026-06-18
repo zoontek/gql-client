@@ -1,4 +1,4 @@
-import { ASTNode, GraphQLError } from "@0no-co/graphql.web";
+import { GraphQLError, type ASTNode } from "@0no-co/graphql.web";
 import {
   BadStatusError,
   EmptyResponseError,

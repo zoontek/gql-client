@@ -1,7 +1,7 @@
-import { DocumentNode } from "@0no-co/graphql.web";
+import type { DocumentNode } from "@0no-co/graphql.web";
 import { Array, Option, Result } from "@bloodyowl/boxed";
 import { getCacheEntryKey } from "../json/cacheEntryKey";
-import { Connection, Edge } from "../types";
+import type { Connection, Edge } from "../types";
 import {
   CONNECTION_REF,
   EDGES_KEY,

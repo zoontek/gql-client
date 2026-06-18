@@ -1,8 +1,8 @@
 import { AsyncData, Future, Result } from "@bloodyowl/boxed";
 import { useCallback, useContext, useRef, useState } from "react";
-import { GetConnectionUpdate, RequestOverrides } from "../client";
+import type { GetConnectionUpdate, RequestOverrides } from "../client";
 import { ClientError } from "../errors";
-import { TypedDocumentNode } from "../types";
+import type { TypedDocumentNode } from "../types";
 import { ClientContext } from "./ClientContext";
 
 export type MutationExtraConfig = { overrides?: RequestOverrides };

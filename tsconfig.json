@@ -27,6 +27,10 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "resolveJsonModule": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+
+    "moduleResolution": "bundler",
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true
   }
 }

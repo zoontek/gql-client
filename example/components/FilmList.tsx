@@ -1,6 +1,6 @@
 import { Option } from "@bloodyowl/boxed";
 import { useForwardPagination } from "../../src";
-import { FragmentType, graphql, useFragment } from "../gql";
+import { graphql, useFragment, type FragmentType } from "../gql";
 import { Film } from "./Film";
 
 const FilmsConnectionFragment = graphql(`

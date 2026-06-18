@@ -1,5 +1,5 @@
 /* eslint-disable */
-import { TypedDocumentNode as DocumentNode } from "@graphql-typed-document-node/core";
+import type { TypedDocumentNode as DocumentNode } from "@graphql-typed-document-node/core";
 import * as types from "./graphql";
 
 /**
@@ -11,8 +11,17 @@ import * as types from "./graphql";
  * 3. It does not support dead code elimination, so it will add unused operations.
  *
  * Therefore it is highly recommended to use the babel or swc plugin for production.
+ * Learn more about it here: https://the-guild.dev/graphql/codegen/plugins/presets/preset-client#reducing-bundle-size
  */
-const documents = {
+type Documents = {
+  "\n  query allFilmsWithVariablesQuery($first: Int!, $after: String) {\n    allFilms(first: $first, after: $after) {\n      ...FilmsConnection\n    }\n  }\n": typeof types.AllFilmsWithVariablesQueryDocument;
+  "\n  fragment FilmItem on Film {\n    id\n    title\n    releaseDate\n    producers\n  }\n": typeof types.FilmItemFragmentDoc;
+  "\n  fragment FilmCharactersConnection on FilmCharactersConnection {\n    edges {\n      node {\n        id\n        name\n      }\n    }\n    pageInfo {\n      hasNextPage\n      endCursor\n    }\n  }\n": typeof types.FilmCharactersConnectionFragmentDoc;
+  "\n  query FilmDetails($filmId: ID!, $first: Int!, $after: String) {\n    film(id: $filmId) {\n      id\n      title\n      director\n      openingCrawl\n      characterConnection(first: $first, after: $after) {\n        ...FilmCharactersConnection\n      }\n      releaseDate\n    }\n  }\n": typeof types.FilmDetailsDocument;
+  "\n  query Producers($filmId: ID!) {\n    film(id: $filmId) {\n      id\n      producers\n    }\n  }\n": typeof types.ProducersDocument;
+  "\n  fragment FilmsConnection on FilmsConnection {\n    edges {\n      node {\n        id\n        ...FilmItem\n      }\n    }\n    pageInfo {\n      hasNextPage\n      endCursor\n    }\n  }\n": typeof types.FilmsConnectionFragmentDoc;
+};
+const documents: Documents = {
   "\n  query allFilmsWithVariablesQuery($first: Int!, $after: String) {\n    allFilms(first: $first, after: $after) {\n      ...FilmsConnection\n    }\n  }\n":
     types.AllFilmsWithVariablesQueryDocument,
   "\n  fragment FilmItem on Film {\n    id\n    title\n    releaseDate\n    producers\n  }\n":

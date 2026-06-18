@@ -1,7 +1,7 @@
-import { DocumentNode } from "@0no-co/graphql.web";
+import type { DocumentNode } from "@0no-co/graphql.web";
 import { Future, Option, Result } from "@bloodyowl/boxed";
 import { Request, badStatusToError, emptyToError } from "@bloodyowl/request";
-import { ClientCache, SchemaConfig } from "./cache/cache";
+import { ClientCache, type SchemaConfig } from "./cache/cache";
 import { optimizeQuery, readOperationFromCache } from "./cache/read";
 import { writeOperationToCache } from "./cache/write";
 import {
@@ -15,7 +15,7 @@ import {
   inlineFragments,
 } from "./graphql/ast";
 import { print } from "./graphql/print";
-import { Connection, Edge, TypedDocumentNode } from "./types";
+import type { Connection, Edge, TypedDocumentNode } from "./types";
 
 export type RequestConfig = {
   url: string;
