@@ -65,9 +65,10 @@ export const makeRequest = async ({
   timeout = 10000,
 }: Config): Promise<JsonValue> => {
   const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
 
   if (Number.isFinite(timeout) && timeout >= 0) {
-    setTimeout(() => {
+    timer = setTimeout(() => {
       controller.abort(new TimeoutError(url, timeout));
     }, timeout);
   }
@@ -113,5 +114,8 @@ export const makeRequest = async ({
       }
 
       throw new NetworkError(url);
+    })
+    .finally(() => {
+      clearTimeout(timer);
     });
 };

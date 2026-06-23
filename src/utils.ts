@@ -16,7 +16,7 @@ export const containsAll = <T>(a: Set<T>, b: Set<T>): boolean => {
 export const isRecord = (
   value: unknown,
 ): value is Record<PropertyKey, unknown> => {
-  return value != null && typeof value === "object";
+  return value != null && typeof value === "object" && !Array.isArray(value);
 };
 
 export const hasOwn = (obj: object, key: PropertyKey): boolean =>

@@ -189,14 +189,21 @@ export class ClientCache {
         return;
       }
 
-      const nodeIds = config.remove;
+      const nodeIds = new Set(config.remove);
       connectionConfig.cacheEntry[EDGES_KEY] = (
         connectionConfig.cacheEntry[EDGES_KEY] as CachedEdge[]
       ).filter((edge) => {
-        const node = edge[NODE_KEY];
-        return !nodeIds.some((nodeId) => {
-          return node.description?.includes(`<${nodeId}>`);
-        });
+        const description = edge[NODE_KEY].description;
+
+        if (description === undefined) {
+          return true;
+        }
+
+        // Cache keys are `${typename}<${id}>`. Match the id segment exactly so
+        // `"1"` doesn't accidentally remove `"11"` or an id that happens to
+        // appear elsewhere in the key.
+        const match = /<([^<>]*)>$/.exec(description);
+        return match === null || !nodeIds.has(match[1] as string);
       });
     }
   }
@@ -231,8 +238,8 @@ export class ClientCache {
       selections: SelectionSetNode,
       data: Record<PropertyKey, unknown>,
     ): unknown => {
-      return selections.selections.reduce<unknown>((data, selection) => {
-        if (data === MISS) {
+      return selections.selections.reduce<unknown>((acc, selection) => {
+        if (acc === MISS) {
           return MISS;
         }
         if (selection.kind === Kind.FIELD) {
@@ -243,18 +250,18 @@ export class ClientCache {
             variables,
           );
 
-          if (data == undefined) {
+          if (acc == undefined) {
             return MISS;
           }
 
           const cacheHasKey =
-            hasOwn(data, originalFieldName) ||
-            hasOwn(data, fieldNameWithArguments);
+            hasOwn(acc, originalFieldName) ||
+            hasOwn(acc, fieldNameWithArguments);
 
           if (!cacheHasKey) {
             if (isExcluded(fieldNode, variables)) {
               return {
-                ...data,
+                ...acc,
                 [originalFieldName]: EXCLUDED,
               };
             } else {
@@ -265,16 +272,16 @@ export class ClientCache {
           // in case a the data is read across multiple selections, get the actual one if generated,
           // otherwise, read from cache (e.g. fragments)
           const valueOrKeyFromCache =
-            // @ts-expect-error `data` is indexable at this point
-            originalFieldName in data
-              ? // @ts-expect-error `data` is indexable at this point
-                data[originalFieldName]
-              : // @ts-expect-error `data` is indexable at this point
-                data[fieldNameWithArguments];
+            // @ts-expect-error `acc` is indexable at this point
+            originalFieldName in acc
+              ? // @ts-expect-error `acc` is indexable at this point
+                acc[originalFieldName]
+              : // @ts-expect-error `acc` is indexable at this point
+                acc[fieldNameWithArguments];
 
           if (valueOrKeyFromCache == undefined) {
             return {
-              ...data,
+              ...acc,
               [originalFieldName]: valueOrKeyFromCache,
             };
           }
@@ -305,7 +312,7 @@ export class ClientCache {
             }
 
             return {
-              ...data,
+              ...acc,
               [originalFieldName]: result,
             };
           } else {
@@ -326,24 +333,24 @@ export class ClientCache {
                 return MISS;
               }
               return {
-                ...data,
+                ...acc,
                 [originalFieldName]: result,
               };
             } else {
-              return { ...data, [originalFieldName]: value };
+              return { ...acc, [originalFieldName]: value };
             }
           }
         }
         if (selection.kind === Kind.INLINE_FRAGMENT) {
           const inlineFragmentNode = selection;
           const typeCondition = inlineFragmentNode.typeCondition?.name.value;
-          const dataTypename = getTypename(data);
+          const dataTypename = getTypename(acc);
 
           if (typeCondition != null && dataTypename != null) {
             if (this.isTypeCompatible(dataTypename, typeCondition)) {
               return traverse(
                 inlineFragmentNode.selectionSet,
-                data as Record<PropertyKey, unknown>,
+                acc as Record<PropertyKey, unknown>,
               );
             } else {
               if (
@@ -373,16 +380,16 @@ export class ClientCache {
                         },
                       ),
                   },
-                  data as Record<PropertyKey, unknown>,
+                  acc as Record<PropertyKey, unknown>,
                 );
               } else {
-                return data;
+                return acc;
               }
             }
           }
           return traverse(
             inlineFragmentNode.selectionSet,
-            data as Record<PropertyKey, unknown>,
+            acc as Record<PropertyKey, unknown>,
           );
         } else {
           return MISS;

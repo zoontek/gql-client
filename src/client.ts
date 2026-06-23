@@ -84,9 +84,11 @@ export class Client {
     this.inflightRequests = new WeakMap();
   }
 
-  public subscribe(fn: () => void): () => boolean {
+  public subscribe(fn: () => void): () => void {
     this.subscribers.add(fn);
-    return () => this.subscribers.delete(fn);
+    return () => {
+      this.subscribers.delete(fn);
+    };
   }
 
   public request<Data, Variables extends AnyVariables = AnyVariables>(
@@ -159,13 +161,16 @@ export class Client {
     documentRequests.set(key, promise);
 
     // Clear the in-flight entry once settled so a later cache miss for the same
-    // variables (e.g. after an invalidation) triggers a fresh request. The
-    // rejection handler also marks the promise as handled, so dropping it
-    // without `use()`-ing it never surfaces an unhandled rejection.
-    promise.then(
-      () => documentRequests.delete(key),
-      () => documentRequests.delete(key),
-    );
+    // variables (e.g. after an invalidation) triggers a fresh request. Passing
+    // the handler as both fulfilled and rejected reactions also marks the
+    // promise as handled, so dropping it without `use()`-ing it never surfaces
+    // an unhandled rejection. (`.finally()` can't be used here: it re-rejects
+    // through a new promise that nobody handles.)
+    const cleanup = (): void => {
+      documentRequests.delete(key);
+    };
+
+    promise.then(cleanup, cleanup);
 
     return promise;
   }

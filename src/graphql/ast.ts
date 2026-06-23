@@ -161,17 +161,28 @@ export const isExcluded = (
     return false;
   }
 
-  return fieldNode.directives.some(
-    (directive: DirectiveNode) =>
-      directive.name.value === "include" &&
-      directive.arguments != null &&
-      directive.arguments.some((arg) => {
-        return (
-          arg.name.value === "if" &&
-          extractValue(arg.value, variables) === false
-        );
-      }),
-  );
+  return fieldNode.directives.some((directive: DirectiveNode) => {
+    const name = directive.name.value;
+
+    // A field is excluded from the response by `@include(if: false)` or
+    // `@skip(if: true)`. Either keeps it out of the payload, so its absence
+    // from the cache must not be treated as a miss.
+    if (name !== "include" && name !== "skip") {
+      return false;
+    }
+
+    if (directive.arguments == null) {
+      return false;
+    }
+
+    const excludeWhen = name === "skip";
+
+    return directive.arguments.some(
+      (arg) =>
+        arg.name.value === "if" &&
+        extractValue(arg.value, variables) === excludeWhen,
+    );
+  });
 };
 
 export const getCacheKeyFromOperationNode = (
