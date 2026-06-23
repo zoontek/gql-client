@@ -1,4 +1,5 @@
-import type { UnknownVariables } from "./types";
+import type { Option } from "@bloodyowl/boxed";
+import type { AnyVariables } from "./types";
 
 export const REQUESTED_KEYS = Symbol.for("__requestedKeys");
 
@@ -19,7 +20,8 @@ export const isRecord = (
   return value != null && typeof value === "object";
 };
 
-export const hasOwnProperty = Object.prototype.hasOwnProperty;
+export const hasOwn = (obj: object, key: PropertyKey): boolean =>
+  Object.prototype.hasOwnProperty.call(obj, key);
 
 // oxlint-disable-next-line typescript/explicit-module-boundary-types, typescript/no-explicit-any
 export const deepEqual = (a: any, b: any): boolean => {
@@ -44,7 +46,7 @@ export const deepEqual = (a: any, b: any): boolean => {
   }
 
   for (const key of aKeys) {
-    if (!hasOwnProperty.call(b, key) || !deepEqual(a[key], b[key])) {
+    if (!hasOwn(b, key) || !deepEqual(a[key], b[key])) {
       return false;
     }
   }
@@ -52,6 +54,23 @@ export const deepEqual = (a: any, b: any): boolean => {
   return true;
 };
 
-export const serializeVariables = (variables: UnknownVariables): string => {
+export const serializeVariables = (variables: AnyVariables): string => {
   return JSON.stringify(variables);
+};
+
+export const filterMap = <A, B>(
+  array: readonly A[],
+  fn: (item: A) => Option<B>,
+): B[] => {
+  const result: B[] = [];
+
+  for (const item of array) {
+    const mapped = fn(item);
+
+    if (mapped.isSome()) {
+      result.push(mapped.get());
+    }
+  }
+
+  return result;
 };

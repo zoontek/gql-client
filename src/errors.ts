@@ -1,10 +1,11 @@
-import { GraphQLError, type ASTNode } from "@0no-co/graphql.web";
+import { type ASTNode, GraphQLError } from "@0no-co/graphql.web";
 import {
   BadStatusError,
   EmptyResponseError,
   NetworkError,
   TimeoutError,
 } from "@bloodyowl/request";
+import type { JsonValue } from "./types";
 
 export type ClientError =
   | NetworkError
@@ -12,6 +13,7 @@ export type ClientError =
   | BadStatusError
   | EmptyResponseError
   | InvalidGraphQLResponseError
+  | CacheError
   | GraphQLError[];
 
 export class InvalidGraphQLResponseError extends Error {
@@ -24,6 +26,19 @@ export class InvalidGraphQLResponseError extends Error {
   }
 }
 
+export class CacheError extends Error {
+  constructor(operationName: string | undefined) {
+    super(
+      operationName != null
+        ? `Unable to read operation "${operationName}" from cache`
+        : "Unable to read operation from cache",
+    );
+
+    Object.setPrototypeOf(this, CacheError.prototype);
+    this.name = "CacheError";
+  }
+}
+
 export const parseGraphQLError = (error: unknown): GraphQLError => {
   if (
     typeof error === "object" &&
@@ -31,7 +46,7 @@ export const parseGraphQLError = (error: unknown): GraphQLError => {
     "message" in error &&
     typeof error.message === "string"
   ) {
-    const graphqlError = error as Record<PropertyKey, unknown> & {
+    const graphqlError = error as Record<PropertyKey, JsonValue> & {
       message: string;
     };
     const originalError =
@@ -41,10 +56,10 @@ export const parseGraphQLError = (error: unknown): GraphQLError => {
       "message" in error.error &&
       typeof error.error.message === "string"
         ? new Error(error.error.message)
-        : undefined;
+        : null;
     return new GraphQLError(
       graphqlError.message,
-      graphqlError.nodes as ReadonlyArray<ASTNode> | ASTNode | null | undefined,
+      graphqlError.nodes as readonly ASTNode[] | ASTNode | null | undefined,
       graphqlError.source,
       graphqlError.positions as readonly number[] | null | undefined,
       graphqlError.path as readonly (string | number)[] | null | undefined,
@@ -58,20 +73,4 @@ export const parseGraphQLError = (error: unknown): GraphQLError => {
     );
   }
   return new GraphQLError(JSON.stringify(error));
-};
-
-type Flat<T> = T extends (infer X)[] ? X : T;
-
-export const ClientError = {
-  toArray: <E extends Error | ClientError>(clientError: E): Flat<E>[] => {
-    return Array.isArray(clientError)
-      ? (clientError as Flat<E>[])
-      : ([clientError] as Flat<E>[]);
-  },
-  forEach: <E extends Error | ClientError>(
-    clientError: E,
-    func: (error: Flat<E>, index?: number) => void,
-  ): void => {
-    ClientError.toArray(clientError).forEach(func);
-  },
 };

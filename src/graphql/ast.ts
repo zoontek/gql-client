@@ -14,7 +14,7 @@ import {
 } from "@0no-co/graphql.web";
 import { Array, Option } from "@bloodyowl/boxed";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
-import type { UnknownVariables } from "../types";
+import type { AnyVariables } from "../types";
 
 /**
  * Gets the field name in the response payload from its AST definition
@@ -35,7 +35,7 @@ export const getFieldName = (fieldNode: FieldNode): string => {
  */
 const extractValue = (
   valueNode: ValueNode,
-  variables: UnknownVariables,
+  variables: AnyVariables,
 ): unknown => {
   switch (valueNode.kind) {
     case Kind.NULL:
@@ -71,8 +71,8 @@ const extractValue = (
  */
 export const extractArguments = (
   fieldNode: FieldNode,
-  variables: UnknownVariables,
-): UnknownVariables => {
+  variables: AnyVariables,
+): AnyVariables => {
   const args = fieldNode.arguments ?? [];
   return Object.fromEntries(
     args.map(({ name: { value: name }, value }) => [
@@ -100,7 +100,7 @@ export const extractArguments = (
  */
 export const getFieldNameWithArguments = (
   fieldNode: FieldNode,
-  variables: UnknownVariables,
+  variables: AnyVariables,
 ): symbol => {
   const fieldName = getFieldName(fieldNode);
   const args = extractArguments(fieldNode, variables);
@@ -122,7 +122,7 @@ export const getFieldNameWithArguments = (
  */
 export const getSelectedKeys = (
   fieldNode: FieldNode | OperationDefinitionNode,
-  variables: UnknownVariables,
+  variables: AnyVariables,
 ): Set<symbol> => {
   const selectedKeys = new Set<symbol>();
 
@@ -244,21 +244,19 @@ export const addTypenames = (
   });
 };
 
-export const getExecutableOperationName = (
+export const getOperationName = (
   document: TypedDocumentNode,
-): Option<string> => {
-  return Array.findMap(document.definitions, (definition) => {
+): string | undefined => {
+  for (const definition of document.definitions) {
     if (definition.kind === Kind.OPERATION_DEFINITION) {
-      return Option.fromNullable(definition.name).map((name) => name.value);
-    } else {
-      return Option.None();
+      return definition.name?.value;
     }
-  });
+  }
 };
 
 export const isExcluded = (
   fieldNode: FieldNode,
-  variables: UnknownVariables,
+  variables: AnyVariables,
 ): boolean => {
   if (!Array.isArray(fieldNode.directives)) {
     return false;

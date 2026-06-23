@@ -2,8 +2,6 @@ import { Option, Result } from "@bloodyowl/boxed";
 import { expect, test } from "bun:test";
 import type { Connection } from "../src";
 import { ClientCache } from "../src/cache/cache";
-import { readOperationFromCache } from "../src/cache/read";
-import { writeOperationToCache } from "../src/cache/write";
 import { addTypenames, inlineFragments } from "../src/graphql/ast";
 import {
   OnboardingInfo,
@@ -25,8 +23,7 @@ test("Write & read in cache", () => {
 
   const preparedAppQuery = inlineFragments(addTypenames(appQuery));
 
-  writeOperationToCache(
-    cache,
+  cache.writeOperation(
     preparedAppQuery,
     getAppQueryResponse({
       user2LastName: "Last",
@@ -40,7 +37,7 @@ test("Write & read in cache", () => {
   expect(cache.dump()).toMatchSnapshot();
 
   expect(
-    readOperationFromCache(cache, preparedAppQuery, {
+    cache.readOperation(preparedAppQuery, {
       id: "1",
     }),
   ).toMatchObject(
@@ -60,8 +57,7 @@ test("Write & read in cache", () => {
     addTypenames(bindAccountMembershipMutation),
   );
 
-  writeOperationToCache(
-    cache,
+  cache.writeOperation(
     preparedBindAccountMembershipMutation,
     bindMembershipMutationRejectionResponse,
     {
@@ -70,7 +66,7 @@ test("Write & read in cache", () => {
   );
 
   expect(
-    readOperationFromCache(cache, preparedAppQuery, {
+    cache.readOperation(preparedAppQuery, {
       id: "1",
     }),
   ).toMatchObject(
@@ -84,8 +80,7 @@ test("Write & read in cache", () => {
     ),
   );
 
-  writeOperationToCache(
-    cache,
+  cache.writeOperation(
     preparedBindAccountMembershipMutation,
     bindMembershipMutationSuccessResponse,
     {
@@ -96,7 +91,7 @@ test("Write & read in cache", () => {
   expect(cache.dump()).toMatchSnapshot();
 
   expect(
-    readOperationFromCache(cache, preparedAppQuery, {
+    cache.readOperation(preparedAppQuery, {
       id: "1",
     }),
   ).toMatchObject(
@@ -110,8 +105,7 @@ test("Write & read in cache", () => {
     ),
   );
 
-  writeOperationToCache(
-    cache,
+  cache.writeOperation(
     preparedAppQuery,
     getAppQueryResponse({
       user2LastName: "Acthernoene",
@@ -130,7 +124,7 @@ test("Write & read in cache", () => {
   expect(cache.dump()).toMatchSnapshot();
 
   expect(
-    readOperationFromCache(cache, preparedAppQuery, {
+    cache.readOperation(preparedAppQuery, {
       id: "1",
     }),
   ).toMatchObject(
@@ -150,10 +144,10 @@ test("Write & read in cache", () => {
   );
 
   const values = Option.all([
-    readOperationFromCache(cache, preparedAppQuery, {
+    cache.readOperation(preparedAppQuery, {
       id: "1",
     }),
-    readOperationFromCache(cache, preparedAppQuery, {
+    cache.readOperation(preparedAppQuery, {
       id: "1",
     }),
   ]);
@@ -167,20 +161,15 @@ test("Write & read in cache", () => {
 
   const cache2 = new ClientCache({ interfaceToTypes: {} });
 
-  writeOperationToCache(
-    cache2,
-    preparedOnboardingInfo,
-    onboardingInfoResponse,
-    {
-      id: "d26ed1ed-5f70-4096-9d8e-27ef258e26fa",
-      language: "en",
-    },
-  );
+  cache2.writeOperation(preparedOnboardingInfo, onboardingInfoResponse, {
+    id: "d26ed1ed-5f70-4096-9d8e-27ef258e26fa",
+    language: "en",
+  });
 
   expect(cache2.dump()).toMatchSnapshot();
 
   expect(
-    readOperationFromCache(cache2, preparedOnboardingInfo, {
+    cache2.readOperation(preparedOnboardingInfo, {
       id: "d26ed1ed-5f70-4096-9d8e-27ef258e26fa",
       language: "en",
     }),
@@ -188,8 +177,7 @@ test("Write & read in cache", () => {
 
   const cache3 = new ClientCache({ interfaceToTypes: {} });
 
-  writeOperationToCache(
-    cache3,
+  cache3.writeOperation(
     preparedAppQuery,
     getAppQueryResponse({
       user2LastName: "Last",
@@ -200,17 +188,17 @@ test("Write & read in cache", () => {
     },
   );
 
-  const read = readOperationFromCache(cache3, preparedAppQuery, {
+  const read = cache3.readOperation(preparedAppQuery, {
     id: "1",
   });
 
   expect(
-    readOperationFromCache(cache3, appQueryWithoutMoreAccountInfo, {}).isSome(),
+    cache3.readOperation(appQueryWithoutMoreAccountInfo, {}).isSome(),
   ).toBe(true);
 
-  expect(
-    readOperationFromCache(cache3, appQueryWithMoreAccountInfo, {}).isNone(),
-  ).toBe(true);
+  expect(cache3.readOperation(appQueryWithMoreAccountInfo, {}).isNone()).toBe(
+    true,
+  );
 
   if (read.isSome()) {
     const cacheResult = read.get();
@@ -234,8 +222,7 @@ test("Write & read in cache", () => {
         remove: ["account-membership-1"],
       });
 
-      writeOperationToCache(
-        cache3,
+      cache3.writeOperation(
         inlineFragments(addTypenames(addMembership)),
         {
           __typename: "Mutation",
@@ -259,8 +246,7 @@ test("Write & read in cache", () => {
         {},
       );
 
-      writeOperationToCache(
-        cache3,
+      cache3.writeOperation(
         inlineFragments(addTypenames(addMembership)),
         {
           __typename: "Mutation",
@@ -327,7 +313,7 @@ test("Write & read in cache", () => {
     }
 
     expect(
-      readOperationFromCache(cache3, preparedAppQuery, {
+      cache3.readOperation(preparedAppQuery, {
         id: "1",
       }),
     ).toMatchSnapshot();
@@ -343,12 +329,12 @@ test("Write & read in cache", () => {
     },
   });
 
-  writeOperationToCache(cache4, preparedBrandingQuery, brandingResponse, {
+  cache4.writeOperation(preparedBrandingQuery, brandingResponse, {
     id: "64060573-f0ec-4204-ad49-a3983497ada4",
   });
 
   expect(
-    readOperationFromCache(cache4, preparedBrandingQuery, {
+    cache4.readOperation(preparedBrandingQuery, {
       id: "64060573-f0ec-4204-ad49-a3983497ada4",
     }),
   ).toEqual(Option.Some(Result.Ok(brandingResponse)));

@@ -1,75 +1,25 @@
 import { Future, Option, Result } from "@bloodyowl/boxed";
 import { Request, badStatusToError, emptyToError } from "@bloodyowl/request";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
-import { ClientCache, type SchemaConfig } from "./cache/cache";
-import { readOperationFromCache } from "./cache/read";
-import { writeOperationToCache } from "./cache/write";
 import {
-  ClientError,
+  ClientCache,
+  type ConnectionInfo,
+  type SchemaConfig,
+} from "./cache/cache";
+import {
+  type ClientError,
   InvalidGraphQLResponseError,
   parseGraphQLError,
 } from "./errors";
-import {
-  addTypenames,
-  getExecutableOperationName,
-  inlineFragments,
-} from "./graphql/ast";
+import { addTypenames, getOperationName, inlineFragments } from "./graphql/ast";
 import { printDocument } from "./graphql/printDocument";
-import type { Connection, Edge, UnknownVariables } from "./types";
-
-type RequestConfig = {
-  url: string;
-  headers: Record<string, string>;
-  operationName: string;
-  document: TypedDocumentNode;
-  variables: UnknownVariables;
-  credentials?: RequestCredentials;
-};
-
-export type MakeRequest = (
-  config: RequestConfig,
-) => Future<Result<unknown, ClientError>>;
+import type { AnyVariables, Connection, Edge } from "./types";
 
 export type ClientConfig = {
   url: string;
+  credentials?: RequestCredentials;
   headers?: Record<string, string>;
-  makeRequest?: MakeRequest;
   schemaConfig: SchemaConfig;
-};
-
-const defaultMakeRequest: MakeRequest = ({
-  url,
-  headers,
-  operationName,
-  credentials,
-  document,
-  variables,
-}: RequestConfig) => {
-  return Request.make({
-    url,
-    method: "POST",
-    type: "json",
-    headers,
-    ...(credentials != undefined ? { credentials } : null),
-    body: JSON.stringify({
-      operationName,
-      query: printDocument(document),
-      variables,
-    }),
-  })
-    .mapOkToResult(badStatusToError)
-    .mapOkToResult(emptyToError)
-    .mapOkToResult((payload) => {
-      if (payload != null && typeof payload === "object") {
-        if ("errors" in payload && Array.isArray(payload.errors)) {
-          return Result.Error(payload.errors.map(parseGraphQLError));
-        }
-        if ("data" in payload && payload.data != null) {
-          return Result.Ok(payload.data);
-        }
-      }
-      return Result.Error(new InvalidGraphQLResponseError(payload));
-    });
 };
 
 type ConnectionUpdate<Node> = [
@@ -100,7 +50,7 @@ const remove = <A>(
 
 export type GetConnectionUpdate<
   Data,
-  Variables extends UnknownVariables = UnknownVariables,
+  Variables extends AnyVariables = AnyVariables,
 > = (config: {
   data: Data;
   variables: Variables;
@@ -115,45 +65,36 @@ export type GetConnectionUpdate<
   remove: <A>(connection: Connection<A>, ids: string[]) => ConnectionUpdate<A>;
 }) => Option<ConnectionUpdate<unknown>>;
 
-type RequestOptions<
-  Data,
-  Variables extends UnknownVariables = UnknownVariables,
-> = {
+type RequestOptions<Data, Variables extends AnyVariables = AnyVariables> = {
   connectionUpdates?: GetConnectionUpdate<Data, Variables>[] | undefined;
 };
 
 export class Client {
-  url: string;
-  headers: Record<string, string>;
-  cache: ClientCache;
-  schemaConfig: SchemaConfig;
-  makeRequest: MakeRequest;
+  private url: string;
+  private credentials: RequestCredentials;
+  private headers: Record<string, string>;
 
-  subscribers: Set<() => void>;
+  private cache: ClientCache;
+  private subscribers: Set<() => void>;
+  private transformedDocuments: Map<TypedDocumentNode, TypedDocumentNode>;
 
-  transformedDocuments: Map<TypedDocumentNode, TypedDocumentNode>;
-  transformedDocumentsForRequest: Map<TypedDocumentNode, TypedDocumentNode>;
-
-  constructor(config: ClientConfig) {
+  public constructor(config: ClientConfig) {
     this.url = config.url;
+    this.credentials = config.credentials ?? "same-origin";
+    this.headers = config.headers ?? {};
 
-    this.headers = {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...config.headers,
-    };
-
-    this.schemaConfig = config.schemaConfig;
     this.cache = new ClientCache(config.schemaConfig);
-    this.makeRequest = config.makeRequest ?? defaultMakeRequest;
-    this.subscribers = new Set();
-    this.transformedDocuments = new Map();
-    this.transformedDocumentsForRequest = new Map();
+    this.subscribers = new Set<() => void>();
+    this.transformedDocuments = new Map<TypedDocumentNode, TypedDocumentNode>();
   }
 
-  getTransformedDocument(document: TypedDocumentNode): TypedDocumentNode {
-    if (this.transformedDocuments.has(document)) {
-      return this.transformedDocuments.get(document) as TypedDocumentNode;
+  private getTransformedDocument(
+    document: TypedDocumentNode,
+  ): TypedDocumentNode {
+    const cached = this.transformedDocuments.get(document);
+
+    if (cached != null) {
+      return cached;
     } else {
       const transformedDocument = inlineFragments(addTypenames(document));
       this.transformedDocuments.set(document, transformedDocument);
@@ -161,48 +102,50 @@ export class Client {
     }
   }
 
-  getTransformedDocumentsForRequest(
-    document: TypedDocumentNode,
-  ): TypedDocumentNode {
-    if (this.transformedDocumentsForRequest.has(document)) {
-      return this.transformedDocumentsForRequest.get(
-        document,
-      ) as TypedDocumentNode;
-    } else {
-      const transformedDocument = addTypenames(document);
-      this.transformedDocumentsForRequest.set(document, transformedDocument);
-      return transformedDocument;
-    }
+  public subscribe(fn: () => void): () => boolean {
+    this.subscribers.add(fn);
+    return () => this.subscribers.delete(fn);
   }
 
-  subscribe(func: () => void): () => boolean {
-    this.subscribers.add(func);
-    return () => this.subscribers.delete(func);
-  }
-
-  request<Data, Variables extends UnknownVariables = UnknownVariables>(
+  public request<Data, Variables extends AnyVariables = AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
     { connectionUpdates }: RequestOptions<Data, Variables> = {},
   ): Future<Result<Data, ClientError>> {
     const transformedDocument = this.getTransformedDocument(document);
 
-    const transformedDocumentsForRequest =
-      this.getTransformedDocumentsForRequest(document);
-
-    const operationName =
-      getExecutableOperationName(transformedDocument).getOr("Untitled");
-
-    return this.makeRequest({
+    return Request.make({
       url: this.url,
-      operationName,
-      document: transformedDocumentsForRequest,
-      variables,
-      headers: this.headers,
+      method: "POST",
+      type: "json",
+      credentials: this.credentials,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...this.headers,
+      },
+      body: JSON.stringify({
+        operationName: getOperationName(transformedDocument),
+        query: printDocument(transformedDocument),
+        variables,
+      }),
     })
+      .mapOkToResult(badStatusToError)
+      .mapOkToResult(emptyToError)
+      .mapOkToResult((payload) => {
+        if (payload != null && typeof payload === "object") {
+          if ("errors" in payload && Array.isArray(payload.errors)) {
+            return Result.Error(payload.errors.map(parseGraphQLError));
+          }
+          if ("data" in payload && payload.data != null) {
+            return Result.Ok(payload.data);
+          }
+        }
+        return Result.Error(new InvalidGraphQLResponseError(payload));
+      })
       .mapOk((data) => data as Data)
       .tapOk((data) => {
-        writeOperationToCache(this.cache, transformedDocument, data, variables);
+        this.cache.writeOperation(transformedDocument, data, variables);
       })
       .tapOk((data) => {
         if (connectionUpdates !== undefined) {
@@ -223,7 +166,7 @@ export class Client {
       });
   }
 
-  readFromCache<Data, Variables extends UnknownVariables = UnknownVariables>(
+  public readFromCache<Data, Variables extends AnyVariables = AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
   ): Option<Result<unknown, unknown>> {
@@ -238,6 +181,10 @@ export class Client {
       return cached;
     }
 
-    return readOperationFromCache(this.cache, transformedDocument, variables);
+    return this.cache.readOperation(transformedDocument, variables);
+  }
+
+  public getCachedConnection(id: number): ConnectionInfo | undefined {
+    return this.cache.getCachedConnection(id);
   }
 }

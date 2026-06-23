@@ -2,21 +2,20 @@ import { AsyncData, Result } from "@bloodyowl/boxed";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import {
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
-import { ClientError } from "../errors";
-import type { UnknownVariables } from "../types";
+import type { ClientError } from "../errors";
+import type { AnyVariables } from "../types";
 import { deepEqual } from "../utils";
-import { ClientContext } from "./ClientContext";
+import { useClient } from "./context";
 
 export type Query<
   Data,
-  Variables extends UnknownVariables = UnknownVariables,
+  Variables extends AnyVariables = AnyVariables,
 > = readonly [
   AsyncData<Result<Data, ClientError>>,
   {
@@ -40,14 +39,11 @@ const usePreviousValue = <A, T extends AsyncData<A>>(value: T): T => {
   return previousRef.current;
 };
 
-export const useQuery = <
-  Data,
-  Variables extends UnknownVariables = UnknownVariables,
->(
+export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
   query: TypedDocumentNode<Data, Variables>,
   variables: NoInfer<Variables>,
 ): Query<Data, Variables> => {
-  const client = useContext(ClientContext);
+  const client = useClient();
 
   // Query should never change
   const [stableQuery] = useState(query);

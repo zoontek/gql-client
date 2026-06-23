@@ -1,62 +1,15 @@
-import { Array, Option, Result } from "@bloodyowl/boxed";
-import { useCallback, useContext, useRef, useSyncExternalStore } from "react";
+import { Option, Result } from "@bloodyowl/boxed";
+import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { Connection } from "../types";
-import { CONNECTION_REF, deepEqual } from "../utils";
-import { ClientContext } from "./ClientContext";
+import { CONNECTION_REF, deepEqual, filterMap } from "../utils";
+import { useClient } from "./context";
 
-type Mode = "before" | "after";
+const createPaginationHook = (direction: "after" | "before") => {
+  const isForwardPagination = direction === "after";
+  const cursor = isForwardPagination ? "endCursor" : "startCursor";
 
-const mergeConnection = <A, T extends Connection<A>>(
-  previous: T,
-  next: T,
-  mode: Mode,
-): T => {
-  if (next == null) {
-    return next;
-  }
-  if (previous == null) {
-    return next;
-  }
-
-  if (
-    mode === "after" &&
-    next.pageInfo.endCursor === previous.pageInfo.endCursor
-  ) {
-    return previous;
-  }
-  if (
-    mode === "before" &&
-    next.pageInfo.startCursor === previous.pageInfo.startCursor
-  ) {
-    return previous;
-  }
-
-  return {
-    ...next,
-    edges:
-      mode === "before"
-        ? [...(next.edges ?? []), ...(previous.edges ?? [])]
-        : [...(previous.edges ?? []), ...(next.edges ?? [])],
-    pageInfo:
-      mode === "before"
-        ? {
-            hasPreviousPage: next.pageInfo.hasPreviousPage,
-            startCursor: next.pageInfo.startCursor,
-            hasNextPage: previous.pageInfo.hasNextPage,
-            endCursor: previous.pageInfo.endCursor,
-          }
-        : {
-            hasPreviousPage: previous.pageInfo.hasPreviousPage,
-            startCursor: previous.pageInfo.startCursor,
-            hasNextPage: next.pageInfo.hasNextPage,
-            endCursor: next.pageInfo.endCursor,
-          },
-  };
-};
-
-const createPaginationHook = (direction: Mode) => {
   return <A, T extends Connection<A>>(connection: T): T => {
-    const client = useContext(ClientContext);
+    const client = useClient();
     const connectionRefs = useRef<number[]>([]);
     const lastReturnedValueRef = useRef<Option<T[]>>(Option.None());
 
@@ -75,8 +28,8 @@ const createPaginationHook = (direction: Mode) => {
     // Get fresh data from cache
     const getSnapshot = useCallback(() => {
       const value = Option.all(
-        Array.filterMap(connectionRefs.current, (id) =>
-          Option.fromNullable(client.cache.connectionCache.get(id)),
+        filterMap(connectionRefs.current, (id) =>
+          Option.fromNullable(client.getCachedConnection(id)),
         ).flatMap((info) =>
           client
             .readFromCache(info.document, info.variables)
@@ -108,14 +61,33 @@ const createPaginationHook = (direction: Mode) => {
     }, [client]);
 
     const data = useSyncExternalStore(
-      (func) => client.subscribe(func),
+      (fn) => client.subscribe(fn),
       getSnapshot,
-    ) as Option<T[]>;
+    );
 
     return data
       .map(([first, ...rest]) =>
-        rest.reduce((acc, item) => {
-          return mergeConnection(acc, item, direction);
+        rest.reduce((previous, next) => {
+          if (previous == null || next == null) {
+            return next;
+          }
+          if (previous.pageInfo[cursor] === next.pageInfo[cursor]) {
+            return previous;
+          }
+
+          const start = isForwardPagination ? previous : next;
+          const end = isForwardPagination ? next : previous;
+
+          return {
+            ...next,
+            edges: [...(start.edges ?? []), ...(end.edges ?? [])],
+            pageInfo: {
+              startCursor: start.pageInfo.startCursor,
+              hasPreviousPage: start.pageInfo.hasPreviousPage,
+              endCursor: end.pageInfo.endCursor,
+              hasNextPage: end.pageInfo.hasNextPage,
+            },
+          };
         }, first),
       )
       .getOr(connection) as T;
@@ -123,5 +95,4 @@ const createPaginationHook = (direction: Mode) => {
 };
 
 export const useForwardPagination = createPaginationHook("after");
-
 export const useBackwardPagination = createPaginationHook("before");

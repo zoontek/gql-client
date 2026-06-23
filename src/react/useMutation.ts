@@ -1,14 +1,14 @@
 import { AsyncData, Future, Result } from "@bloodyowl/boxed";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
-import { useCallback, useContext, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { GetConnectionUpdate } from "../client";
-import { ClientError } from "../errors";
-import type { UnknownVariables } from "../types";
-import { ClientContext } from "./ClientContext";
+import type { ClientError } from "../errors";
+import type { AnyVariables } from "../types";
+import { useClient } from "./context";
 
 export type Mutation<
   Data,
-  Variables extends UnknownVariables = UnknownVariables,
+  Variables extends AnyVariables = AnyVariables,
 > = readonly [
   (variables: Variables) => Future<Result<Data, ClientError>>,
   AsyncData<Result<Data, ClientError>>,
@@ -16,19 +16,19 @@ export type Mutation<
 
 export type MutationConfig<
   Data,
-  Variables extends UnknownVariables = UnknownVariables,
+  Variables extends AnyVariables = AnyVariables,
 > = {
   connectionUpdates?: GetConnectionUpdate<Data, Variables>[] | undefined;
 };
 
 export const useMutation = <
   Data,
-  Variables extends UnknownVariables = UnknownVariables,
+  Variables extends AnyVariables = AnyVariables,
 >(
   mutation: TypedDocumentNode<Data, Variables>,
   config: MutationConfig<Data, Variables> = {},
 ): Mutation<Data, Variables> => {
-  const client = useContext(ClientContext);
+  const client = useClient();
 
   const connectionUpdatesRef = useRef(config?.connectionUpdates);
   connectionUpdatesRef.current = config?.connectionUpdates;

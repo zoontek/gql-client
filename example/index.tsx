@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { Client, ClientContext } from "../src";
+import { Client, ClientProvider } from "../src";
 import { App } from "./components/App";
 import schemaConfig from "./schema.json";
 
@@ -14,11 +14,11 @@ const client = new Client({
 
 const Root = () => {
   return (
-    <ClientContext.Provider value={client}>
+    <ClientProvider value={client}>
       <Suspense fallback={<h1>Loading…</h1>}>
         <App />
       </Suspense>
-    </ClientContext.Provider>
+    </ClientProvider>
   );
 };
 
