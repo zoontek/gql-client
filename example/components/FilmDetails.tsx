@@ -20,18 +20,13 @@ const FilmDetailsQuery = graphql(`
 
 type Props = {
   filmId: string;
-  optimize: boolean;
 };
 
-export const FilmDetails = ({ filmId, optimize }: Props) => {
-  const [data, { isLoading, reload, setVariables }] = useQuery(
-    FilmDetailsQuery,
-    {
-      filmId,
-      first: 5,
-    },
-    { optimize },
-  );
+export const FilmDetails = ({ filmId }: Props) => {
+  const [data, { isLoading, setVariables }] = useQuery(FilmDetailsQuery, {
+    filmId,
+    first: 5,
+  });
 
   return (
     <div className="FilmDetails" style={{ opacity: isLoading ? 0.5 : 1 }}>
@@ -47,13 +42,6 @@ export const FilmDetails = ({ filmId, optimize }: Props) => {
               }
               return (
                 <>
-                  <button
-                    onClick={() => {
-                      reload();
-                    }}
-                  >
-                    Reload
-                  </button>
                   <h1>{film.title}</h1>
                   <div>Director: {film.director}</div>
                   <div>Release date: {film.releaseDate}</div>

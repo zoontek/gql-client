@@ -262,31 +262,6 @@ const getIdFieldNode = (selection: SelectionNode): Option<SelectionNode> => {
   }
 };
 
-export const addIdIfPreviousSelected = (
-  oldSelectionSet: SelectionSetNode,
-  newSelectionSet: SelectionSetNode,
-): SelectionSetNode => {
-  const idSelection = Array.findMap(oldSelectionSet.selections, getIdFieldNode);
-  const idSelectionInNew = Array.findMap(
-    newSelectionSet.selections,
-    getIdFieldNode,
-  );
-
-  if (idSelectionInNew.isSome()) {
-    return newSelectionSet;
-  }
-
-  return idSelection
-    .map((selection) => ({
-      ...newSelectionSet,
-      selections: [
-        selection,
-        ...newSelectionSet.selections,
-      ] as readonly SelectionNode[],
-    }))
-    .getOr(newSelectionSet);
-};
-
 export const isExcluded = (
   fieldNode: FieldNode,
   variables: Record<string, unknown>,

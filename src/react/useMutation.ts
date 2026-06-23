@@ -1,19 +1,13 @@
 import { AsyncData, Future, Result } from "@bloodyowl/boxed";
 import { useCallback, useContext, useRef, useState } from "react";
-import type { GetConnectionUpdate, RequestOverrides } from "../client";
+import type { GetConnectionUpdate } from "../client";
 import { ClientError } from "../errors";
 import type { TypedDocumentNode } from "../types";
 import { ClientContext } from "./ClientContext";
 
-export type MutationExtraConfig = { overrides?: RequestOverrides };
-
 export type Mutation<Data, Variables> = readonly [
-  (
-    variables: Variables,
-    config?: MutationExtraConfig,
-  ) => Future<Result<Data, ClientError>>,
+  (variables: Variables) => Future<Result<Data, ClientError>>,
   AsyncData<Result<Data, ClientError>>,
-  { reset: () => void },
 ];
 
 export type MutationConfig<Data, Variables> = {
@@ -36,22 +30,17 @@ export const useMutation = <Data, Variables>(
     AsyncData.NotAsked(),
   );
 
-  const commitMutation = useCallback(
-    (variables: Variables, { overrides }: MutationExtraConfig = {}) => {
+  const mutate = useCallback(
+    (variables: Variables) => {
       setData(AsyncData.Loading());
       return client
-        .commitMutation(stableMutation, variables, {
+        .request(stableMutation, variables, {
           connectionUpdates: connectionUpdatesRef.current,
-          overrides,
         })
         .tap((result) => setData(AsyncData.Done(result)));
     },
     [client, stableMutation],
   );
 
-  const reset = useCallback(() => {
-    setData(AsyncData.NotAsked());
-  }, []);
-
-  return [commitMutation, data, { reset }];
+  return [mutate, data];
 };

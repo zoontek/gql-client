@@ -2,7 +2,7 @@ import type { DocumentNode } from "@0no-co/graphql.web";
 import { Future, Option, Result } from "@bloodyowl/boxed";
 import { Request, badStatusToError, emptyToError } from "@bloodyowl/request";
 import { ClientCache, type SchemaConfig } from "./cache/cache";
-import { optimizeQuery, readOperationFromCache } from "./cache/read";
+import { readOperationFromCache } from "./cache/read";
 import { writeOperationToCache } from "./cache/write";
 import {
   ClientError,
@@ -112,15 +112,8 @@ export type GetConnectionUpdate<Data, Variables> = (config: {
   remove: <A>(connection: Connection<A>, ids: string[]) => ConnectionUpdate<A>;
 }) => Option<ConnectionUpdate<unknown>>;
 
-export type RequestOverrides = Partial<
-  Pick<RequestConfig, "url" | "headers" | "credentials">
->;
-
 type RequestOptions<Data, Variables> = {
-  optimize?: boolean;
-  normalize?: boolean;
   connectionUpdates?: GetConnectionUpdate<Data, Variables>[] | undefined;
-  overrides?: RequestOverrides | undefined;
 };
 
 export class Client {
@@ -180,12 +173,7 @@ export class Client {
   request<Data, Variables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
-    {
-      optimize = false,
-      normalize = true,
-      connectionUpdates,
-      overrides,
-    }: RequestOptions<Data, Variables> = {},
+    { connectionUpdates }: RequestOptions<Data, Variables> = {},
   ): Future<Result<Data, ClientError>> {
     const transformedDocument = this.getTransformedDocument(document);
     const transformedDocumentsForRequest =
@@ -196,44 +184,21 @@ export class Client {
 
     const variablesAsRecord = variables as Record<string, unknown>;
 
-    const possiblyOptimizedQuery = optimize
-      ? optimizeQuery(this.cache, transformedDocument, variablesAsRecord).map(
-          addTypenames,
-        )
-      : Option.Some(transformedDocumentsForRequest);
-
-    if (possiblyOptimizedQuery.isNone()) {
-      const operationResult = readOperationFromCache(
-        this.cache,
-        transformedDocument,
-        variablesAsRecord,
-      );
-      if (operationResult.isSome()) {
-        return Future.value(operationResult.get() as Result<Data, ClientError>);
-      }
-    }
-
     return this.makeRequest({
       url: this.url,
       operationName,
-      document: possiblyOptimizedQuery.getOr(transformedDocumentsForRequest),
+      document: transformedDocumentsForRequest,
       variables: variablesAsRecord,
-      ...overrides,
-      headers: {
-        ...this.headers,
-        ...(overrides != null ? overrides.headers : null),
-      },
+      headers: this.headers,
     })
       .mapOk((data) => data as Data)
       .tapOk((data) => {
-        if (normalize) {
-          writeOperationToCache(
-            this.cache,
-            transformedDocument,
-            data,
-            variablesAsRecord,
-          );
-        }
+        writeOperationToCache(
+          this.cache,
+          transformedDocument,
+          data,
+          variablesAsRecord,
+        );
       })
       .tapOk((data) => {
         if (connectionUpdates !== undefined) {
@@ -261,7 +226,6 @@ export class Client {
   readFromCache<Data, Variables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
-    { normalize = true }: { normalize?: boolean },
   ) {
     const variablesAsRecord = variables as Record<string, unknown>;
     const transformedDocument = this.getTransformedDocument(document);
@@ -273,36 +237,11 @@ export class Client {
     if (cached.isSome() && cached.get().isError()) {
       return cached;
     }
-    if (cached.isSome() && cached.get().isOk() && normalize === false) {
-      return cached;
-    }
+
     return readOperationFromCache(
       this.cache,
       transformedDocument,
       variablesAsRecord,
     );
-  }
-
-  query<Data, Variables>(
-    document: TypedDocumentNode<Data, Variables>,
-    variables: NoInfer<Variables>,
-    requestOptions?: RequestOptions<Data, Variables>,
-  ) {
-    return this.request(document, variables, requestOptions);
-  }
-
-  commitMutation<Data, Variables>(
-    document: TypedDocumentNode<Data, Variables>,
-    variables: NoInfer<Variables>,
-    requestOptions?: RequestOptions<Data, Variables>,
-  ) {
-    return this.request(document, variables, requestOptions);
-  }
-
-  purge() {
-    this.cache = new ClientCache(this.schemaConfig);
-    this.subscribers.forEach((func) => {
-      func();
-    });
   }
 }

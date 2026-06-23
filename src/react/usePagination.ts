@@ -4,12 +4,12 @@ import type { Connection } from "../types";
 import { CONNECTION_REF, deepEqual } from "../utils";
 import { ClientContext } from "./ClientContext";
 
-type mode = "before" | "after";
+type Mode = "before" | "after";
 
 const mergeConnection = <A, T extends Connection<A>>(
   previous: T,
   next: T,
-  mode: mode,
+  mode: Mode,
 ): T => {
   if (next == null) {
     return next;
@@ -54,7 +54,7 @@ const mergeConnection = <A, T extends Connection<A>>(
   };
 };
 
-const createPaginationHook = (direction: mode) => {
+const createPaginationHook = (direction: Mode) => {
   return <A, T extends Connection<A>>(connection: T): T => {
     const client = useContext(ClientContext);
     const connectionRefs = useRef<number[]>([]);
@@ -79,7 +79,7 @@ const createPaginationHook = (direction: mode) => {
           Option.fromNullable(client.cache.connectionCache.get(id)),
         ).flatMap((info) =>
           client
-            .readFromCache(info.document, info.variables, {})
+            .readFromCache(info.document, info.variables)
             .map((query) =>
               query.map((query) => ({ query, pathInQuery: info.pathInQuery })),
             ),

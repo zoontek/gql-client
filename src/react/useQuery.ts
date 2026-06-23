@@ -1,4 +1,4 @@
-import { AsyncData, Future, Result } from "@bloodyowl/boxed";
+import { AsyncData, Result } from "@bloodyowl/boxed";
 import {
   useCallback,
   useContext,
@@ -8,25 +8,15 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { RequestOverrides } from "../client";
 import { ClientError } from "../errors";
 import type { TypedDocumentNode } from "../types";
 import { deepEqual } from "../utils";
 import { ClientContext } from "./ClientContext";
 
-export type QueryConfig = {
-  suspense?: boolean;
-  optimize?: boolean;
-  normalize?: boolean;
-  overrides?: RequestOverrides;
-};
-
 export type Query<Data, Variables> = readonly [
   AsyncData<Result<Data, ClientError>>,
   {
     isLoading: boolean;
-    reload: () => Future<Result<Data, ClientError>>;
-    refresh: () => Future<Result<Data, ClientError>>;
     setVariables: (variables: Partial<Variables>) => void;
   },
 ];
@@ -49,12 +39,6 @@ const usePreviousValue = <A, T extends AsyncData<A>>(value: T): T => {
 export const useQuery = <Data, Variables>(
   query: TypedDocumentNode<Data, Variables>,
   variables: NoInfer<Variables>,
-  {
-    suspense = false,
-    optimize = false,
-    normalize = true,
-    overrides,
-  }: QueryConfig = {},
 ): Query<Data, Variables> => {
   const client = useContext(ClientContext);
 
@@ -66,30 +50,19 @@ export const useQuery = <Data, Variables>(
     [Variables, Variables]
   >([variables, variables]);
 
-  // Only break overrides reference equality if not deeply equal
-  const [stableOverrides, setStableOverrides] = useState<
-    RequestOverrides | undefined
-  >(overrides);
-
   useEffect(() => {
     const [providedVariables] = stableVariables;
+
     if (!deepEqual(providedVariables, variables)) {
       setIsReloading(true);
       setStableVariables([variables, variables]);
     }
   }, [stableVariables, variables]);
 
-  useEffect(() => {
-    if (!deepEqual(stableOverrides, overrides)) {
-      setIsReloading(true);
-      setStableOverrides(overrides);
-    }
-  }, [stableOverrides, overrides]);
-
   // Get data from cache
   const getSnapshot = useCallback(() => {
-    return client.readFromCache(stableQuery, stableVariables[1], { normalize });
-  }, [client, stableQuery, stableVariables, normalize]);
+    return client.readFromCache(stableQuery, stableVariables[1]);
+  }, [client, stableQuery, stableVariables]);
 
   const data = useSyncExternalStore(
     (func) => client.subscribe(func),
@@ -103,84 +76,40 @@ export const useQuery = <Data, Variables>(
   }, [data]);
 
   const previousAsyncData = usePreviousValue(asyncData);
-
   const isSuspenseFirstFetch = useRef(true);
-  const isReloadingManually = useRef(false);
 
   useEffect(() => {
-    if (suspense && isSuspenseFirstFetch.current) {
+    if (isSuspenseFirstFetch.current) {
       isSuspenseFirstFetch.current = false;
       return;
     }
-    if (isReloadingManually.current) {
-      return;
-    }
     const request = client
-      .query(stableQuery, stableVariables[1], {
-        optimize,
-        overrides: stableOverrides,
-        normalize,
-      })
+      .request(stableQuery, stableVariables[1])
       .tap(() => setIsReloading(false));
-    return () => request.cancel();
-  }, [
-    client,
-    suspense,
-    optimize,
-    normalize,
-    stableOverrides,
-    stableQuery,
-    stableVariables,
-  ]);
 
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const refresh = useCallback(() => {
-    setIsRefreshing(true);
-    return client
-      .query(stableQuery, stableVariables[1], {
-        overrides: stableOverrides,
-        normalize,
-      })
-      .tap(() => setIsRefreshing(false));
-  }, [client, stableQuery, stableOverrides, stableVariables, normalize]);
+    return () => {
+      request.cancel();
+    };
+  }, [client, stableQuery, stableVariables]);
 
   const [isReloading, setIsReloading] = useState(false);
-  const reload = useCallback(() => {
-    setIsReloading(true);
-    setStableVariables(([stable]) => [stable, stable]);
-    isReloadingManually.current = true;
-    return client
-      .query(stableQuery, stableVariables[0], {
-        overrides: stableOverrides,
-        normalize,
-      })
-      .tap(() => {
-        setIsReloading(false);
-        isReloadingManually.current = false;
-      });
-  }, [client, stableQuery, stableOverrides, stableVariables, normalize]);
+  const isLoading = isReloading || asyncData.isLoading();
 
-  const isLoading = isRefreshing || isReloading || asyncData.isLoading();
   const asyncDataToExpose = isReloading
     ? AsyncData.Loading()
     : isLoading
       ? previousAsyncData
       : asyncData;
 
-  if (
-    suspense &&
-    isSuspenseFirstFetch.current &&
-    asyncDataToExpose.isLoading()
-  ) {
-    throw client
-      .query(stableQuery, stableVariables[1], { optimize, normalize })
-      .toPromise();
+  if (isSuspenseFirstFetch.current && asyncDataToExpose.isLoading()) {
+    throw client.request(stableQuery, stableVariables[1]).toPromise();
   }
 
   const setVariables = useCallback((variables: Partial<Variables>) => {
     setStableVariables((prev) => {
       const [prevStable, prevFinal] = prev;
       const nextFinal = { ...prevFinal, ...variables };
+
       if (!deepEqual(prevFinal, nextFinal)) {
         return [prevStable, nextFinal];
       } else {
@@ -189,5 +118,5 @@ export const useQuery = <Data, Variables>(
     });
   }, []);
 
-  return [asyncDataToExpose, { isLoading, refresh, reload, setVariables }];
+  return [asyncDataToExpose, { isLoading, setVariables }];
 };
