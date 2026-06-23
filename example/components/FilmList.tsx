@@ -21,7 +21,7 @@ const FilmsConnectionFragment = graphql(`
 type Props = {
   films: FragmentType<typeof FilmsConnectionFragment>;
   onNextPage: (cursor: string | null) => void;
-  isLoadingMore: boolean;
+  fetchingMore: boolean;
   activeFilm: Option<string>;
   onPressFilm: (filmId: string) => void;
 };
@@ -31,7 +31,7 @@ export const FilmList = ({
   onNextPage,
   activeFilm,
   onPressFilm,
-  isLoadingMore,
+  fetchingMore,
 }: Props) => {
   const connection = useForwardPagination(
     useFragment(FilmsConnectionFragment, films),
@@ -61,12 +61,12 @@ export const FilmList = ({
         );
       })}
 
-      {isLoadingMore ? <div>Loading more</div> : null}
+      {fetchingMore ? <div>Fetching more</div> : null}
 
       {connection.pageInfo.hasNextPage ? (
         <button
           onClick={() => onNextPage(connection.pageInfo.endCursor ?? null)}
-          disabled={isLoadingMore}
+          disabled={fetchingMore}
         >
           Load more
         </button>

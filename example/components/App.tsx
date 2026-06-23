@@ -16,7 +16,7 @@ const AllFilmsQuery = graphql(`
 export const App = () => {
   const [activeFilm, setActiveFilm] = useState<Option<string>>(Option.None());
 
-  const [data, { isLoading, setVariables }] = useQuery(AllFilmsQuery, {
+  const [data, { fetching, setVariables }] = useQuery(AllFilmsQuery, {
     first: 3,
   });
 
@@ -24,7 +24,7 @@ export const App = () => {
     <div className="App">
       {data.match({
         NotAsked: () => null,
-        Loading: () => <div>Loading ...</div>,
+        Loading: () => <div>Fetching…</div>,
         Done: (result) =>
           result.match({
             Error: () => <div>An error occured</div>,
@@ -38,7 +38,7 @@ export const App = () => {
                     <FilmList
                       films={allFilms}
                       onNextPage={(after) => setVariables({ after })}
-                      isLoadingMore={isLoading}
+                      fetchingMore={fetching}
                       activeFilm={activeFilm}
                       onPressFilm={(filmId: string) =>
                         setActiveFilm(Option.Some(filmId))
@@ -49,7 +49,7 @@ export const App = () => {
                     {activeFilm.match({
                       None: () => <div>No film selected</div>,
                       Some: (filmId) => (
-                        <Suspense fallback={<h1>Loading…</h1>}>
+                        <Suspense fallback={<h1>Fetching…</h1>}>
                           <FilmDetails filmId={filmId} />
                         </Suspense>
                       ),

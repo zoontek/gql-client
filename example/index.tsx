@@ -15,7 +15,7 @@ const client = new Client({
 const Root = () => {
   return (
     <ClientProvider value={client}>
-      <Suspense fallback={<h1>Loading…</h1>}>
+      <Suspense fallback={<h1>Fetching…</h1>}>
         <App />
       </Suspense>
     </ClientProvider>

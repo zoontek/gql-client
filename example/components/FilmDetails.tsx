@@ -23,16 +23,16 @@ type Props = {
 };
 
 export const FilmDetails = ({ filmId }: Props) => {
-  const [data, { isLoading, setVariables }] = useQuery(FilmDetailsQuery, {
+  const [data, { fetching, setVariables }] = useQuery(FilmDetailsQuery, {
     filmId,
     first: 5,
   });
 
   return (
-    <div className="FilmDetails" style={{ opacity: isLoading ? 0.5 : 1 }}>
+    <div className="FilmDetails" style={{ opacity: fetching ? 0.5 : 1 }}>
       {data.match({
         NotAsked: () => null,
-        Loading: () => <div>Loading ...</div>,
+        Loading: () => <div>Fetching…</div>,
         Done: (result) =>
           result.match({
             Error: () => <div>An error occured</div>,
@@ -58,7 +58,7 @@ export const FilmDetails = ({ filmId }: Props) => {
                       <FilmCharacterList
                         characters={film.characterConnection}
                         onNextPage={(after) => setVariables({ after })}
-                        isLoadingMore={isLoading}
+                        fetchingMore={fetching}
                       />
                     </>
                   ) : null}
