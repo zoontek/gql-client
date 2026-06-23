@@ -4,7 +4,6 @@ import {
   type FieldNode,
   type SelectionSetNode,
 } from "@0no-co/graphql.web";
-import { Option } from "@bloodyowl/boxed";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import {
   extractArguments,
@@ -48,10 +47,14 @@ export type ConnectionInfo = {
 
 const STABILITY_CACHE = new WeakMap<
   TypedDocumentNode,
-  Map<string, Option<JsonValue>>
+  Map<string, JsonValue>
 >();
 
 const EXCLUDED = Symbol.for("EXCLUDED");
+
+// Sentinel used internally to signal a cache miss. It is distinct from a cached
+// `null`/`undefined` value, which are legitimate results that must be preserved.
+const MISS = Symbol("MISS");
 
 type CachedEdge = {
   [TYPENAME_KEY]: string | null | undefined;
@@ -99,29 +102,25 @@ export class ClientCache {
     return compatibleTypes.has(typename);
   }
 
-  private getFromCache(
-    cacheKey: symbol,
-    requestedKeys: Set<symbol>,
-  ): Option<unknown> {
-    return this.get(cacheKey).flatMap((entry) => {
-      if (isRecord(entry)) {
-        if (containsAll(entry[REQUESTED_KEYS] as Set<symbol>, requestedKeys)) {
-          return Option.Some(entry);
-        } else {
-          return Option.None();
-        }
+  private getFromCache(cacheKey: symbol, requestedKeys: Set<symbol>): unknown {
+    const entry = this.get(cacheKey);
+    if (entry === MISS) {
+      return MISS;
+    }
+    if (isRecord(entry)) {
+      if (containsAll(entry[REQUESTED_KEYS] as Set<symbol>, requestedKeys)) {
+        return entry;
       } else {
-        return Option.Some(entry);
+        return MISS;
       }
-    });
+    } else {
+      return entry;
+    }
   }
 
-  private getFromCacheWithoutKey(cacheKey: symbol): Option<unknown> {
-    return this.get(cacheKey).flatMap((entry) => Option.Some(entry));
-  }
-
-  private get(cacheKey: symbol): Option<unknown> {
-    return Option.fromUndefined(this.cache.get(cacheKey));
+  private get(cacheKey: symbol): unknown {
+    const entry = this.cache.get(cacheKey);
+    return entry === undefined ? MISS : entry;
   }
 
   private getOrCreateEntry(
@@ -140,15 +139,17 @@ export class ClientCache {
   }
 
   private mapEdgesToCacheEntries<A>(edges: Edge<A>[]): CachedEdge[] {
-    return filterMap(edges, ({ node, __typename }) =>
-      getCacheEntryKey(node).flatMap((key) =>
-        // we can omit the requested fields here because the Connection<A> contrains the fields
-        this.getFromCacheWithoutKey(key).map(() => ({
-          [TYPENAME_KEY]: __typename,
-          [NODE_KEY]: key,
-        })),
-      ),
-    );
+    return filterMap(edges, ({ node, __typename }) => {
+      const key = getCacheEntryKey(node);
+      // we can omit the requested fields here because the Connection<A> contrains the fields
+      if (key === undefined || this.get(key) === MISS) {
+        return undefined;
+      }
+      return {
+        [TYPENAME_KEY]: __typename,
+        [NODE_KEY]: key,
+      };
+    });
   }
 
   public updateConnection<A>(
@@ -203,11 +204,10 @@ export class ClientCache {
   private getFromCacheOrReturnValue(
     valueOrKey: unknown,
     selectedKeys: Set<symbol>,
-  ): Option<unknown> {
+  ): unknown {
     if (typeof valueOrKey === "symbol") {
-      return this.getFromCache(valueOrKey, selectedKeys).flatMap(
-        Option.fromNullable,
-      );
+      const entry = this.getFromCache(valueOrKey, selectedKeys);
+      return entry === MISS || entry == null ? MISS : entry;
     }
     if (
       isRecord(valueOrKey) &&
@@ -215,224 +215,230 @@ export class ClientCache {
       valueOrKey[REQUESTED_KEYS] instanceof Set
     ) {
       if (containsAll(valueOrKey[REQUESTED_KEYS], selectedKeys)) {
-        return Option.Some(valueOrKey);
+        return valueOrKey;
       } else {
-        return Option.None();
+        return MISS;
       }
     }
-    return Option.Some(valueOrKey);
+    return valueOrKey;
   }
 
   public readOperation(
     document: TypedDocumentNode,
     variables: AnyVariables,
-  ): Option<JsonValue> {
+  ): JsonValue | undefined {
     const traverse = (
       selections: SelectionSetNode,
       data: Record<PropertyKey, unknown>,
-    ): Option<unknown> => {
-      return selections.selections.reduce<Option<unknown>>(
-        (data, selection) => {
-          return data.flatMap((data) => {
-            if (selection.kind === Kind.FIELD) {
-              const fieldNode = selection;
-              const originalFieldName = getFieldName(fieldNode);
-              const fieldNameWithArguments = getFieldNameWithArguments(
-                fieldNode,
-                variables,
+    ): unknown => {
+      return selections.selections.reduce<unknown>((data, selection) => {
+        if (data === MISS) {
+          return MISS;
+        }
+        if (selection.kind === Kind.FIELD) {
+          const fieldNode = selection;
+          const originalFieldName = getFieldName(fieldNode);
+          const fieldNameWithArguments = getFieldNameWithArguments(
+            fieldNode,
+            variables,
+          );
+
+          if (data == undefined) {
+            return MISS;
+          }
+
+          const cacheHasKey =
+            hasOwn(data, originalFieldName) ||
+            hasOwn(data, fieldNameWithArguments);
+
+          if (!cacheHasKey) {
+            if (isExcluded(fieldNode, variables)) {
+              return {
+                ...data,
+                [originalFieldName]: EXCLUDED,
+              };
+            } else {
+              return MISS;
+            }
+          }
+
+          // in case a the data is read across multiple selections, get the actual one if generated,
+          // otherwise, read from cache (e.g. fragments)
+          const valueOrKeyFromCache =
+            // @ts-expect-error `data` is indexable at this point
+            originalFieldName in data
+              ? // @ts-expect-error `data` is indexable at this point
+                data[originalFieldName]
+              : // @ts-expect-error `data` is indexable at this point
+                data[fieldNameWithArguments];
+
+          if (valueOrKeyFromCache == undefined) {
+            return {
+              ...data,
+              [originalFieldName]: valueOrKeyFromCache,
+            };
+          }
+
+          if (Array.isArray(valueOrKeyFromCache)) {
+            const selectedKeys = getSelectedKeys(fieldNode, variables);
+            const result: unknown[] = [];
+
+            for (const valueOrKey of valueOrKeyFromCache) {
+              const value = this.getFromCacheOrReturnValue(
+                valueOrKey,
+                selectedKeys,
               );
 
-              if (data == undefined) {
-                return Option.None();
+              if (value === MISS) {
+                return MISS;
               }
 
-              const cacheHasKey =
-                hasOwn(data, originalFieldName) ||
-                hasOwn(data, fieldNameWithArguments);
-
-              if (!cacheHasKey) {
-                if (isExcluded(fieldNode, variables)) {
-                  return Option.Some({
-                    ...data,
-                    [originalFieldName]: EXCLUDED,
-                  });
-                } else {
-                  return Option.None();
+              if (isRecord(value) && fieldNode.selectionSet != undefined) {
+                const traversed = traverse(fieldNode.selectionSet, value);
+                if (traversed === MISS) {
+                  return MISS;
                 }
-              }
-
-              // in case a the data is read across multiple selections, get the actual one if generated,
-              // otherwise, read from cache (e.g. fragments)
-              const valueOrKeyFromCache =
-                // @ts-expect-error `data` is indexable at this point
-                originalFieldName in data
-                  ? // @ts-expect-error `data` is indexable at this point
-                    data[originalFieldName]
-                  : // @ts-expect-error `data` is indexable at this point
-                    data[fieldNameWithArguments];
-
-              if (valueOrKeyFromCache == undefined) {
-                return Option.Some({
-                  ...data,
-                  [originalFieldName]: valueOrKeyFromCache,
-                });
-              }
-
-              if (Array.isArray(valueOrKeyFromCache)) {
-                const selectedKeys = getSelectedKeys(fieldNode, variables);
-                return Option.all(
-                  valueOrKeyFromCache.map((valueOrKey) => {
-                    const value = this.getFromCacheOrReturnValue(
-                      valueOrKey,
-                      selectedKeys,
-                    );
-
-                    return value.flatMap((value) => {
-                      if (
-                        isRecord(value) &&
-                        fieldNode.selectionSet != undefined
-                      ) {
-                        return traverse(fieldNode.selectionSet, value);
-                      } else {
-                        return Option.Some(value);
-                      }
-                    });
-                  }),
-                ).map((result) => ({
-                  ...data,
-                  [originalFieldName]: result,
-                }));
+                result.push(traversed);
               } else {
-                const selectedKeys = getSelectedKeys(fieldNode, variables);
-
-                const value = this.getFromCacheOrReturnValue(
-                  valueOrKeyFromCache,
-                  selectedKeys,
-                );
-
-                return value.flatMap((value) => {
-                  if (isRecord(value) && fieldNode.selectionSet != undefined) {
-                    return traverse(fieldNode.selectionSet, value).map(
-                      (result) => ({
-                        ...data,
-                        [originalFieldName]: result,
-                      }),
-                    );
-                  } else {
-                    return Option.Some({ ...data, [originalFieldName]: value });
-                  }
-                });
+                result.push(value);
               }
             }
-            if (selection.kind === Kind.INLINE_FRAGMENT) {
-              const inlineFragmentNode = selection;
-              const typeCondition =
-                inlineFragmentNode.typeCondition?.name.value;
-              const dataTypename = getTypename(data);
 
-              if (typeCondition != null && dataTypename != null) {
-                if (this.isTypeCompatible(dataTypename, typeCondition)) {
-                  return traverse(
-                    inlineFragmentNode.selectionSet,
-                    data as Record<PropertyKey, unknown>,
-                  );
-                } else {
-                  if (
-                    inlineFragmentNode.selectionSet.selections.some(
-                      (selection) => selection.kind === Kind.INLINE_FRAGMENT,
-                    )
-                  ) {
-                    return traverse(
-                      {
-                        ...inlineFragmentNode.selectionSet,
-                        selections:
-                          inlineFragmentNode.selectionSet.selections.filter(
-                            (selection) => {
-                              if (selection.kind === Kind.INLINE_FRAGMENT) {
-                                const typeCondition =
-                                  selection.typeCondition?.name.value;
-                                if (typeCondition == null) {
-                                  return true;
-                                } else {
-                                  return this.isTypeCompatible(
-                                    dataTypename,
-                                    typeCondition,
-                                  );
-                                }
-                              }
-                              return true;
-                            },
-                          ),
-                      },
-                      data as Record<PropertyKey, unknown>,
-                    );
-                  } else {
-                    return Option.Some(data);
-                  }
-                }
+            return {
+              ...data,
+              [originalFieldName]: result,
+            };
+          } else {
+            const selectedKeys = getSelectedKeys(fieldNode, variables);
+
+            const value = this.getFromCacheOrReturnValue(
+              valueOrKeyFromCache,
+              selectedKeys,
+            );
+
+            if (value === MISS) {
+              return MISS;
+            }
+
+            if (isRecord(value) && fieldNode.selectionSet != undefined) {
+              const result = traverse(fieldNode.selectionSet, value);
+              if (result === MISS) {
+                return MISS;
               }
+              return {
+                ...data,
+                [originalFieldName]: result,
+              };
+            } else {
+              return { ...data, [originalFieldName]: value };
+            }
+          }
+        }
+        if (selection.kind === Kind.INLINE_FRAGMENT) {
+          const inlineFragmentNode = selection;
+          const typeCondition = inlineFragmentNode.typeCondition?.name.value;
+          const dataTypename = getTypename(data);
+
+          if (typeCondition != null && dataTypename != null) {
+            if (this.isTypeCompatible(dataTypename, typeCondition)) {
               return traverse(
                 inlineFragmentNode.selectionSet,
                 data as Record<PropertyKey, unknown>,
               );
             } else {
-              return Option.None();
+              if (
+                inlineFragmentNode.selectionSet.selections.some(
+                  (selection) => selection.kind === Kind.INLINE_FRAGMENT,
+                )
+              ) {
+                return traverse(
+                  {
+                    ...inlineFragmentNode.selectionSet,
+                    selections:
+                      inlineFragmentNode.selectionSet.selections.filter(
+                        (selection) => {
+                          if (selection.kind === Kind.INLINE_FRAGMENT) {
+                            const typeCondition =
+                              selection.typeCondition?.name.value;
+                            if (typeCondition == null) {
+                              return true;
+                            } else {
+                              return this.isTypeCompatible(
+                                dataTypename,
+                                typeCondition,
+                              );
+                            }
+                          }
+                          return true;
+                        },
+                      ),
+                  },
+                  data as Record<PropertyKey, unknown>,
+                );
+              } else {
+                return data;
+              }
             }
-          });
-        },
-        Option.Some(data),
-      );
+          }
+          return traverse(
+            inlineFragmentNode.selectionSet,
+            data as Record<PropertyKey, unknown>,
+          );
+        } else {
+          return MISS;
+        }
+      }, data);
     };
 
-    return Option.fromNullable(
-      document.definitions.find(
-        (definition) => definition.kind === Kind.OPERATION_DEFINITION,
-      ),
-    )
-      .flatMap((operation) =>
-        getCacheKeyFromOperationNode(operation).map((cacheKey) => ({
-          operation,
-          cacheKey,
-        })),
-      )
-      .flatMap(({ operation, cacheKey }) => {
-        return this.getFromCache(
-          cacheKey,
-          getSelectedKeys(operation, variables),
-        ).map((cache) => ({ cache, operation }));
-      })
-      .flatMap(({ operation, cache }) => {
-        return traverse(
-          operation.selectionSet,
-          cache as Record<PropertyKey, unknown>,
-        );
-      })
-      .map((data) => JSON.parse(JSON.stringify(data)))
-      .flatMap((value) => {
-        // We use a trick to return stable values, the document holds a WeakMap
-        // that for each key (serialized variables), stores the last returned result.
-        // If the last value deeply equals the previous one, return the previous one
-        const serializedVariables = serializeVariables(variables);
-        const previous = Option.fromNullable(STABILITY_CACHE.get(document))
-          .flatMap((byVariable) =>
-            Option.fromNullable(byVariable.get(serializedVariables)),
-          )
-          .flatMap((value) => value);
+    const operation = document.definitions.find(
+      (definition) => definition.kind === Kind.OPERATION_DEFINITION,
+    );
 
-        if (
-          previous.map((previous) => deepEqual(value, previous)).getOr(false)
-        ) {
-          return previous;
-        } else {
-          const valueToCache = Option.Some(value);
-          const documentCache =
-            STABILITY_CACHE.get(document) ??
-            new Map<string, Option<JsonValue>>();
-          documentCache.set(serializedVariables, valueToCache);
-          STABILITY_CACHE.set(document, documentCache);
-          return valueToCache;
-        }
-      });
+    if (operation === undefined) {
+      return undefined;
+    }
+
+    const cacheKey = getCacheKeyFromOperationNode(operation);
+
+    if (cacheKey === undefined) {
+      return undefined;
+    }
+
+    const cache = this.getFromCache(
+      cacheKey,
+      getSelectedKeys(operation, variables),
+    );
+
+    if (cache === MISS) {
+      return undefined;
+    }
+
+    const traversed = traverse(
+      operation.selectionSet,
+      cache as Record<PropertyKey, unknown>,
+    );
+
+    if (traversed === MISS) {
+      return undefined;
+    }
+
+    const value = JSON.parse(JSON.stringify(traversed)) as JsonValue;
+
+    // We use a trick to return stable values, the document holds a WeakMap
+    // that for each key (serialized variables), stores the last returned result.
+    // If the last value deeply equals the previous one, return the previous one
+    const serializedVariables = serializeVariables(variables);
+    const documentCache = STABILITY_CACHE.get(document);
+    const previous = documentCache?.get(serializedVariables);
+
+    if (previous !== undefined && deepEqual(value, previous)) {
+      return previous;
+    }
+
+    const nextDocumentCache = documentCache ?? new Map<string, JsonValue>();
+    nextDocumentCache.set(serializedVariables, value);
+    STABILITY_CACHE.set(document, nextDocumentCache);
+    return value;
   }
 
   public writeOperation(
@@ -501,16 +507,13 @@ export class ClientCache {
             return;
           }
           const cacheKey = getCacheEntryKey(item);
-          const cacheEntry = cacheKey.map((key) =>
-            this.getOrCreateEntry(key, createEmptyCacheEntry()),
-          );
-          const cacheObject = cacheEntry.getOr(
-            // @ts-expect-error It's fine
-            arrayCache[index] ?? createEmptyCacheEntry(),
-          );
+          const cacheObject =
+            cacheKey !== undefined
+              ? this.getOrCreateEntry(cacheKey, createEmptyCacheEntry())
+              : // @ts-expect-error It's fine
+                (arrayCache[index] ?? createEmptyCacheEntry());
 
-          // @ts-expect-error It's fine
-          const cacheValueInParent = cacheKey.getOr(cacheObject);
+          const cacheValueInParent = cacheKey ?? cacheObject;
           // @ts-expect-error It's fine
           arrayCache[index] = cacheValueInParent;
 
@@ -526,16 +529,13 @@ export class ClientCache {
       // object with selection
       const record = fieldValue as Record<PropertyKey, unknown>;
       const cacheKey = getCacheEntryKey(record);
-      const cacheEntry = cacheKey.map((key) =>
-        this.getOrCreateEntry(key, createEmptyCacheEntry()),
-      );
-      const cacheObject = cacheEntry.getOr(
-        (parentCache[fieldNameWithArguments] as CacheEntry | undefined) ??
-          createEmptyCacheEntry(),
-      );
+      const cacheObject =
+        cacheKey !== undefined
+          ? this.getOrCreateEntry(cacheKey, createEmptyCacheEntry())
+          : ((parentCache[fieldNameWithArguments] as CacheEntry | undefined) ??
+            createEmptyCacheEntry());
 
-      // @ts-expect-error It's fine
-      const cacheValueInParent = cacheKey.getOr(cacheObject);
+      const cacheValueInParent = cacheKey ?? cacheObject;
       parentCache[fieldNameWithArguments] = cacheValueInParent;
 
       if (

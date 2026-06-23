@@ -1,6 +1,4 @@
-import { Option } from "@bloodyowl/boxed";
-
-export const getCacheEntryKey = (json: unknown): Option<symbol> => {
+export const getCacheEntryKey = (json: unknown): symbol | undefined => {
   if (typeof json === "object" && json != null) {
     if ("__typename" in json && typeof json.__typename === "string") {
       const typename = json.__typename;
@@ -10,13 +8,13 @@ export const getCacheEntryKey = (json: unknown): Option<symbol> => {
         typename === "Query" ||
         typename === "Subscription"
       ) {
-        return Option.Some(Symbol.for(typename));
+        return Symbol.for(typename);
       }
 
       if ("id" in json && typeof json.id === "string") {
-        return Option.Some(Symbol.for(`${typename}<${json.id}>`));
+        return Symbol.for(`${typename}<${json.id}>`);
       }
     }
   }
-  return Option.None();
+  return undefined;
 };

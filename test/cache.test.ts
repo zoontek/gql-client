@@ -1,4 +1,3 @@
-import { Option } from "@bloodyowl/boxed";
 import { expect, test } from "bun:test";
 import type { Connection } from "../src";
 import { ClientCache } from "../src/cache/cache";
@@ -41,12 +40,10 @@ test("Write & read in cache", () => {
       id: "1",
     }),
   ).toMatchObject(
-    Option.Some(
-      getAppQueryResponse({
-        user2LastName: "Last",
-        user1IdentificationLevels: null,
-      }),
-    ),
+    getAppQueryResponse({
+      user2LastName: "Last",
+      user1IdentificationLevels: null,
+    }),
   );
 
   const preparedOnboardingInfo = transformDocument(OnboardingInfo);
@@ -68,12 +65,10 @@ test("Write & read in cache", () => {
       id: "1",
     }),
   ).toMatchObject(
-    Option.Some(
-      getAppQueryResponse({
-        user2LastName: "Last",
-        user1IdentificationLevels: null,
-      }),
-    ),
+    getAppQueryResponse({
+      user2LastName: "Last",
+      user1IdentificationLevels: null,
+    }),
   );
 
   cache.writeOperation(
@@ -91,12 +86,10 @@ test("Write & read in cache", () => {
       id: "1",
     }),
   ).toMatchObject(
-    Option.Some(
-      getAppQueryResponse({
-        user2LastName: "Acthernoene",
-        user1IdentificationLevels: null,
-      }),
-    ),
+    getAppQueryResponse({
+      user2LastName: "Acthernoene",
+      user1IdentificationLevels: null,
+    }),
   );
 
   cache.writeOperation(
@@ -122,34 +115,26 @@ test("Write & read in cache", () => {
       id: "1",
     }),
   ).toMatchObject(
-    Option.Some(
-      getAppQueryResponse({
-        user2LastName: "Acthernoene",
-        user1IdentificationLevels: {
-          __typename: "IdentificationLevels",
-          expert: true,
-          PVID: true,
-          QES: true,
-        },
-      }),
-    ),
+    getAppQueryResponse({
+      user2LastName: "Acthernoene",
+      user1IdentificationLevels: {
+        __typename: "IdentificationLevels",
+        expert: true,
+        PVID: true,
+        QES: true,
+      },
+    }),
   );
 
-  const values = Option.all([
-    cache.readOperation(preparedAppQuery, {
-      id: "1",
-    }),
-    cache.readOperation(preparedAppQuery, {
-      id: "1",
-    }),
-  ]);
+  const a = cache.readOperation(preparedAppQuery, {
+    id: "1",
+  });
+  const b = cache.readOperation(preparedAppQuery, {
+    id: "1",
+  });
 
-  if (values.isSome()) {
-    const [a, b] = values.get();
-    expect(a).toBe(b);
-  } else {
-    expect(true).toBe(false);
-  }
+  expect(a).toBeDefined();
+  expect(a).toBe(b);
 
   const cache2 = new ClientCache({ interfaceToTypes: {} });
 
@@ -165,7 +150,7 @@ test("Write & read in cache", () => {
       id: "d26ed1ed-5f70-4096-9d8e-27ef258e26fa",
       language: "en",
     }),
-  ).toMatchObject(Option.Some(onboardingInfoResponse));
+  ).toMatchObject(onboardingInfoResponse);
 
   const cache3 = new ClientCache({ interfaceToTypes: {} });
 
@@ -185,16 +170,14 @@ test("Write & read in cache", () => {
   });
 
   expect(
-    cache3.readOperation(appQueryWithoutMoreAccountInfo, {}).isSome(),
-  ).toBe(true);
+    cache3.readOperation(appQueryWithoutMoreAccountInfo, {}),
+  ).toBeDefined();
 
-  expect(cache3.readOperation(appQueryWithMoreAccountInfo, {}).isNone()).toBe(
-    true,
-  );
+  expect(cache3.readOperation(appQueryWithMoreAccountInfo, {})).toBeUndefined();
 
-  if (read.isSome()) {
+  if (read !== undefined) {
     {
-      const value = read.get() as ReturnType<typeof getAppQueryResponse>;
+      const value = read as ReturnType<typeof getAppQueryResponse>;
       const accountMemberships =
         value.accountMemberships as unknown as Connection<{
           __typename: "AccountMembership";
@@ -328,5 +311,5 @@ test("Write & read in cache", () => {
     cache4.readOperation(preparedBrandingQuery, {
       id: "64060573-f0ec-4204-ad49-a3983497ada4",
     }),
-  ).toEqual(Option.Some(brandingResponse));
+  ).toEqual(brandingResponse);
 });

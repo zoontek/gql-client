@@ -7,7 +7,6 @@ import {
   type SelectionSetNode,
   type ValueNode,
 } from "@0no-co/graphql.web";
-import { Option } from "@bloodyowl/boxed";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import type { AnyVariables } from "../types";
 
@@ -177,13 +176,13 @@ export const isExcluded = (
 
 export const getCacheKeyFromOperationNode = (
   operationNode: OperationDefinitionNode,
-): Option<symbol> => {
+): symbol | undefined => {
   switch (operationNode.operation) {
     case OperationTypeNode.QUERY:
-      return Option.Some(Symbol.for("Query"));
+      return Symbol.for("Query");
     case OperationTypeNode.SUBSCRIPTION:
-      return Option.Some(Symbol.for("Subscription"));
+      return Symbol.for("Subscription");
     default:
-      return Option.None();
+      return undefined;
   }
 };

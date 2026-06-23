@@ -1,4 +1,3 @@
-import { Option } from "@bloodyowl/boxed";
 import { useForwardPagination } from "../../src";
 import { graphql, useFragment, type FragmentType } from "../gql";
 import { Film } from "./Film";
@@ -22,7 +21,7 @@ type Props = {
   films: FragmentType<typeof FilmsConnectionFragment>;
   onNextPage: (cursor: string | null) => void;
   fetchingMore: boolean;
-  activeFilm: Option<string>;
+  activeFilm: string | undefined;
   onPressFilm: (filmId: string) => void;
 };
 
@@ -55,7 +54,7 @@ export const FilmList = ({
           <Film
             film={node}
             key={node.id}
-            isActive={activeFilm.map((id) => node.id === id).getOr(false)}
+            isActive={activeFilm === node.id}
             onPress={onPressFilm}
           />
         );

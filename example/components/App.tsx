@@ -1,4 +1,3 @@
-import { Option } from "@bloodyowl/boxed";
 import { Suspense, useState } from "react";
 import { useQuery } from "../../src";
 import { graphql } from "../gql";
@@ -14,7 +13,7 @@ const AllFilmsQuery = graphql(`
 `);
 
 export const App = () => {
-  const [activeFilm, setActiveFilm] = useState<Option<string>>(Option.None());
+  const [activeFilm, setActiveFilm] = useState<string | undefined>(undefined);
 
   const [state, { setVariables }] = useQuery(AllFilmsQuery, {
     first: 3,
@@ -41,20 +40,17 @@ export const App = () => {
             onNextPage={(after) => setVariables({ after })}
             fetchingMore={state.fetching}
             activeFilm={activeFilm}
-            onPressFilm={(filmId: string) =>
-              setActiveFilm(Option.Some(filmId))
-            }
+            onPressFilm={(filmId: string) => setActiveFilm(filmId)}
           />
         </div>
         <div className="Contents">
-          {activeFilm.match({
-            None: () => <div>No film selected</div>,
-            Some: (filmId) => (
-              <Suspense fallback={<h1>Fetching…</h1>}>
-                <FilmDetails filmId={filmId} />
-              </Suspense>
-            ),
-          })}
+          {activeFilm === undefined ? (
+            <div>No film selected</div>
+          ) : (
+            <Suspense fallback={<h1>Fetching…</h1>}>
+              <FilmDetails filmId={activeFilm} />
+            </Suspense>
+          )}
         </div>
       </div>
     );

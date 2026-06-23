@@ -1,4 +1,3 @@
-import type { Option } from "@bloodyowl/boxed";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import {
   useCallback,
@@ -28,7 +27,10 @@ export type Query<
   },
 ];
 
-const usePreviousData = <T>(value: Option<T>, resetKey: unknown): Option<T> => {
+const usePreviousData = <T>(
+  value: T | undefined,
+  resetKey: unknown,
+): T | undefined => {
   const previousRef = useRef(value);
   const resetKeyRef = useRef(resetKey);
 
@@ -41,7 +43,7 @@ const usePreviousData = <T>(value: Option<T>, resetKey: unknown): Option<T> => {
   }
 
   useEffect(() => {
-    if (value.isSome()) {
+    if (value !== undefined) {
       previousRef.current = value;
     }
   }, [value]);
@@ -84,14 +86,13 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
     client.request(stableQuery, stableVariables[1]);
   }, [client, stableQuery, stableVariables]);
 
-  const fetching = data.isNone();
+  const fetching = data === undefined;
   const dataToExpose = fetching ? previousData : data;
 
   const state = useMemo<QueryState<Data>>(() => {
-    return dataToExpose.match({
-      Some: (value) => ({ fetching, data: value as Data }),
-      None: () => ({ fetching }),
-    });
+    return dataToExpose === undefined
+      ? { fetching }
+      : { fetching, data: dataToExpose as Data };
   }, [dataToExpose, fetching]);
 
   const setVariables = useCallback((variables: Partial<Variables>) => {

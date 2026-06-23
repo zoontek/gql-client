@@ -1,4 +1,3 @@
-import { Option } from "@bloodyowl/boxed";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { ClientCache, type ConnectionInfo, type Schema } from "./cache/cache";
 import { getOperationName } from "./graphql/ast";
@@ -55,7 +54,7 @@ export type GetConnectionUpdate<
     edges: Edge<A>[],
   ) => ConnectionUpdate<A>;
   remove: <A>(connection: Connection<A>, ids: string[]) => ConnectionUpdate<A>;
-}) => Option<ConnectionUpdate<unknown>>;
+}) => ConnectionUpdate<unknown> | undefined;
 
 type RequestOptions<Data, Variables extends AnyVariables = AnyVariables> = {
   connectionUpdates?: GetConnectionUpdate<Data, Variables>[] | undefined;
@@ -104,15 +103,18 @@ export class Client {
 
       if (connectionUpdates !== undefined) {
         connectionUpdates.forEach((getUpdate) => {
-          getUpdate({
+          const result = getUpdate({
             data: data as Data,
             variables,
             prepend,
             append,
             remove,
-          }).map(([connection, update]) => {
-            this.cache.updateConnection(connection, update);
           });
+
+          if (result !== undefined) {
+            const [connection, update] = result;
+            this.cache.updateConnection(connection, update);
+          }
         });
       }
 
@@ -125,7 +127,7 @@ export class Client {
   public readFromCache<Data, Variables extends AnyVariables = AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
-  ): Option<JsonValue> {
+  ): JsonValue | undefined {
     const transformedDocument = transformDocument(document);
     return this.cache.readOperation(transformedDocument, variables);
   }

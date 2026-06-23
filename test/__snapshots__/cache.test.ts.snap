@@ -820,86 +820,83 @@ Set {
 `;
 
 exports[`Write & read in cache 5`] = `
-__Option {
-  "tag": "Some",
-  "value": {
-    "__typename": "Query",
-    "accountMembership": {
-      "__typename": "AccountMembership",
-      "id": "account-membership-1",
-      "user": {
-        "__typename": "User",
-        "firstName": "Matthias",
-        "id": "user-1",
-        "identificationLevels": null,
-        "lastName": "Le Brun",
+{
+  "__typename": "Query",
+  "accountMembership": {
+    "__typename": "AccountMembership",
+    "id": "account-membership-1",
+    "user": {
+      "__typename": "User",
+      "firstName": "Matthias",
+      "id": "user-1",
+      "identificationLevels": null,
+      "lastName": "Le Brun",
+    },
+  },
+  "accountMemberships": {
+    "__connectionRef": 0,
+    "__typename": "AccountMembershipConnection",
+    "edges": [
+      {
+        "__typename": "AccountMembershipEdge",
+        "node": {
+          "__typename": "AccountMembership",
+          "account": {
+            "__typename": "Account",
+            "name": "First",
+          },
+          "id": "account-membership-0",
+          "membershipUser": {
+            "__typename": "User",
+            "id": "user-0",
+            "lastName": "Le Brun",
+          },
+        },
       },
-    },
-    "accountMemberships": {
-      "__connectionRef": 0,
-      "__typename": "AccountMembershipConnection",
-      "edges": [
-        {
-          "__typename": "AccountMembershipEdge",
-          "node": {
-            "__typename": "AccountMembership",
-            "account": {
-              "__typename": "Account",
-              "name": "First",
-            },
-            "id": "account-membership-0",
-            "membershipUser": {
-              "__typename": "User",
-              "id": "user-0",
-              "lastName": "Le Brun",
-            },
+      {
+        "__typename": "AccountMembershipEdge",
+        "node": {
+          "__typename": "AccountMembership",
+          "account": {
+            "__typename": "Account",
+            "name": "Second",
+          },
+          "id": "account-membership-2",
+          "membershipUser": {
+            "__typename": "User",
+            "id": "user-2",
+            "lastName": "Last",
           },
         },
-        {
-          "__typename": "AccountMembershipEdge",
-          "node": {
-            "__typename": "AccountMembership",
-            "account": {
-              "__typename": "Account",
-              "name": "Second",
-            },
-            "id": "account-membership-2",
-            "membershipUser": {
-              "__typename": "User",
-              "id": "user-2",
-              "lastName": "Last",
-            },
+      },
+      {
+        "__typename": "AccountMembershipEdge",
+        "node": {
+          "__typename": "AccountMembership",
+          "account": {
+            "__typename": "Account",
+            "name": "First",
+          },
+          "id": "account-membership-3",
+          "membershipUser": {
+            "__typename": "User",
+            "id": "user-3",
+            "lastName": "Le Brun",
           },
         },
-        {
-          "__typename": "AccountMembershipEdge",
-          "node": {
-            "__typename": "AccountMembership",
-            "account": {
-              "__typename": "Account",
-              "name": "First",
-            },
-            "id": "account-membership-3",
-            "membershipUser": {
-              "__typename": "User",
-              "id": "user-3",
-              "lastName": "Le Brun",
-            },
-          },
-        },
-      ],
-    },
-    "supportingDocumentCollection": {
-      "__typename": "SupportingDocumentCollection",
-      "id": "supporting-document-collection-1",
-      "supportingDocuments": [
-        {
-          "__typename": "SupportingDocument",
-          "createdAt": "2024-03-14T12:06:10.857Z",
-          "id": "supporting-document-1",
-        },
-      ],
-    },
+      },
+    ],
+  },
+  "supportingDocumentCollection": {
+    "__typename": "SupportingDocumentCollection",
+    "id": "supporting-document-collection-1",
+    "supportingDocuments": [
+      {
+        "__typename": "SupportingDocument",
+        "createdAt": "2024-03-14T12:06:10.857Z",
+        "id": "supporting-document-1",
+      },
+    ],
   },
 }
 `;

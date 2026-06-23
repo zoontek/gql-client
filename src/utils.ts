@@ -1,4 +1,3 @@
-import type { Option } from "@bloodyowl/boxed";
 import type { AnyVariables } from "./types";
 
 export const REQUESTED_KEYS = Symbol.for("__requestedKeys");
@@ -60,15 +59,15 @@ export const serializeVariables = (variables: AnyVariables): string => {
 
 export const filterMap = <A, B>(
   array: readonly A[],
-  fn: (item: A) => Option<B>,
+  fn: (item: A) => B | undefined,
 ): B[] => {
   const result: B[] = [];
 
   for (const item of array) {
     const mapped = fn(item);
 
-    if (mapped.isSome()) {
-      result.push(mapped.get());
+    if (mapped !== undefined) {
+      result.push(mapped);
     }
   }
 

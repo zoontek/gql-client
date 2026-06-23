@@ -1,4 +1,3 @@
-import { Option } from "@bloodyowl/boxed";
 import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { Connection, JsonValue } from "../types";
 import { CONNECTION_REF, deepEqual, filterMap } from "../utils";
@@ -11,7 +10,7 @@ const createPaginationHook = (direction: "after" | "before") => {
   return <A, T extends Connection<A>>(connection: T): T => {
     const client = useClient();
     const connectionRefs = useRef<number[]>([]);
-    const lastReturnedValueRef = useRef<Option<T[]>>(Option.None());
+    const lastReturnedValueRef = useRef<T[] | undefined>(undefined);
 
     if (connection == null) {
       connectionRefs.current = [];
@@ -34,25 +33,31 @@ const createPaginationHook = (direction: "after" | "before") => {
 
     // Get fresh data from cache
     const getSnapshot = useCallback(() => {
-      const value = Option.all(
-        filterMap(connectionRefs.current, (id) =>
-          Option.fromNullable(client.getCachedConnection(id)),
-        ).flatMap((info) =>
-          client
-            .readFromCache(info.document, info.variables)
-            .map((query) => ({ query, pathInQuery: info.pathInQuery })),
-        ),
-      ).map((queries) =>
-        queries.map(({ query, pathInQuery }) => {
-          return pathInQuery.reduce<JsonValue>(
-            (acc, key) =>
-              acc != null && typeof acc === "object" && key in acc
-                ? (acc as Record<PropertyKey, JsonValue>)[key]
-                : null,
-            query,
-          );
-        }),
-      ) as Option<T[]>;
+      const infos = filterMap(connectionRefs.current, (id) =>
+        client.getCachedConnection(id),
+      );
+
+      const queries = filterMap(infos, (info) => {
+        const query = client.readFromCache(info.document, info.variables);
+        return query === undefined
+          ? undefined
+          : { query, pathInQuery: info.pathInQuery };
+      });
+
+      // If any cached connection couldn't be read, treat the whole thing as a miss
+      const value: T[] | undefined =
+        queries.length === infos.length
+          ? (queries.map(({ query, pathInQuery }) =>
+              pathInQuery.reduce<JsonValue>(
+                (acc, key) =>
+                  acc != null && typeof acc === "object" && key in acc
+                    ? (acc as Record<PropertyKey, JsonValue>)[key]
+                    : null,
+                query,
+              ),
+            ) as T[])
+          : undefined;
+
       if (!deepEqual(value, lastReturnedValueRef.current)) {
         lastReturnedValueRef.current = value;
         return value;
@@ -66,37 +71,35 @@ const createPaginationHook = (direction: "after" | "before") => {
       getSnapshot,
     );
 
-    return data
-      .flatMap((queries) => {
-        const connections = queries.filter((query) => query != null);
+    if (data === undefined) {
+      return connection as T;
+    }
 
-        if (connections.length === 0) {
-          return Option.None();
-        }
+    const connections = data.filter((query) => query != null);
 
-        return Option.Some(
-          connections.reduce((previous, next) => {
-            if (previous.pageInfo[cursor] === next.pageInfo[cursor]) {
-              return previous;
-            }
+    if (connections.length === 0) {
+      return connection as T;
+    }
 
-            const start = isForwardPagination ? previous : next;
-            const end = isForwardPagination ? next : previous;
+    return connections.reduce((previous, next) => {
+      if (previous.pageInfo[cursor] === next.pageInfo[cursor]) {
+        return previous;
+      }
 
-            return {
-              ...next,
-              edges: [...(start.edges ?? []), ...(end.edges ?? [])],
-              pageInfo: {
-                startCursor: start.pageInfo.startCursor,
-                hasPreviousPage: start.pageInfo.hasPreviousPage,
-                endCursor: end.pageInfo.endCursor,
-                hasNextPage: end.pageInfo.hasNextPage,
-              },
-            };
-          }),
-        );
-      })
-      .getOr(connection as NonNullable<T>) as T;
+      const start = isForwardPagination ? previous : next;
+      const end = isForwardPagination ? next : previous;
+
+      return {
+        ...next,
+        edges: [...(start.edges ?? []), ...(end.edges ?? [])],
+        pageInfo: {
+          startCursor: start.pageInfo.startCursor,
+          hasPreviousPage: start.pageInfo.hasPreviousPage,
+          endCursor: end.pageInfo.endCursor,
+          hasNextPage: end.pageInfo.hasNextPage,
+        },
+      };
+    }) as T;
   };
 };
 
