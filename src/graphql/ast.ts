@@ -1,14 +1,9 @@
 import {
   Kind,
   OperationTypeNode,
-  visit,
-  type ASTNode,
   type DirectiveNode,
   type FieldNode,
-  type FragmentDefinitionNode,
-  type InlineFragmentNode,
   type OperationDefinitionNode,
-  type SelectionNode,
   type SelectionSetNode,
   type ValueNode,
 } from "@0no-co/graphql.web";
@@ -147,101 +142,6 @@ export const getSelectedKeys = (
   }
 
   return selectedKeys;
-};
-
-/**
- * Simplifies the query for internal processing by inlining all fragments.
- *
- * @param documentNode
- * @returns documentNode
- */
-export const inlineFragments = (
-  documentNode: TypedDocumentNode,
-): TypedDocumentNode => {
-  const fragmentMap: { [fragmentName: string]: FragmentDefinitionNode } = {};
-
-  // Populate the fragment map
-  visit(documentNode, {
-    [Kind.FRAGMENT_DEFINITION](node: FragmentDefinitionNode) {
-      fragmentMap[node.name.value] = node;
-    },
-  });
-
-  const inline = (node: ASTNode): unknown => {
-    if (node.kind === Kind.FRAGMENT_SPREAD) {
-      const fragmentName = node.name.value;
-      const fragmentNode = fragmentMap[fragmentName];
-      if (!fragmentNode) {
-        throw new Error(`Fragment "${fragmentName}" is not defined.`);
-      }
-      const nextNode: InlineFragmentNode = {
-        kind: Kind.INLINE_FRAGMENT,
-        typeCondition: fragmentNode.typeCondition,
-        selectionSet: fragmentNode.selectionSet,
-      };
-      return nextNode;
-    }
-
-    if (node.kind === Kind.SELECTION_SET) {
-      return {
-        ...node,
-        selections: node.selections.map((selection: SelectionNode) =>
-          inline(selection),
-        ),
-      };
-    }
-
-    if ("selectionSet" in node && node.selectionSet != null) {
-      return {
-        ...node,
-        selectionSet: inline(node.selectionSet),
-      };
-    }
-
-    return node;
-  };
-
-  return visit(documentNode, {
-    [Kind.FRAGMENT_DEFINITION]: () => null,
-    enter: inline,
-  });
-};
-
-const TYPENAME_NODE: FieldNode = {
-  kind: Kind.FIELD,
-  name: {
-    kind: Kind.NAME,
-    value: "__typename",
-  },
-};
-
-/**
- * Adds `__typename` to all selection sets in the document
- *
- * @param documentNode
- * @returns documentNode
- */
-export const addTypenames = (
-  documentNode: TypedDocumentNode,
-): TypedDocumentNode => {
-  return visit(documentNode, {
-    [Kind.SELECTION_SET]: (selectionSet): SelectionSetNode => {
-      if (
-        selectionSet.selections.find(
-          (selection) =>
-            selection.kind === Kind.FIELD &&
-            selection.name.value === "__typename",
-        )
-      ) {
-        return selectionSet;
-      } else {
-        return {
-          ...selectionSet,
-          selections: [TYPENAME_NODE, ...selectionSet.selections],
-        };
-      }
-    },
-  });
 };
 
 export const getOperationName = (

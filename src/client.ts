@@ -1,3 +1,4 @@
+import type { GraphQLError } from "@0no-co/graphql.web";
 import { Future, Option, Result } from "@bloodyowl/boxed";
 import { Request, badStatusToError, emptyToError } from "@bloodyowl/request";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
@@ -7,8 +8,9 @@ import {
   InvalidGraphQLResponseError,
   parseGraphQLError,
 } from "./errors";
-import { addTypenames, getOperationName, inlineFragments } from "./graphql/ast";
+import { getOperationName } from "./graphql/ast";
 import { printDocument } from "./graphql/printDocument";
+import { transformDocument } from "./graphql/transformDocument";
 import type { AnyVariables, Connection, Edge } from "./types";
 
 export type ClientConfig = {
@@ -72,7 +74,6 @@ export class Client {
 
   private cache: ClientCache;
   private subscribers: Set<() => void>;
-  private transformedDocuments: Map<TypedDocumentNode, TypedDocumentNode>;
 
   public constructor(config: ClientConfig) {
     this.url = config.url;
@@ -81,21 +82,6 @@ export class Client {
 
     this.cache = new ClientCache(config.schema);
     this.subscribers = new Set<() => void>();
-    this.transformedDocuments = new Map<TypedDocumentNode, TypedDocumentNode>();
-  }
-
-  private getTransformedDocument(
-    document: TypedDocumentNode,
-  ): TypedDocumentNode {
-    const cached = this.transformedDocuments.get(document);
-
-    if (cached != null) {
-      return cached;
-    } else {
-      const transformedDocument = inlineFragments(addTypenames(document));
-      this.transformedDocuments.set(document, transformedDocument);
-      return transformedDocument;
-    }
   }
 
   public subscribe(fn: () => void): () => boolean {
@@ -108,7 +94,7 @@ export class Client {
     variables: NoInfer<Variables>,
     { connectionUpdates }: RequestOptions<Data, Variables> = {},
   ): Future<Result<Data, ClientError>> {
-    const transformedDocument = this.getTransformedDocument(document);
+    const transformedDocument = transformDocument(document);
 
     return Request.make({
       url: this.url,
@@ -128,17 +114,21 @@ export class Client {
     })
       .mapOkToResult(badStatusToError)
       .mapOkToResult(emptyToError)
-      .mapOkToResult((payload) => {
-        if (payload != null && typeof payload === "object") {
-          if ("errors" in payload && Array.isArray(payload.errors)) {
-            return Result.Error(payload.errors.map(parseGraphQLError));
+      .mapOkToResult(
+        (
+          payload,
+        ): Result<unknown, GraphQLError[] | InvalidGraphQLResponseError> => {
+          if (payload != null && typeof payload === "object") {
+            if ("errors" in payload && Array.isArray(payload.errors)) {
+              return Result.Error(payload.errors.map(parseGraphQLError));
+            }
+            if ("data" in payload && payload.data != null) {
+              return Result.Ok(payload.data);
+            }
           }
-          if ("data" in payload && payload.data != null) {
-            return Result.Ok(payload.data);
-          }
-        }
-        return Result.Error(new InvalidGraphQLResponseError(payload));
-      })
+          return Result.Error(new InvalidGraphQLResponseError(payload));
+        },
+      )
       .mapOk((data) => data as Data)
       .tapOk((data) => {
         this.cache.writeOperation(transformedDocument, data, variables);
@@ -166,7 +156,7 @@ export class Client {
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
   ): Option<Result<unknown, unknown>> {
-    const transformedDocument = this.getTransformedDocument(document);
+    const transformedDocument = transformDocument(document);
 
     const cached = this.cache.getOperationFromCache(
       transformedDocument,

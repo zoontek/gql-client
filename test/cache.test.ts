@@ -2,7 +2,7 @@ import { Option, Result } from "@bloodyowl/boxed";
 import { expect, test } from "bun:test";
 import type { Connection } from "../src";
 import { ClientCache } from "../src/cache/cache";
-import { addTypenames, inlineFragments } from "../src/graphql/ast";
+import { transformDocument } from "../src/graphql/transformDocument";
 import {
   OnboardingInfo,
   addMembership,
@@ -21,7 +21,7 @@ import {
 test("Write & read in cache", () => {
   const cache = new ClientCache({ interfaceToTypes: {} });
 
-  const preparedAppQuery = inlineFragments(addTypenames(appQuery));
+  const preparedAppQuery = transformDocument(appQuery);
 
   cache.writeOperation(
     preparedAppQuery,
@@ -51,10 +51,10 @@ test("Write & read in cache", () => {
     ),
   );
 
-  const preparedOnboardingInfo = inlineFragments(addTypenames(OnboardingInfo));
+  const preparedOnboardingInfo = transformDocument(OnboardingInfo);
 
-  const preparedBindAccountMembershipMutation = inlineFragments(
-    addTypenames(bindAccountMembershipMutation),
+  const preparedBindAccountMembershipMutation = transformDocument(
+    bindAccountMembershipMutation,
   );
 
   cache.writeOperation(
@@ -223,7 +223,7 @@ test("Write & read in cache", () => {
       });
 
       cache3.writeOperation(
-        inlineFragments(addTypenames(addMembership)),
+        transformDocument(addMembership),
         {
           __typename: "Mutation",
           addMembership: {
@@ -247,7 +247,7 @@ test("Write & read in cache", () => {
       );
 
       cache3.writeOperation(
-        inlineFragments(addTypenames(addMembership)),
+        transformDocument(addMembership),
         {
           __typename: "Mutation",
           addMembership: {
@@ -321,7 +321,7 @@ test("Write & read in cache", () => {
     expect(true).toBe(false);
   }
 
-  const preparedBrandingQuery = inlineFragments(addTypenames(brandingQuery));
+  const preparedBrandingQuery = transformDocument(brandingQuery);
 
   const cache4 = new ClientCache({
     interfaceToTypes: {
