@@ -19,7 +19,7 @@ export const isRecord = (
 
 export const hasOwnProperty = Object.prototype.hasOwnProperty;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// oxlint-disable-next-line typescript/explicit-module-boundary-types, typescript/no-explicit-any
 export const deepEqual = (a: any, b: any): boolean => {
   if (Object.is(a, b)) {
     return true;
@@ -50,6 +50,8 @@ export const deepEqual = (a: any, b: any): boolean => {
   return true;
 };
 
-export const serializeVariables = (variables: Record<string, unknown>) => {
+export const serializeVariables = (
+  variables: Record<string, unknown>,
+): string => {
   return JSON.stringify(variables);
 };

@@ -20,12 +20,12 @@ export const writeOperationToCache = (
   document: DocumentNode,
   response: unknown,
   variables: Record<string, unknown>,
-) => {
+): void => {
   const registerConnection = (
     cacheEntry: CacheEntry,
     pathInQuery: PropertyKey[],
     fieldVariables: Record<string, unknown>,
-  ) => {
+  ): void => {
     if (cacheEntry[CONNECTION_REF]) {
       return;
     }
@@ -44,7 +44,7 @@ export const writeOperationToCache = (
     parentJson: Record<PropertyKey, unknown>,
     parentCache: CacheEntry,
     path: PropertyKey[],
-  ) => {
+  ): void => {
     const originalFieldName = getFieldName(field);
     const fieldNameWithArguments = getFieldNameWithArguments(field, variables);
     const fieldValue = parentJson[originalFieldName];
@@ -92,6 +92,7 @@ export const writeOperationToCache = (
         // @ts-expect-error It's fine
         arrayCache[index] = cacheValueInParent;
 
+        // oxlint-disable-next-line no-use-before-define
         cacheSelectionSet(subSelectionSet, item, cacheObject, [
           ...path,
           originalFieldName,
@@ -125,6 +126,7 @@ export const writeOperationToCache = (
       );
     }
 
+    // oxlint-disable-next-line no-use-before-define
     return cacheSelectionSet(subSelectionSet, record, cacheObject, [
       ...path,
       originalFieldName,
@@ -136,7 +138,7 @@ export const writeOperationToCache = (
     json: Record<PropertyKey, unknown>,
     cached: CacheEntry,
     path: PropertyKey[],
-  ) => {
+  ): void => {
     for (const selection of selectionSet.selections) {
       switch (selection.kind) {
         case Kind.INLINE_FRAGMENT:

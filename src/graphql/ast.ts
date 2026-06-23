@@ -16,90 +16,13 @@ import {
 import { Array, Option } from "@bloodyowl/boxed";
 
 /**
- * Returns a Set<string> with all keys selected within the direct selection sets
- * of a given `FieldNode` or `OperationDefinitionNode`.
- *
- * { user { id, firstName, lastName } }
- * => Set{"id", "firstName", "lastName"}
- *
- * @param fieldNode FieldNode | OperationDefinitionNode
- * @returns selectedKeys Set<string>
- */
-export const getSelectedKeys = (
-  fieldNode: FieldNode | OperationDefinitionNode,
-  variables: Record<string, unknown>,
-): Set<symbol> => {
-  const selectedKeys = new Set<symbol>();
-
-  const traverse = (selections: SelectionSetNode) => {
-    // We only need to care about FieldNode & InlineFragment node
-    // as we inline all fragments in the query
-    selections.selections.forEach((selection) => {
-      if (selection.kind === Kind.FIELD) {
-        const fieldNameWithArguments = getFieldNameWithArguments(
-          selection,
-          variables,
-        );
-        selectedKeys.add(fieldNameWithArguments);
-      } else if (selection.kind === Kind.INLINE_FRAGMENT) {
-        traverse(selection.selectionSet);
-      }
-    });
-  };
-
-  if (fieldNode.selectionSet) {
-    traverse(fieldNode.selectionSet);
-  }
-
-  return selectedKeys;
-};
-
-/**
- * Serializes the field name and arguments as a symbol.
- *
- * { user {id} }
- * => Symbol(`user`)
- *
- * { user(id: "1") {id} }
- * => Symbol(`user({"id":"1"})`)
- *
- * { user(id: $id) {id} } with variables `{"id": "2"}`
- * => Symbol(`user({"id":"2"})`)
+ * Gets the field name in the response payload from its AST definition
  *
  * @param fieldNode
- * @param variables The variables of the GraphQL operation
- * @returns symbol
+ * @returns field name
  */
-export const getFieldNameWithArguments = (
-  fieldNode: FieldNode,
-  variables: Record<string, unknown>,
-): symbol => {
-  const fieldName = getFieldName(fieldNode);
-  const args = extractArguments(fieldNode, variables);
-  if (Object.keys(args).length === 0) {
-    return Symbol.for(fieldName);
-  }
-  return Symbol.for(`${fieldName}(${JSON.stringify(args)})`);
-};
-
-/**
- * Returns a record representation of the arguments passed to a given field
- *
- * @param fieldNode
- * @param variables
- * @returns Record<string, any>
- */
-export const extractArguments = (
-  fieldNode: FieldNode,
-  variables: Record<string, unknown>,
-): Record<string, unknown> => {
-  const args = fieldNode.arguments ?? [];
-  return Object.fromEntries(
-    args.map(({ name: { value: name }, value }) => [
-      name,
-      extractValue(value, variables),
-    ]),
-  );
+export const getFieldName = (fieldNode: FieldNode): string => {
+  return fieldNode.alias ? fieldNode.alias.value : fieldNode.name.value;
 };
 
 /**
@@ -139,13 +62,90 @@ const extractValue = (
 };
 
 /**
- * Gets the field name in the response payload from its AST definition
+ * Returns a record representation of the arguments passed to a given field
  *
  * @param fieldNode
- * @returns field name
+ * @param variables
+ * @returns Record<string, any>
  */
-export const getFieldName = (fieldNode: FieldNode) => {
-  return fieldNode.alias ? fieldNode.alias.value : fieldNode.name.value;
+export const extractArguments = (
+  fieldNode: FieldNode,
+  variables: Record<string, unknown>,
+): Record<string, unknown> => {
+  const args = fieldNode.arguments ?? [];
+  return Object.fromEntries(
+    args.map(({ name: { value: name }, value }) => [
+      name,
+      extractValue(value, variables),
+    ]),
+  );
+};
+
+/**
+ * Serializes the field name and arguments as a symbol.
+ *
+ * { user {id} }
+ * => Symbol(`user`)
+ *
+ * { user(id: "1") {id} }
+ * => Symbol(`user({"id":"1"})`)
+ *
+ * { user(id: $id) {id} } with variables `{"id": "2"}`
+ * => Symbol(`user({"id":"2"})`)
+ *
+ * @param fieldNode
+ * @param variables The variables of the GraphQL operation
+ * @returns symbol
+ */
+export const getFieldNameWithArguments = (
+  fieldNode: FieldNode,
+  variables: Record<string, unknown>,
+): symbol => {
+  const fieldName = getFieldName(fieldNode);
+  const args = extractArguments(fieldNode, variables);
+  if (Object.keys(args).length === 0) {
+    return Symbol.for(fieldName);
+  }
+  return Symbol.for(`${fieldName}(${JSON.stringify(args)})`);
+};
+
+/**
+ * Returns a Set<string> with all keys selected within the direct selection sets
+ * of a given `FieldNode` or `OperationDefinitionNode`.
+ *
+ * { user { id, firstName, lastName } }
+ * => Set{"id", "firstName", "lastName"}
+ *
+ * @param fieldNode FieldNode | OperationDefinitionNode
+ * @returns selectedKeys Set<string>
+ */
+export const getSelectedKeys = (
+  fieldNode: FieldNode | OperationDefinitionNode,
+  variables: Record<string, unknown>,
+): Set<symbol> => {
+  const selectedKeys = new Set<symbol>();
+
+  const traverse = (selections: SelectionSetNode): void => {
+    // We only need to care about FieldNode & InlineFragment node
+    // as we inline all fragments in the query
+    selections.selections.forEach((selection) => {
+      if (selection.kind === Kind.FIELD) {
+        const fieldNameWithArguments = getFieldNameWithArguments(
+          selection,
+          variables,
+        );
+        selectedKeys.add(fieldNameWithArguments);
+      } else if (selection.kind === Kind.INLINE_FRAGMENT) {
+        traverse(selection.selectionSet);
+      }
+    });
+  };
+
+  if (fieldNode.selectionSet) {
+    traverse(fieldNode.selectionSet);
+  }
+
+  return selectedKeys;
 };
 
 /**
@@ -239,7 +239,9 @@ export const addTypenames = (documentNode: DocumentNode): DocumentNode => {
   });
 };
 
-export const getExecutableOperationName = (document: DocumentNode) => {
+export const getExecutableOperationName = (
+  document: DocumentNode,
+): Option<string> => {
   return Array.findMap(document.definitions, (definition) => {
     if (definition.kind === Kind.OPERATION_DEFINITION) {
       return Option.fromNullable(definition.name).map((name) => name.value);
@@ -249,23 +251,10 @@ export const getExecutableOperationName = (document: DocumentNode) => {
   });
 };
 
-const getIdFieldNode = (selection: SelectionNode): Option<SelectionNode> => {
-  switch (selection.kind) {
-    case Kind.FIELD:
-      return selection.name.value === "id"
-        ? Option.Some(selection)
-        : Option.None();
-    case Kind.INLINE_FRAGMENT:
-      return Array.findMap(selection.selectionSet.selections, getIdFieldNode);
-    default:
-      return Option.None();
-  }
-};
-
 export const isExcluded = (
   fieldNode: FieldNode,
   variables: Record<string, unknown>,
-) => {
+): boolean => {
   if (!Array.isArray(fieldNode.directives)) {
     return false;
   }

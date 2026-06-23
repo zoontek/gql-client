@@ -54,7 +54,7 @@ export const readOperationFromCache = (
   cache: ClientCache,
   document: DocumentNode,
   variables: Record<string, unknown>,
-) => {
+): Option<Result<unknown, unknown>> => {
   const traverse = (
     selections: SelectionSetNode,
     data: Record<PropertyKey, unknown>,

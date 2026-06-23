@@ -71,7 +71,7 @@ export const ClientError = {
   forEach: <E extends Error | ClientError>(
     clientError: E,
     func: (error: Flat<E>, index?: number) => void,
-  ) => {
+  ): void => {
     ClientError.toArray(clientError).forEach(func);
   },
 };

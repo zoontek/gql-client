@@ -1,6 +1,6 @@
 import type { DocumentNode } from "@0no-co/graphql.web";
 
-export interface DocumentTypeDecoration<TResult, TVariables> {
+interface DocumentTypeDecoration<TResult, TVariables> {
   /**
    * This type is used to ensure that the variables you pass in to the query are assignable to Variables
    * and that the Result is assignable to whatever you pass your result to. The method is never actually

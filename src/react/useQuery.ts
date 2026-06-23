@@ -50,6 +50,8 @@ export const useQuery = <Data, Variables>(
     [Variables, Variables]
   >([variables, variables]);
 
+  const [isReloading, setIsReloading] = useState(false);
+
   useEffect(() => {
     const [providedVariables] = stableVariables;
 
@@ -77,6 +79,7 @@ export const useQuery = <Data, Variables>(
 
   const previousAsyncData = usePreviousValue(asyncData);
   const isSuspenseFirstFetch = useRef(true);
+  const isLoading = isReloading || asyncData.isLoading();
 
   useEffect(() => {
     if (isSuspenseFirstFetch.current) {
@@ -87,13 +90,10 @@ export const useQuery = <Data, Variables>(
       .request(stableQuery, stableVariables[1])
       .tap(() => setIsReloading(false));
 
-    return () => {
+    return (): void => {
       request.cancel();
     };
   }, [client, stableQuery, stableVariables]);
-
-  const [isReloading, setIsReloading] = useState(false);
-  const isLoading = isReloading || asyncData.isLoading();
 
   const asyncDataToExpose = isReloading
     ? AsyncData.Loading()

@@ -1,4 +1,4 @@
-import { Array, AsyncData, Option, Result } from "@bloodyowl/boxed";
+import { Array, Option, Result } from "@bloodyowl/boxed";
 import { useCallback, useContext, useRef, useSyncExternalStore } from "react";
 import type { Connection } from "../types";
 import { CONNECTION_REF, deepEqual } from "../utils";
@@ -125,33 +125,3 @@ const createPaginationHook = (direction: Mode) => {
 export const useForwardPagination = createPaginationHook("after");
 
 export const useBackwardPagination = createPaginationHook("before");
-
-export const useForwardAsyncDataPagination = <
-  A,
-  E,
-  T extends AsyncData<Result<Connection<A>, E>>,
->(
-  connection: T,
-): T => {
-  const data = connection
-    .toOption()
-    .flatMap((result) => result.toOption())
-    .toNull();
-  const patchedData = useForwardPagination(data);
-  return connection.mapOk(() => patchedData) as T;
-};
-
-export const useBackwardAsyncDataPagination = <
-  A,
-  E,
-  T extends AsyncData<Result<Connection<A>, E>>,
->(
-  connection: T,
-): T => {
-  const data = connection
-    .toOption()
-    .flatMap((result) => result.toOption())
-    .toNull();
-  const patchedData = useBackwardPagination(data);
-  return connection.mapOk(() => patchedData) as T;
-};

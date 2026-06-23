@@ -14,10 +14,10 @@ import {
   getExecutableOperationName,
   inlineFragments,
 } from "./graphql/ast";
-import { print } from "./graphql/print";
+import { printDocument } from "./graphql/printDocument";
 import type { Connection, Edge, TypedDocumentNode } from "./types";
 
-export type RequestConfig = {
+type RequestConfig = {
   url: string;
   headers: Record<string, string>;
   operationName: string;
@@ -53,7 +53,7 @@ const defaultMakeRequest: MakeRequest = ({
     ...(credentials != undefined ? { credentials } : null),
     body: JSON.stringify({
       operationName,
-      query: print(document),
+      query: printDocument(document),
       variables,
     }),
   })
@@ -145,7 +145,9 @@ export class Client {
     this.transformedDocumentsForRequest = new Map();
   }
 
-  getTransformedDocument(document: DocumentNode) {
+  getTransformedDocument(document: DocumentNode): DocumentNode & {
+    readonly tokenCount?: number;
+  } {
     if (this.transformedDocuments.has(document)) {
       return this.transformedDocuments.get(document) as DocumentNode;
     } else {
@@ -155,7 +157,9 @@ export class Client {
     }
   }
 
-  getTransformedDocumentsForRequest(document: DocumentNode) {
+  getTransformedDocumentsForRequest(document: DocumentNode): DocumentNode & {
+    readonly tokenCount?: number;
+  } {
     if (this.transformedDocumentsForRequest.has(document)) {
       return this.transformedDocumentsForRequest.get(document) as DocumentNode;
     } else {
@@ -165,7 +169,7 @@ export class Client {
     }
   }
 
-  subscribe(func: () => void) {
+  subscribe(func: () => void): () => boolean {
     this.subscribers.add(func);
     return () => this.subscribers.delete(func);
   }
@@ -226,7 +230,7 @@ export class Client {
   readFromCache<Data, Variables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
-  ) {
+  ): Option<Result<unknown, unknown>> {
     const variablesAsRecord = variables as Record<string, unknown>;
     const transformedDocument = this.getTransformedDocument(document);
     const cached = this.cache.getOperationFromCache(

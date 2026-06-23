@@ -1,8 +1,17 @@
-export * from "./client";
-export * from "./errors";
-export { print } from "./graphql/print";
-export * from "./react/ClientContext";
-export * from "./react/useMutation";
-export * from "./react/usePagination";
-export * from "./react/useQuery";
-export * from "./types";
+export { Client } from "./client";
+export {
+  ClientError,
+  InvalidGraphQLResponseError,
+  parseGraphQLError,
+} from "./errors";
+export { ClientContext } from "./react/ClientContext";
+export { useMutation } from "./react/useMutation";
+export {
+  useBackwardPagination,
+  useForwardPagination,
+} from "./react/usePagination";
+export { useQuery } from "./react/useQuery";
+
+export type { Mutation, MutationConfig } from "./react/useMutation";
+export type { Query } from "./react/useQuery";
+export type { Connection, Edge } from "./types";

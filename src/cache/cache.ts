@@ -49,13 +49,13 @@ export class ClientCache {
     this.connectionCache = new Map<number, ConnectionInfo>();
   }
 
-  registerConnectionInfo(info: ConnectionInfo) {
+  registerConnectionInfo(info: ConnectionInfo): number {
     const id = ++this.connectionRefCount;
     this.connectionCache.set(id, info);
     return id;
   }
 
-  isTypeCompatible(typename: string, typeCondition: string) {
+  isTypeCompatible(typename: string, typeCondition: string): boolean {
     if (typename === typeCondition) {
       return true;
     }
@@ -66,14 +66,14 @@ export class ClientCache {
     return compatibleTypes.has(typename);
   }
 
-  dump() {
+  dump(): Map<symbol, CacheEntry> {
     return this.cache;
   }
 
   getOperationFromCache(
     documentNode: DocumentNode,
     variables: Record<string, unknown>,
-  ) {
+  ): Option<Result<unknown, unknown>> {
     const serializedVariables = serializeVariables(variables);
     return Option.fromNullable(this.operationCache.get(documentNode))
       .flatMap((cache) => Option.fromNullable(cache.get(serializedVariables)))
@@ -84,7 +84,7 @@ export class ClientCache {
     documentNode: DocumentNode,
     variables: Record<string, unknown>,
     data: Result<unknown, unknown>,
-  ) {
+  ): void {
     const serializedVariables = serializeVariables(variables);
     const documentCache = Option.fromNullable(
       this.operationCache.get(documentNode),
@@ -93,7 +93,7 @@ export class ClientCache {
     this.operationCache.set(documentNode, documentCache);
   }
 
-  getFromCache(cacheKey: symbol, requestedKeys: Set<symbol>) {
+  getFromCache(cacheKey: symbol, requestedKeys: Set<symbol>): Option<unknown> {
     return this.get(cacheKey).flatMap((entry) => {
       if (isRecord(entry)) {
         if (containsAll(entry[REQUESTED_KEYS] as Set<symbol>, requestedKeys)) {
@@ -107,7 +107,7 @@ export class ClientCache {
     });
   }
 
-  getFromCacheWithoutKey(cacheKey: symbol) {
+  getFromCacheWithoutKey(cacheKey: symbol): Option<unknown> {
     return this.get(cacheKey).flatMap((entry) => {
       return Option.Some(entry);
     });
@@ -131,7 +131,7 @@ export class ClientCache {
     }
   }
 
-  set(cacheKey: symbol, entry: CacheEntry) {
+  set(cacheKey: symbol, entry: CacheEntry): void {
     this.cache.set(cacheKey, entry);
   }
 
@@ -141,7 +141,7 @@ export class ClientCache {
       | { prepend: Edge<A>[] }
       | { append: Edge<A>[] }
       | { remove: string[] },
-  ) {
+  ): void {
     if (connection == null) {
       return;
     }
