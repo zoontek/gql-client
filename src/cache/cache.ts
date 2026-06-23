@@ -15,7 +15,13 @@ import {
 } from "../graphql/ast";
 import { getCacheEntryKey } from "../json/cacheEntryKey";
 import { getTypename } from "../json/getTypename";
-import type { AnyVariables, Connection, Edge, JsonValue } from "../types";
+import type {
+  AnyVariables,
+  Connection,
+  Edge,
+  JsonObject,
+  JsonValue,
+} from "../types";
 import {
   CONNECTION_REF,
   EDGES_KEY,
@@ -55,6 +61,40 @@ const EXCLUDED = Symbol.for("EXCLUDED");
 // Sentinel used internally to signal a cache miss. It is distinct from a cached
 // `null`/`undefined` value, which are legitimate results that must be preserved.
 const MISS = Symbol("MISS");
+
+// Produces a plain-JSON copy of a traversed result in a single pass. The
+// traversal builds its objects with `{ ...acc }`, which also copies the
+// internal symbol-keyed cache metadata (REQUESTED_KEYS, field references) and
+// the `EXCLUDED` marker. This strips all of that — equivalent to the previous
+// `JSON.parse(JSON.stringify(...))`, but without allocating an intermediate
+// JSON string. `Object.keys` already skips symbol keys; `undefined`/symbol
+// values are dropped in objects and become `null` in arrays, matching
+// `JSON.stringify`.
+const toPlainJson = (value: unknown): JsonValue => {
+  if (Array.isArray(value)) {
+    return value.map((item) =>
+      item === undefined || typeof item === "symbol"
+        ? null
+        : toPlainJson(item),
+    );
+  }
+
+  if (isRecord(value)) {
+    const result: JsonObject = {};
+
+    for (const key of Object.keys(value)) {
+      const item = value[key];
+
+      if (item !== undefined && typeof item !== "symbol") {
+        result[key] = toPlainJson(item);
+      }
+    }
+
+    return result;
+  }
+
+  return value as JsonValue;
+};
 
 type CachedEdge = {
   [TYPENAME_KEY]: string | null | undefined;
@@ -429,7 +469,7 @@ export class ClientCache {
       return undefined;
     }
 
-    const value = JSON.parse(JSON.stringify(traversed)) as JsonValue;
+    const value = toPlainJson(traversed);
 
     // We use a trick to return stable values, the document holds a WeakMap
     // that for each key (serialized variables), stores the last returned result.
