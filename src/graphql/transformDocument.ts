@@ -54,7 +54,7 @@ const transformDocumentCache = new Map<TypedDocumentNode, TypedDocumentNode>();
  * @returns transformedDocument
  */
 export const transformDocument = (
-  document: TypedDocumentNode,
+  document: TypedDocumentNode<any, any>,
 ): TypedDocumentNode => {
   const cachedDocument = transformDocumentCache.get(document);
 

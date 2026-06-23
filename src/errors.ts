@@ -1,30 +1,19 @@
 import { type ASTNode, GraphQLError } from "@0no-co/graphql.web";
 import {
   BadStatusError,
-  EmptyResponseError,
+  InvalidResponseError,
   NetworkError,
   TimeoutError,
-} from "@bloodyowl/request";
+} from "./request";
 import type { JsonValue } from "./types";
 
 export type ClientError =
   | NetworkError
   | TimeoutError
   | BadStatusError
-  | EmptyResponseError
-  | InvalidGraphQLResponseError
+  | InvalidResponseError
   | CacheError
   | GraphQLError[];
-
-export class InvalidGraphQLResponseError extends Error {
-  response: unknown;
-  constructor(response: unknown) {
-    super("Received an invalid GraphQL response");
-    Object.setPrototypeOf(this, InvalidGraphQLResponseError.prototype);
-    this.name = "InvalidGraphQLResponseError";
-    this.response = response;
-  }
-}
 
 export class CacheError extends Error {
   constructor(operationName: string | undefined) {

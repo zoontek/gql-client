@@ -24,8 +24,20 @@ export type Query<
   },
 ];
 
-const usePreviousValue = <A, T extends AsyncData<A>>(value: T): T => {
+const usePreviousValue = <A, T extends AsyncData<A>>(
+  value: T,
+  resetKey: unknown,
+): T => {
   const previousRef = useRef(value);
+  const resetKeyRef = useRef(resetKey);
+
+  // When the reset key changes (new variables passed to the query, as opposed
+  // to a `setVariables` call), drop the previous value so the query goes back
+  // to its loading state instead of showing the previous result.
+  if (resetKeyRef.current !== resetKey) {
+    resetKeyRef.current = resetKey;
+    previousRef.current = value;
+  }
 
   useEffect(() => {
     if (value.isDone()) {
@@ -70,18 +82,14 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
 
   const asyncData = useMemo(() => {
     return data
-      .map((value) => AsyncData.Done(value as Result<Data, ClientError>))
+      .map((value) => AsyncData.Done(Result.Ok(value as Data)))
       .getOr(AsyncData.Loading());
   }, [data]);
 
-  const previousAsyncData = usePreviousValue(asyncData);
+  const previousAsyncData = usePreviousValue(asyncData, stableVariables[0]);
 
   useEffect(() => {
-    const request = client.request(stableQuery, stableVariables[1]);
-
-    return (): void => {
-      request.cancel();
-    };
+    client.request(stableQuery, stableVariables[1]);
   }, [client, stableQuery, stableVariables]);
 
   const fetching = asyncData.isLoading();

@@ -1,4 +1,3 @@
-import { Future, Result } from "@bloodyowl/boxed";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { useCallback, useRef, useState } from "react";
 import type { GetConnectionUpdate } from "../client";
@@ -15,10 +14,7 @@ export type MutationState<Data> =
 export type Mutation<
   Data,
   Variables extends AnyVariables = AnyVariables,
-> = readonly [
-  (variables: Variables) => Future<Result<Data, ClientError>>,
-  MutationState<Data>,
-];
+> = readonly [(variables: Variables) => Promise<Data>, MutationState<Data>];
 
 export type MutationConfig<
   Data,
@@ -50,11 +46,13 @@ export const useMutation = <
         .request(stableMutation, variables, {
           connectionUpdates: connectionUpdatesRef.current,
         })
-        .tap((result) => {
-          result.match({
-            Ok: (data) => setState({ fetching: false, data }),
-            Error: (error) => setState({ fetching: false, error }),
-          });
+        .then((data) => {
+          setState({ fetching: false, data });
+          return data;
+        })
+        .catch((error) => {
+          setState({ fetching: false, error });
+          throw error;
         });
     },
     [client, stableMutation],

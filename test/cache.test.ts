@@ -1,4 +1,4 @@
-import { Option, Result } from "@bloodyowl/boxed";
+import { Option } from "@bloodyowl/boxed";
 import { expect, test } from "bun:test";
 import type { Connection } from "../src";
 import { ClientCache } from "../src/cache/cache";
@@ -42,12 +42,10 @@ test("Write & read in cache", () => {
     }),
   ).toMatchObject(
     Option.Some(
-      Result.Ok(
-        getAppQueryResponse({
-          user2LastName: "Last",
-          user1IdentificationLevels: null,
-        }),
-      ),
+      getAppQueryResponse({
+        user2LastName: "Last",
+        user1IdentificationLevels: null,
+      }),
     ),
   );
 
@@ -71,12 +69,10 @@ test("Write & read in cache", () => {
     }),
   ).toMatchObject(
     Option.Some(
-      Result.Ok(
-        getAppQueryResponse({
-          user2LastName: "Last",
-          user1IdentificationLevels: null,
-        }),
-      ),
+      getAppQueryResponse({
+        user2LastName: "Last",
+        user1IdentificationLevels: null,
+      }),
     ),
   );
 
@@ -96,12 +92,10 @@ test("Write & read in cache", () => {
     }),
   ).toMatchObject(
     Option.Some(
-      Result.Ok(
-        getAppQueryResponse({
-          user2LastName: "Acthernoene",
-          user1IdentificationLevels: null,
-        }),
-      ),
+      getAppQueryResponse({
+        user2LastName: "Acthernoene",
+        user1IdentificationLevels: null,
+      }),
     ),
   );
 
@@ -129,17 +123,15 @@ test("Write & read in cache", () => {
     }),
   ).toMatchObject(
     Option.Some(
-      Result.Ok(
-        getAppQueryResponse({
-          user2LastName: "Acthernoene",
-          user1IdentificationLevels: {
-            __typename: "IdentificationLevels",
-            expert: true,
-            PVID: true,
-            QES: true,
-          },
-        }),
-      ),
+      getAppQueryResponse({
+        user2LastName: "Acthernoene",
+        user1IdentificationLevels: {
+          __typename: "IdentificationLevels",
+          expert: true,
+          PVID: true,
+          QES: true,
+        },
+      }),
     ),
   );
 
@@ -173,7 +165,7 @@ test("Write & read in cache", () => {
       id: "d26ed1ed-5f70-4096-9d8e-27ef258e26fa",
       language: "en",
     }),
-  ).toMatchObject(Option.Some(Result.Ok(onboardingInfoResponse)));
+  ).toMatchObject(Option.Some(onboardingInfoResponse));
 
   const cache3 = new ClientCache({ interfaceToTypes: {} });
 
@@ -201,9 +193,8 @@ test("Write & read in cache", () => {
   );
 
   if (read.isSome()) {
-    const cacheResult = read.get();
-    if (cacheResult.isOk()) {
-      const value = cacheResult.get() as ReturnType<typeof getAppQueryResponse>;
+    {
+      const value = read.get() as ReturnType<typeof getAppQueryResponse>;
       const accountMemberships =
         value.accountMemberships as unknown as Connection<{
           __typename: "AccountMembership";
@@ -337,5 +328,5 @@ test("Write & read in cache", () => {
     cache4.readOperation(preparedBrandingQuery, {
       id: "64060573-f0ec-4204-ad49-a3983497ada4",
     }),
-  ).toEqual(Option.Some(Result.Ok(brandingResponse)));
+  ).toEqual(Option.Some(brandingResponse));
 });

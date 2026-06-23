@@ -4,7 +4,7 @@ import {
   type FieldNode,
   type SelectionSetNode,
 } from "@0no-co/graphql.web";
-import { Option, Result } from "@bloodyowl/boxed";
+import { Option } from "@bloodyowl/boxed";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import {
   extractArguments,
@@ -48,7 +48,7 @@ export type ConnectionInfo = {
 
 const STABILITY_CACHE = new WeakMap<
   TypedDocumentNode,
-  Map<string, Option<Result<unknown, unknown>>>
+  Map<string, Option<unknown>>
 >();
 
 const EXCLUDED = Symbol.for("EXCLUDED");
@@ -60,12 +60,6 @@ type CachedEdge = {
 
 export class ClientCache {
   private cache = new Map<symbol, CacheEntry>();
-
-  private operationCache = new Map<
-    TypedDocumentNode,
-    Map<string, Option<Result<unknown, unknown>>>
-  >();
-
   private interfaceToType: Record<string, Set<string>>;
   private connectionCache: Map<number, ConnectionInfo>;
   private connectionRefCount = -1;
@@ -103,29 +97,6 @@ export class ClientCache {
       return false;
     }
     return compatibleTypes.has(typename);
-  }
-
-  public getOperationFromCache(
-    documentNode: TypedDocumentNode,
-    variables: AnyVariables,
-  ): Option<Result<unknown, unknown>> {
-    const serializedVariables = serializeVariables(variables);
-    return Option.fromNullable(this.operationCache.get(documentNode))
-      .flatMap((cache) => Option.fromNullable(cache.get(serializedVariables)))
-      .flatMap((value) => value);
-  }
-
-  public setOperationInCache(
-    documentNode: TypedDocumentNode,
-    variables: AnyVariables,
-    data: Result<unknown, unknown>,
-  ): void {
-    const serializedVariables = serializeVariables(variables);
-    const documentCache = Option.fromNullable(
-      this.operationCache.get(documentNode),
-    ).getOr(new Map<string, Option<Result<unknown, unknown>>>());
-    documentCache.set(serializedVariables, Option.Some(data));
-    this.operationCache.set(documentNode, documentCache);
   }
 
   private getFromCache(
@@ -255,7 +226,7 @@ export class ClientCache {
   public readOperation(
     document: TypedDocumentNode,
     variables: AnyVariables,
-  ): Option<Result<unknown, unknown>> {
+  ): Option<unknown> {
     const traverse = (
       selections: SelectionSetNode,
       data: Record<PropertyKey, unknown>,
@@ -449,17 +420,14 @@ export class ClientCache {
           .flatMap((value) => value);
 
         if (
-          previous
-            .flatMap((previous) => previous.toOption())
-            .map((previous) => deepEqual(value, previous))
-            .getOr(false)
+          previous.map((previous) => deepEqual(value, previous)).getOr(false)
         ) {
           return previous;
         } else {
-          const valueToCache = Option.Some(Result.Ok(value));
+          const valueToCache = Option.Some(value);
           const documentCache =
             STABILITY_CACHE.get(document) ??
-            new Map<string, Option<Result<unknown, unknown>>>();
+            new Map<string, Option<unknown>>();
           documentCache.set(serializedVariables, valueToCache);
           STABILITY_CACHE.set(document, documentCache);
           return valueToCache;

@@ -7,7 +7,7 @@ import {
   type SelectionSetNode,
   type ValueNode,
 } from "@0no-co/graphql.web";
-import { Array, Option } from "@bloodyowl/boxed";
+import { Option } from "@bloodyowl/boxed";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import type { AnyVariables } from "../types";
 

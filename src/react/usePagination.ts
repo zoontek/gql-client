@@ -1,4 +1,4 @@
-import { Option, Result } from "@bloodyowl/boxed";
+import { Option } from "@bloodyowl/boxed";
 import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { Connection } from "../types";
 import { CONNECTION_REF, deepEqual, filterMap } from "../utils";
@@ -15,13 +15,20 @@ const createPaginationHook = (direction: "after" | "before") => {
 
     if (connection == null) {
       connectionRefs.current = [];
-    } else {
-      if (
-        CONNECTION_REF in connection &&
-        typeof connection[CONNECTION_REF] === "number" &&
-        !connectionRefs.current.includes(connection[CONNECTION_REF])
-      ) {
-        connectionRefs.current.push(connection[CONNECTION_REF]);
+    } else if (CONNECTION_REF in connection) {
+      const ref = connection[CONNECTION_REF];
+
+      if (typeof ref === "number") {
+        const info = client.getCachedConnection(ref);
+
+        // A connection queried without its pagination cursor is a first page.
+        // Reset the accumulated references so pages from a previous connection
+        // (e.g. another film's characters) don't bleed into this one.
+        if (info == null || info.fieldVariables[direction] == null) {
+          connectionRefs.current = [ref];
+        } else if (!connectionRefs.current.includes(ref)) {
+          connectionRefs.current.push(ref);
+        }
       }
     }
 
@@ -33,25 +40,19 @@ const createPaginationHook = (direction: "after" | "before") => {
         ).flatMap((info) =>
           client
             .readFromCache(info.document, info.variables)
-            .map((query) =>
-              query.map((query) => ({ query, pathInQuery: info.pathInQuery })),
-            ),
+            .map((query) => ({ query, pathInQuery: info.pathInQuery })),
         ),
-      )
-        .map(Result.all)
-        .flatMap((x) => x.toOption())
-        .map((queries) =>
-          queries.map(({ query, pathInQuery }) => {
-            return pathInQuery.reduce(
-              (acc, key) =>
-                acc != null && typeof acc === "object" && key in acc
-                  ? // @ts-expect-error indexable
-                    acc[key]
-                  : null,
-              query,
-            );
-          }),
-        ) as Option<T[]>;
+      ).map((queries) =>
+        queries.map(({ query, pathInQuery }) => {
+          return pathInQuery.reduce<unknown>(
+            (acc, key) =>
+              acc != null && typeof acc === "object" && key in acc
+                ? (acc as Record<PropertyKey, unknown>)[key]
+                : null,
+            query,
+          );
+        }),
+      ) as Option<T[]>;
       if (!deepEqual(value, lastReturnedValueRef.current)) {
         lastReturnedValueRef.current = value;
         return value;
@@ -66,31 +67,36 @@ const createPaginationHook = (direction: "after" | "before") => {
     );
 
     return data
-      .map(([first, ...rest]) =>
-        rest.reduce((previous, next) => {
-          if (previous == null || next == null) {
-            return next;
-          }
-          if (previous.pageInfo[cursor] === next.pageInfo[cursor]) {
-            return previous;
-          }
+      .flatMap((queries) => {
+        const connections = queries.filter((query) => query != null);
 
-          const start = isForwardPagination ? previous : next;
-          const end = isForwardPagination ? next : previous;
+        if (connections.length === 0) {
+          return Option.None();
+        }
 
-          return {
-            ...next,
-            edges: [...(start.edges ?? []), ...(end.edges ?? [])],
-            pageInfo: {
-              startCursor: start.pageInfo.startCursor,
-              hasPreviousPage: start.pageInfo.hasPreviousPage,
-              endCursor: end.pageInfo.endCursor,
-              hasNextPage: end.pageInfo.hasNextPage,
-            },
-          };
-        }, first),
-      )
-      .getOr(connection) as T;
+        return Option.Some(
+          connections.reduce((previous, next) => {
+            if (previous.pageInfo[cursor] === next.pageInfo[cursor]) {
+              return previous;
+            }
+
+            const start = isForwardPagination ? previous : next;
+            const end = isForwardPagination ? next : previous;
+
+            return {
+              ...next,
+              edges: [...(start.edges ?? []), ...(end.edges ?? [])],
+              pageInfo: {
+                startCursor: start.pageInfo.startCursor,
+                hasPreviousPage: start.pageInfo.hasPreviousPage,
+                endCursor: end.pageInfo.endCursor,
+                hasNextPage: end.pageInfo.hasNextPage,
+              },
+            };
+          }),
+        );
+      })
+      .getOr(connection as NonNullable<T>) as T;
   };
 };
 

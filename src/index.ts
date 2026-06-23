@@ -1,5 +1,5 @@
 export { Client } from "./client";
-export { InvalidGraphQLResponseError, parseGraphQLError } from "./errors";
+export { parseGraphQLError } from "./errors";
 export { ClientProvider, useClient } from "./react/context";
 export { useMutation } from "./react/useMutation";
 export {
