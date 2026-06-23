@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { createRoot } from "react-dom/client";
+import { ErrorBoundary } from "react-error-boundary";
 import { Client, ClientProvider } from "../src";
 import { App } from "./components/App";
 import schema from "./schema.json";
@@ -15,9 +16,11 @@ const client = new Client({
 const Root = () => {
   return (
     <ClientProvider value={client}>
-      <Suspense fallback={<h1>Fetching…</h1>}>
-        <App />
-      </Suspense>
+      <ErrorBoundary fallback={<h1>An error occured</h1>}>
+        <Suspense fallback={<h1>Fetching…</h1>}>
+          <App />
+        </Suspense>
+      </ErrorBoundary>
     </ClientProvider>
   );
 };

@@ -1,21 +1,20 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import {
+  use,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
-import type { ClientError } from "../errors";
 import type { AnyVariables } from "../types";
 import { deepEqual } from "../utils";
 import { useClient } from "./context";
 
-export type QueryState<Data> =
-  | { fetching: boolean }
-  | { fetching: boolean; data: Data }
-  | { fetching: boolean; error: ClientError };
+export type QueryState<Data> = {
+  fetching: boolean;
+  data: Data;
+};
 
 export type Query<
   Data,
@@ -82,18 +81,8 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
 
   const previousData = usePreviousData(data, stableVariables[0]);
 
-  useEffect(() => {
-    client.request(stableQuery, stableVariables[1]);
-  }, [client, stableQuery, stableVariables]);
-
   const fetching = data === undefined;
   const dataToExpose = fetching ? previousData : data;
-
-  const state = useMemo<QueryState<Data>>(() => {
-    return dataToExpose === undefined
-      ? { fetching }
-      : { fetching, data: dataToExpose as Data };
-  }, [dataToExpose, fetching]);
 
   const setVariables = useCallback((variables: Partial<Variables>) => {
     setStableVariables((prev) => {
@@ -112,5 +101,18 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
     });
   }, []);
 
-  return [state, { setVariables }];
+  // While there's no fresh data for the current variables, (re)issue the
+  // request. The client deduplicates in-flight requests, so calling this on
+  // every render fires at most one network request per set of variables.
+  if (fetching) {
+    const promise = client.query(stableQuery, stableVariables[1]);
+
+    // With nothing to show yet, suspend until the first result arrives.
+    // Otherwise keep showing the previous data with `fetching: true`.
+    if (dataToExpose === undefined) {
+      use(promise);
+    }
+  }
+
+  return [{ fetching, data: dataToExpose as Data }, { setVariables }];
 };

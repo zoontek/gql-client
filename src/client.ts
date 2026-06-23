@@ -5,6 +5,7 @@ import { printDocument } from "./graphql/printDocument";
 import { transformDocument } from "./graphql/transformDocument";
 import { makeRequest } from "./request";
 import type { AnyVariables, Connection, Edge, JsonValue } from "./types";
+import { serializeVariables } from "./utils";
 
 export type ClientConfig = {
   url: string;
@@ -68,6 +69,11 @@ export class Client {
   private cache: ClientCache;
   private subscribers: Set<() => void>;
 
+  private inflightRequests: WeakMap<
+    TypedDocumentNode,
+    Map<string, Promise<unknown>>
+  >;
+
   public constructor(config: ClientConfig) {
     this.url = config.url;
     this.credentials = config.credentials ?? "same-origin";
@@ -75,6 +81,7 @@ export class Client {
 
     this.cache = new ClientCache(config.schema);
     this.subscribers = new Set<() => void>();
+    this.inflightRequests = new WeakMap();
   }
 
   public subscribe(fn: () => void): () => boolean {
@@ -122,6 +129,45 @@ export class Client {
 
       return data as Data;
     });
+  }
+
+  // Suspense-friendly request: deduplicates concurrent requests for the same
+  // document and variables so a component can safely call this on every render
+  // and `use()` the returned promise. The same promise instance is handed out
+  // until it settles, which is what lets `use()` suspend on it.
+  public query<Data, Variables extends AnyVariables = AnyVariables>(
+    document: TypedDocumentNode<Data, Variables>,
+    variables: NoInfer<Variables>,
+    options: RequestOptions<Data, Variables> = {},
+  ): Promise<Data> {
+    const documentKey = document as unknown as TypedDocumentNode;
+    const key = serializeVariables(variables);
+
+    let documentRequests = this.inflightRequests.get(documentKey);
+    const existing = documentRequests?.get(key);
+
+    if (existing !== undefined) {
+      return existing as Promise<Data>;
+    }
+
+    if (documentRequests === undefined) {
+      documentRequests = new Map();
+      this.inflightRequests.set(documentKey, documentRequests);
+    }
+
+    const promise = this.request(document, variables, options);
+    documentRequests.set(key, promise);
+
+    // Clear the in-flight entry once settled so a later cache miss for the same
+    // variables (e.g. after an invalidation) triggers a fresh request. The
+    // rejection handler also marks the promise as handled, so dropping it
+    // without `use()`-ing it never surfaces an unhandled rejection.
+    promise.then(
+      () => documentRequests.delete(key),
+      () => documentRequests.delete(key),
+    );
+
+    return promise;
   }
 
   public readFromCache<Data, Variables extends AnyVariables = AnyVariables>(

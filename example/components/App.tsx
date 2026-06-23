@@ -15,33 +15,27 @@ const AllFilmsQuery = graphql(`
 export const App = () => {
   const [activeFilm, setActiveFilm] = useState<string | undefined>(undefined);
 
-  const [state, { setVariables }] = useQuery(AllFilmsQuery, {
+  const [{ data, fetching }, { setVariables }] = useQuery(AllFilmsQuery, {
     first: 3,
   });
 
-  const renderContents = () => {
-    if ("error" in state) {
-      return <div>An error occured</div>;
-    }
-    if (!("data" in state)) {
-      return <div>Fetching…</div>;
-    }
+  const { allFilms } = data;
 
-    const { allFilms } = state.data;
-    if (allFilms == null) {
-      return <div>No films</div>;
-    }
-
-    return (
+  return (
+    <div className="App">
       <div className="Main">
         <div className="Sidebar">
-          <FilmList
-            films={allFilms}
-            onNextPage={(after) => setVariables({ after })}
-            fetchingMore={state.fetching}
-            activeFilm={activeFilm}
-            onPressFilm={(filmId: string) => setActiveFilm(filmId)}
-          />
+          {allFilms == null ? (
+            <div>No films</div>
+          ) : (
+            <FilmList
+              films={allFilms}
+              onNextPage={(after) => setVariables({ after })}
+              fetchingMore={fetching}
+              activeFilm={activeFilm}
+              onPressFilm={(filmId: string) => setActiveFilm(filmId)}
+            />
+          )}
         </div>
         <div className="Contents">
           {activeFilm === undefined ? (
@@ -53,8 +47,6 @@ export const App = () => {
           )}
         </div>
       </div>
-    );
-  };
-
-  return <div className="App">{renderContents()}</div>;
+    </div>
+  );
 };
