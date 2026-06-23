@@ -46,9 +46,17 @@ export type ConnectionInfo = {
   fieldVariables: AnyVariables;
 };
 
-const STABILITY_CACHE = new WeakMap<TypedDocumentNode, Map<string, unknown>>();
+const STABILITY_CACHE = new WeakMap<
+  TypedDocumentNode,
+  Map<string, Option<Result<unknown, unknown>>>
+>();
 
 const EXCLUDED = Symbol.for("EXCLUDED");
+
+type CachedEdge = {
+  [TYPENAME_KEY]: string | null | undefined;
+  [NODE_KEY]: symbol;
+};
 
 export class ClientCache {
   private cache = new Map<symbol, CacheEntry>();
@@ -148,7 +156,7 @@ export class ClientCache {
   private getOrCreateEntry(
     cacheKey: symbol,
     defaultValue: CacheEntry,
-  ): unknown {
+  ): CacheEntry {
     const cached = this.cache.get(cacheKey);
 
     if (cached != null) {
@@ -160,10 +168,7 @@ export class ClientCache {
     }
   }
 
-  private mapEdgesToCacheEntries<A>(edges: Edge<A>[]): {
-    [TYPENAME_KEY]: string | null | undefined;
-    [NODE_KEY]: symbol;
-  }[] {
+  private mapEdgesToCacheEntries<A>(edges: Edge<A>[]): CachedEdge[] {
     return filterMap(edges, ({ node, __typename }) =>
       getCacheEntryKey(node).flatMap((key) =>
         // we can omit the requested fields here because the Connection<A> contrains the fields
@@ -199,14 +204,14 @@ export class ClientCache {
       if ("prepend" in config) {
         connectionConfig.cacheEntry[EDGES_KEY] = [
           ...this.mapEdgesToCacheEntries(config.prepend),
-          ...(connectionConfig.cacheEntry[EDGES_KEY] as unknown[]),
+          ...(connectionConfig.cacheEntry[EDGES_KEY] as CachedEdge[]),
         ];
         return;
       }
 
       if ("append" in config) {
         connectionConfig.cacheEntry[EDGES_KEY] = [
-          ...(connectionConfig.cacheEntry[EDGES_KEY] as unknown[]),
+          ...(connectionConfig.cacheEntry[EDGES_KEY] as CachedEdge[]),
           ...this.mapEdgesToCacheEntries(config.append),
         ];
         return;
@@ -214,10 +219,9 @@ export class ClientCache {
 
       const nodeIds = config.remove;
       connectionConfig.cacheEntry[EDGES_KEY] = (
-        connectionConfig.cacheEntry[EDGES_KEY] as unknown[]
+        connectionConfig.cacheEntry[EDGES_KEY] as CachedEdge[]
       ).filter((edge) => {
-        // @ts-expect-error fine
-        const node = edge[NODE_KEY] as symbol;
+        const node = edge[NODE_KEY];
         return !nodeIds.some((nodeId) => {
           return node.description?.includes(`<${nodeId}>`);
         });
@@ -442,7 +446,7 @@ export class ClientCache {
           .flatMap((byVariable) =>
             Option.fromNullable(byVariable.get(serializedVariables)),
           )
-          .flatMap((value) => value as Option<Result<unknown, unknown>>);
+          .flatMap((value) => value);
 
         if (
           previous
@@ -454,7 +458,8 @@ export class ClientCache {
         } else {
           const valueToCache = Option.Some(Result.Ok(value));
           const documentCache =
-            STABILITY_CACHE.get(document) ?? new Map<string, unknown>();
+            STABILITY_CACHE.get(document) ??
+            new Map<string, Option<Result<unknown, unknown>>>();
           documentCache.set(serializedVariables, valueToCache);
           STABILITY_CACHE.set(document, documentCache);
           return valueToCache;
@@ -534,7 +539,7 @@ export class ClientCache {
           const cacheObject = cacheEntry.getOr(
             // @ts-expect-error It's fine
             arrayCache[index] ?? createEmptyCacheEntry(),
-          ) as CacheEntry;
+          );
 
           // @ts-expect-error It's fine
           const cacheValueInParent = cacheKey.getOr(cacheObject);
@@ -557,8 +562,9 @@ export class ClientCache {
         this.getOrCreateEntry(key, createEmptyCacheEntry()),
       );
       const cacheObject = cacheEntry.getOr(
-        parentCache[fieldNameWithArguments] ?? createEmptyCacheEntry(),
-      ) as CacheEntry;
+        (parentCache[fieldNameWithArguments] as CacheEntry | undefined) ??
+          createEmptyCacheEntry(),
+      );
 
       // @ts-expect-error It's fine
       const cacheValueInParent = cacheKey.getOr(cacheObject);
@@ -623,7 +629,7 @@ export class ClientCache {
         return cacheSelectionSet(
           definition.selectionSet,
           response,
-          cacheEntry as CacheEntry,
+          cacheEntry,
           [],
         );
       }
