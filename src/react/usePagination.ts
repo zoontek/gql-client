@@ -1,6 +1,6 @@
 import { Option } from "@bloodyowl/boxed";
 import { useCallback, useRef, useSyncExternalStore } from "react";
-import type { Connection } from "../types";
+import type { Connection, JsonValue } from "../types";
 import { CONNECTION_REF, deepEqual, filterMap } from "../utils";
 import { useClient } from "./context";
 
@@ -44,10 +44,10 @@ const createPaginationHook = (direction: "after" | "before") => {
         ),
       ).map((queries) =>
         queries.map(({ query, pathInQuery }) => {
-          return pathInQuery.reduce<unknown>(
+          return pathInQuery.reduce<JsonValue>(
             (acc, key) =>
               acc != null && typeof acc === "object" && key in acc
-                ? (acc as Record<PropertyKey, unknown>)[key]
+                ? (acc as Record<PropertyKey, JsonValue>)[key]
                 : null,
             query,
           );

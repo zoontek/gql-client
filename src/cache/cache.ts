@@ -16,7 +16,7 @@ import {
 } from "../graphql/ast";
 import { getCacheEntryKey } from "../json/cacheEntryKey";
 import { getTypename } from "../json/getTypename";
-import type { AnyVariables, Connection, Edge } from "../types";
+import type { AnyVariables, Connection, Edge, JsonValue } from "../types";
 import {
   CONNECTION_REF,
   EDGES_KEY,
@@ -48,7 +48,7 @@ export type ConnectionInfo = {
 
 const STABILITY_CACHE = new WeakMap<
   TypedDocumentNode,
-  Map<string, Option<unknown>>
+  Map<string, Option<JsonValue>>
 >();
 
 const EXCLUDED = Symbol.for("EXCLUDED");
@@ -226,7 +226,7 @@ export class ClientCache {
   public readOperation(
     document: TypedDocumentNode,
     variables: AnyVariables,
-  ): Option<unknown> {
+  ): Option<JsonValue> {
     const traverse = (
       selections: SelectionSetNode,
       data: Record<PropertyKey, unknown>,
@@ -427,7 +427,7 @@ export class ClientCache {
           const valueToCache = Option.Some(value);
           const documentCache =
             STABILITY_CACHE.get(document) ??
-            new Map<string, Option<unknown>>();
+            new Map<string, Option<JsonValue>>();
           documentCache.set(serializedVariables, valueToCache);
           STABILITY_CACHE.set(document, documentCache);
           return valueToCache;
@@ -437,7 +437,7 @@ export class ClientCache {
 
   public writeOperation(
     document: TypedDocumentNode,
-    response: unknown,
+    response: JsonValue,
     variables: AnyVariables,
   ): void {
     const registerConnection = (

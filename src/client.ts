@@ -5,7 +5,7 @@ import { getOperationName } from "./graphql/ast";
 import { printDocument } from "./graphql/printDocument";
 import { transformDocument } from "./graphql/transformDocument";
 import { makeRequest } from "./request";
-import type { AnyVariables, Connection, Edge } from "./types";
+import type { AnyVariables, Connection, Edge, JsonValue } from "./types";
 
 export type ClientConfig = {
   url: string;
@@ -99,31 +99,33 @@ export class Client {
         query: printDocument(transformedDocument),
         variables,
       }),
-    })
-      .then((data) => data as Data)
-      .then((data) => {
-        this.cache.writeOperation(transformedDocument, data, variables);
+    }).then((data) => {
+      this.cache.writeOperation(transformedDocument, data, variables);
 
-        if (connectionUpdates !== undefined) {
-          connectionUpdates.forEach((getUpdate) => {
-            getUpdate({ data, variables, prepend, append, remove }).map(
-              ([connection, update]) => {
-                this.cache.updateConnection(connection, update);
-              },
-            );
+      if (connectionUpdates !== undefined) {
+        connectionUpdates.forEach((getUpdate) => {
+          getUpdate({
+            data: data as Data,
+            variables,
+            prepend,
+            append,
+            remove,
+          }).map(([connection, update]) => {
+            this.cache.updateConnection(connection, update);
           });
-        }
+        });
+      }
 
-        this.subscribers.forEach((fn) => fn());
+      this.subscribers.forEach((fn) => fn());
 
-        return data;
-      });
+      return data as Data;
+    });
   }
 
   public readFromCache<Data, Variables extends AnyVariables = AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
-  ): Option<unknown> {
+  ): Option<JsonValue> {
     const transformedDocument = transformDocument(document);
     return this.cache.readOperation(transformedDocument, variables);
   }

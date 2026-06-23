@@ -54,6 +54,7 @@ const transformDocumentCache = new Map<TypedDocumentNode, TypedDocumentNode>();
  * @returns transformedDocument
  */
 export const transformDocument = (
+  // oxlint-disable-next-line typescript/no-explicit-any
   document: TypedDocumentNode<any, any>,
 ): TypedDocumentNode => {
   const cachedDocument = transformDocumentCache.get(document);

@@ -1,4 +1,5 @@
 import { parseGraphQLError } from "./errors";
+import type { JsonValue } from "./types";
 import { isRecord } from "./utils";
 
 export class NetworkError extends Error {
@@ -62,7 +63,7 @@ export const makeRequest = async ({
   credentials = "same-origin",
   headers = {},
   timeout = 10000,
-}: Config): Promise<unknown> => {
+}: Config): Promise<JsonValue> => {
   const controller = new AbortController();
 
   if (Number.isFinite(timeout) && timeout >= 0) {
@@ -88,14 +89,14 @@ export const makeRequest = async ({
         throw new BadStatusError(response);
       }
 
-      const json: unknown = await response.json().catch(() => null);
+      const json: JsonValue = await response.json().catch(() => null);
 
       if (isRecord(json)) {
         if ("errors" in json && Array.isArray(json.errors)) {
           throw json.errors.map(parseGraphQLError);
         }
         if ("data" in json && json.data != null) {
-          return json.data;
+          return json.data as JsonValue;
         }
       }
 
