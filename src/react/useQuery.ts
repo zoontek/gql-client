@@ -76,14 +76,7 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
 
   const previousAsyncData = usePreviousValue(asyncData);
 
-  const isSuspenseFirstFetch = useRef(true);
-
   useEffect(() => {
-    if (isSuspenseFirstFetch.current) {
-      isSuspenseFirstFetch.current = false;
-      return;
-    }
-
     const request = client.request(stableQuery, stableVariables[1]);
 
     return (): void => {
@@ -93,10 +86,6 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
 
   const fetching = asyncData.isLoading();
   const asyncDataToExpose = fetching ? previousAsyncData : asyncData;
-
-  if (isSuspenseFirstFetch.current && asyncDataToExpose.isLoading()) {
-    throw client.request(stableQuery, stableVariables[1]).toPromise();
-  }
 
   const setVariables = useCallback((variables: Partial<Variables>) => {
     setStableVariables((prev) => {
