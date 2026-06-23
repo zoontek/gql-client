@@ -14,7 +14,7 @@ export type {
   MutationConfig,
   MutationState,
 } from "./react/useMutation";
-export type { Query } from "./react/useQuery";
+export type { Query, QueryState } from "./react/useQuery";
 export type {
   Connection,
   Edge,

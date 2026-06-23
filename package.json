@@ -37,7 +37,7 @@
     "lint": "oxlint",
     "example": "vite example --config vite.config.mjs",
     "format": "prettier '**/*' --ignore-unknown --write",
-    "test": "vitest run",
+    "test": "bun test",
     "typecheck": "tsc --noEmit",
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "prepack": "bun typecheck && bun test && bun run build",
@@ -76,7 +76,6 @@
     "tsup": "^8.5.1",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
-    "vite": "^8.1.0",
-    "vitest": "^4.1.9"
+    "vite": "^8.1.0"
   }
 }

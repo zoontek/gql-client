@@ -1,4 +1,4 @@
-import { AsyncData, Result } from "@bloodyowl/boxed";
+import type { Option } from "@bloodyowl/boxed";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import {
   useCallback,
@@ -13,21 +13,22 @@ import type { AnyVariables } from "../types";
 import { deepEqual } from "../utils";
 import { useClient } from "./context";
 
+export type QueryState<Data> =
+  | { fetching: boolean }
+  | { fetching: boolean; data: Data }
+  | { fetching: boolean; error: ClientError };
+
 export type Query<
   Data,
   Variables extends AnyVariables = AnyVariables,
 > = readonly [
-  AsyncData<Result<Data, ClientError>>,
+  QueryState<Data>,
   {
-    fetching: boolean;
     setVariables: (variables: Partial<Variables>) => void;
   },
 ];
 
-const usePreviousValue = <A, T extends AsyncData<A>>(
-  value: T,
-  resetKey: unknown,
-): T => {
+const usePreviousData = <T>(value: Option<T>, resetKey: unknown): Option<T> => {
   const previousRef = useRef(value);
   const resetKeyRef = useRef(resetKey);
 
@@ -40,10 +41,7 @@ const usePreviousValue = <A, T extends AsyncData<A>>(
   }
 
   useEffect(() => {
-    if (value.isDone()) {
-      previousRef.current = value;
-    }
-    if (value.isLoading() && previousRef.current.isNotAsked()) {
+    if (value.isSome()) {
       previousRef.current = value;
     }
   }, [value]);
@@ -80,20 +78,21 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
 
   const data = useSyncExternalStore((fn) => client.subscribe(fn), getSnapshot);
 
-  const asyncData = useMemo(() => {
-    return data
-      .map((value) => AsyncData.Done(Result.Ok(value as Data)))
-      .getOr(AsyncData.Loading());
-  }, [data]);
-
-  const previousAsyncData = usePreviousValue(asyncData, stableVariables[0]);
+  const previousData = usePreviousData(data, stableVariables[0]);
 
   useEffect(() => {
     client.request(stableQuery, stableVariables[1]);
   }, [client, stableQuery, stableVariables]);
 
-  const fetching = asyncData.isLoading();
-  const asyncDataToExpose = fetching ? previousAsyncData : asyncData;
+  const fetching = data.isNone();
+  const dataToExpose = fetching ? previousData : data;
+
+  const state = useMemo<QueryState<Data>>(() => {
+    return dataToExpose.match({
+      Some: (value) => ({ fetching, data: value as Data }),
+      None: () => ({ fetching }),
+    });
+  }, [dataToExpose, fetching]);
 
   const setVariables = useCallback((variables: Partial<Variables>) => {
     setStableVariables((prev) => {
@@ -112,5 +111,5 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
     });
   }, []);
 
-  return [asyncDataToExpose, { fetching, setVariables }];
+  return [state, { setVariables }];
 };

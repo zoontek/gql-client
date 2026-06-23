@@ -23,50 +23,53 @@ type Props = {
 };
 
 export const FilmDetails = ({ filmId }: Props) => {
-  const [data, { fetching, setVariables }] = useQuery(FilmDetailsQuery, {
+  const [state, { setVariables }] = useQuery(FilmDetailsQuery, {
     filmId,
     first: 5,
   });
 
+  const renderContents = () => {
+    if ("error" in state) {
+      return <div>An error occured</div>;
+    }
+    if (!("data" in state)) {
+      return <div>Fetching…</div>;
+    }
+
+    const { film } = state.data;
+    if (film == null) {
+      return <div>No film</div>;
+    }
+
+    return (
+      <>
+        <h1>{film.title}</h1>
+        <div>Director: {film.director}</div>
+        <div>Release date: {film.releaseDate}</div>
+        <div>
+          Producers: <span>{film.producers?.join(", ")}</span>
+        </div>
+        <div>
+          Opening crawl:
+          <pre>{film.openingCrawl}</pre>
+        </div>
+        {film.characterConnection != null ? (
+          <>
+            <h2>Characters</h2>
+            <FilmCharacterList
+              characters={film.characterConnection}
+              onNextPage={(after) => setVariables({ after })}
+              fetchingMore={state.fetching}
+            />
+          </>
+        ) : null}
+      </>
+    );
+  };
+
   return (
-    <div className="FilmDetails" style={{ opacity: fetching ? 0.5 : 1 }}>
-      {data.match({
-        NotAsked: () => null,
-        Loading: () => <div>Fetching…</div>,
-        Done: (result) =>
-          result.match({
-            Error: () => <div>An error occured</div>,
-            Ok: ({ film }) => {
-              if (film == null) {
-                return <div>No film</div>;
-              }
-              return (
-                <>
-                  <h1>{film.title}</h1>
-                  <div>Director: {film.director}</div>
-                  <div>Release date: {film.releaseDate}</div>
-                  <div>
-                    Producers: <span>{film.producers?.join(", ")}</span>
-                  </div>
-                  <div>
-                    Opening crawl:
-                    <pre>{film.openingCrawl}</pre>
-                  </div>
-                  {film.characterConnection != null ? (
-                    <>
-                      <h2>Characters</h2>
-                      <FilmCharacterList
-                        characters={film.characterConnection}
-                        onNextPage={(after) => setVariables({ after })}
-                        fetchingMore={fetching}
-                      />
-                    </>
-                  ) : null}
-                </>
-              );
-            },
-          }),
-      })}
+    <div className="FilmDetails" style={{ opacity: state.fetching ? 0.5 : 1 }}>
+      {renderContents()}
     </div>
   );
 };
