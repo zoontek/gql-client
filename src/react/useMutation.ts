@@ -1,4 +1,4 @@
-import { AsyncData, Future, Result } from "@bloodyowl/boxed";
+import { Future, Result } from "@bloodyowl/boxed";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { useCallback, useRef, useState } from "react";
 import type { GetConnectionUpdate } from "../client";
@@ -6,12 +6,18 @@ import type { ClientError } from "../errors";
 import type { AnyVariables } from "../types";
 import { useClient } from "./context";
 
+export type MutationState<Data> =
+  | { fetching: false }
+  | { fetching: true }
+  | { fetching: false; data: Data }
+  | { fetching: false; error: ClientError };
+
 export type Mutation<
   Data,
   Variables extends AnyVariables = AnyVariables,
 > = readonly [
   (variables: Variables) => Future<Result<Data, ClientError>>,
-  AsyncData<Result<Data, ClientError>>,
+  MutationState<Data>,
 ];
 
 export type MutationConfig<
@@ -34,22 +40,25 @@ export const useMutation = <
   connectionUpdatesRef.current = config?.connectionUpdates;
 
   const [stableMutation] = useState(mutation);
-
-  const [data, setData] = useState<AsyncData<Result<Data, ClientError>>>(
-    AsyncData.NotAsked(),
-  );
+  const [state, setState] = useState<MutationState<Data>>({ fetching: false });
 
   const mutate = useCallback(
     (variables: Variables) => {
-      setData(AsyncData.Loading());
+      setState({ fetching: true });
+
       return client
         .request(stableMutation, variables, {
           connectionUpdates: connectionUpdatesRef.current,
         })
-        .tap((result) => setData(AsyncData.Done(result)));
+        .tap((result) => {
+          result.match({
+            Ok: (data) => setState({ fetching: false, data }),
+            Error: (error) => setState({ fetching: false, error }),
+          });
+        });
     },
     [client, stableMutation],
   );
 
-  return [mutate, data];
+  return [mutate, state];
 };

@@ -19,7 +19,7 @@ export type Query<
 > = readonly [
   AsyncData<Result<Data, ClientError>>,
   {
-    isLoading: boolean;
+    fetching: boolean;
     setVariables: (variables: Partial<Variables>) => void;
   },
 ];
@@ -53,13 +53,10 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
     [Variables, Variables]
   >([variables, variables]);
 
-  const [isReloading, setIsReloading] = useState(false);
-
   useEffect(() => {
     const [providedVariables] = stableVariables;
 
     if (!deepEqual(providedVariables, variables)) {
-      setIsReloading(true);
       setStableVariables([variables, variables]);
     }
   }, [stableVariables, variables]);
@@ -69,10 +66,7 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
     return client.readFromCache(stableQuery, stableVariables[1]);
   }, [client, stableQuery, stableVariables]);
 
-  const data = useSyncExternalStore(
-    (func) => client.subscribe(func),
-    getSnapshot,
-  );
+  const data = useSyncExternalStore((fn) => client.subscribe(fn), getSnapshot);
 
   const asyncData = useMemo(() => {
     return data
@@ -81,28 +75,24 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
   }, [data]);
 
   const previousAsyncData = usePreviousValue(asyncData);
+
   const isSuspenseFirstFetch = useRef(true);
-  const isLoading = isReloading || asyncData.isLoading();
 
   useEffect(() => {
     if (isSuspenseFirstFetch.current) {
       isSuspenseFirstFetch.current = false;
       return;
     }
-    const request = client
-      .request(stableQuery, stableVariables[1])
-      .tap(() => setIsReloading(false));
+
+    const request = client.request(stableQuery, stableVariables[1]);
 
     return (): void => {
       request.cancel();
     };
   }, [client, stableQuery, stableVariables]);
 
-  const asyncDataToExpose = isReloading
-    ? AsyncData.Loading()
-    : isLoading
-      ? previousAsyncData
-      : asyncData;
+  const fetching = asyncData.isLoading();
+  const asyncDataToExpose = fetching ? previousAsyncData : asyncData;
 
   if (isSuspenseFirstFetch.current && asyncDataToExpose.isLoading()) {
     throw client.request(stableQuery, stableVariables[1]).toPromise();
@@ -111,7 +101,11 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
   const setVariables = useCallback((variables: Partial<Variables>) => {
     setStableVariables((prev) => {
       const [prevStable, prevFinal] = prev;
-      const nextFinal = { ...prevFinal, ...variables };
+
+      const nextFinal = {
+        ...prevFinal,
+        ...variables,
+      };
 
       if (!deepEqual(prevFinal, nextFinal)) {
         return [prevStable, nextFinal];
@@ -121,5 +115,5 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
     });
   }, []);
 
-  return [asyncDataToExpose, { isLoading, setVariables }];
+  return [asyncDataToExpose, { fetching, setVariables }];
 };

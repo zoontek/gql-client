@@ -32,7 +32,7 @@ import {
 } from "../utils";
 import { createEmptyCacheEntry, type CacheEntry } from "./entry";
 
-export type SchemaConfig = {
+export type Schema = {
   interfaceToTypes: Record<string, string[]>;
 };
 
@@ -62,9 +62,9 @@ export class ClientCache {
   private connectionCache: Map<number, ConnectionInfo>;
   private connectionRefCount = -1;
 
-  public constructor(schemaConfig: SchemaConfig) {
+  public constructor(schema: Schema) {
     this.interfaceToType = Object.fromEntries(
-      Object.entries(schemaConfig.interfaceToTypes).map(([key, value]) => [
+      Object.entries(schema.interfaceToTypes).map(([key, value]) => [
         key,
         new Set<string>(value),
       ]),

@@ -2,10 +2,10 @@ import { Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { Client, ClientProvider } from "../src";
 import { App } from "./components/App";
-import schemaConfig from "./schema.json";
+import schema from "./schema.json";
 
 const client = new Client({
-  schemaConfig,
+  schema,
   url: "https://swapi-graphql.netlify.app/graphql",
   headers: {
     "Content-Type": "application/json",

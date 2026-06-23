@@ -9,7 +9,11 @@ export {
 export { useQuery } from "./react/useQuery";
 
 export type { ClientError } from "./errors";
-export type { Mutation, MutationConfig } from "./react/useMutation";
+export type {
+  Mutation,
+  MutationConfig,
+  MutationState,
+} from "./react/useMutation";
 export type { Query } from "./react/useQuery";
 export type {
   Connection,

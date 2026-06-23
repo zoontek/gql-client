@@ -8,7 +8,7 @@ import {
 import { Client } from "../client";
 
 const ClientContext = createContext(
-  new Client({ url: "/graphql", schemaConfig: { interfaceToTypes: {} } }),
+  new Client({ url: "/graphql", schema: { interfaceToTypes: {} } }),
 );
 
 type Props = {

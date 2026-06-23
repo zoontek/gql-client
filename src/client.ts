@@ -1,11 +1,7 @@
 import { Future, Option, Result } from "@bloodyowl/boxed";
 import { Request, badStatusToError, emptyToError } from "@bloodyowl/request";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
-import {
-  ClientCache,
-  type ConnectionInfo,
-  type SchemaConfig,
-} from "./cache/cache";
+import { ClientCache, type ConnectionInfo, type Schema } from "./cache/cache";
 import {
   type ClientError,
   InvalidGraphQLResponseError,
@@ -19,7 +15,7 @@ export type ClientConfig = {
   url: string;
   credentials?: RequestCredentials;
   headers?: Record<string, string>;
-  schemaConfig: SchemaConfig;
+  schema: Schema;
 };
 
 type ConnectionUpdate<Node> = [
@@ -83,7 +79,7 @@ export class Client {
     this.credentials = config.credentials ?? "same-origin";
     this.headers = config.headers ?? {};
 
-    this.cache = new ClientCache(config.schemaConfig);
+    this.cache = new ClientCache(config.schema);
     this.subscribers = new Set<() => void>();
     this.transformedDocuments = new Map<TypedDocumentNode, TypedDocumentNode>();
   }
@@ -160,8 +156,8 @@ export class Client {
       })
       .tap((result) => {
         this.cache.setOperationInCache(transformedDocument, variables, result);
-        this.subscribers.forEach((func) => {
-          func();
+        this.subscribers.forEach((fn) => {
+          fn();
         });
       });
   }
