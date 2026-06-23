@@ -1,7 +1,7 @@
-import type { DocumentNode } from "@0no-co/graphql.web";
 import { Array, Option, Result } from "@bloodyowl/boxed";
+import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { getCacheEntryKey } from "../json/cacheEntryKey";
-import type { Connection, Edge } from "../types";
+import type { Connection, Edge, UnknownVariables } from "../types";
 import {
   CONNECTION_REF,
   EDGES_KEY,
@@ -22,16 +22,17 @@ type ConnectionInfo = {
   // useful for connection updates
   cacheEntry: CacheEntry;
   // to re-read from cache
-  document: DocumentNode;
-  variables: Record<string, unknown>;
+  document: TypedDocumentNode;
+  variables: UnknownVariables;
   pathInQuery: PropertyKey[];
-  fieldVariables: Record<string, unknown>;
+  fieldVariables: UnknownVariables;
 };
 
 export class ClientCache {
   cache = new Map<symbol, CacheEntry>();
+
   operationCache = new Map<
-    DocumentNode,
+    TypedDocumentNode,
     Map<string, Option<Result<unknown, unknown>>>
   >();
 
@@ -71,8 +72,8 @@ export class ClientCache {
   }
 
   getOperationFromCache(
-    documentNode: DocumentNode,
-    variables: Record<string, unknown>,
+    documentNode: TypedDocumentNode,
+    variables: UnknownVariables,
   ): Option<Result<unknown, unknown>> {
     const serializedVariables = serializeVariables(variables);
     return Option.fromNullable(this.operationCache.get(documentNode))
@@ -81,8 +82,8 @@ export class ClientCache {
   }
 
   setOperationInCache(
-    documentNode: DocumentNode,
-    variables: Record<string, unknown>,
+    documentNode: TypedDocumentNode,
+    variables: UnknownVariables,
     data: Result<unknown, unknown>,
   ): void {
     const serializedVariables = serializeVariables(variables);
@@ -129,10 +130,6 @@ export class ClientCache {
       this.cache.set(cacheKey, entry);
       return entry;
     }
-  }
-
-  set(cacheKey: symbol, entry: CacheEntry): void {
-    this.cache.set(cacheKey, entry);
   }
 
   updateConnection<A>(

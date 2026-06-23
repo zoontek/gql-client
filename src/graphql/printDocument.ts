@@ -1,13 +1,8 @@
 // From @apollo/utils.printwithreducedwhitespace
 // https://github.com/apollographql/apollo-utils/blob/%40apollo/utils.printwithreducedwhitespace%403.0.0/packages/printWithReducedWhitespace/src/index.ts
 
-import {
-  Kind,
-  print,
-  visit,
-  type DocumentNode,
-  type StringValueNode,
-} from "@0no-co/graphql.web";
+import { Kind, print, visit, type StringValueNode } from "@0no-co/graphql.web";
+import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
 const decodeText = TextDecoder.prototype.decode.bind(new TextDecoder());
 const encodeText = TextEncoder.prototype.encode.bind(new TextEncoder());
@@ -33,9 +28,9 @@ const toUTF8 = (hex: string): string => {
   return decodeText(bytes);
 };
 
-const printDocumentCache = new Map<DocumentNode, string>();
+const printDocumentCache = new Map<TypedDocumentNode, string>();
 
-export const printDocument = (document: DocumentNode): string => {
+export const printDocument = (document: TypedDocumentNode): string => {
   const cachedDocument = printDocumentCache.get(document);
 
   if (cachedDocument != null) {

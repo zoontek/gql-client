@@ -1,30 +1,31 @@
 import {
   Kind,
   OperationTypeNode,
-  type DocumentNode,
   type FieldNode,
   type SelectionSetNode,
 } from "@0no-co/graphql.web";
+import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import {
   extractArguments,
   getFieldName,
   getFieldNameWithArguments,
 } from "../graphql/ast";
 import { getCacheEntryKey } from "../json/cacheEntryKey";
+import type { UnknownVariables } from "../types";
 import { CONNECTION_REF, isRecord, REQUESTED_KEYS } from "../utils";
 import type { ClientCache } from "./cache";
 import { createEmptyCacheEntry, type CacheEntry } from "./entry";
 
 export const writeOperationToCache = (
   cache: ClientCache,
-  document: DocumentNode,
+  document: TypedDocumentNode,
   response: unknown,
-  variables: Record<string, unknown>,
+  variables: UnknownVariables,
 ): void => {
   const registerConnection = (
     cacheEntry: CacheEntry,
     pathInQuery: PropertyKey[],
-    fieldVariables: Record<string, unknown>,
+    fieldVariables: UnknownVariables,
   ): void => {
     if (cacheEntry[CONNECTION_REF]) {
       return;

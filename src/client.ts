@@ -1,6 +1,6 @@
-import type { DocumentNode } from "@0no-co/graphql.web";
 import { Future, Option, Result } from "@bloodyowl/boxed";
 import { Request, badStatusToError, emptyToError } from "@bloodyowl/request";
+import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { ClientCache, type SchemaConfig } from "./cache/cache";
 import { readOperationFromCache } from "./cache/read";
 import { writeOperationToCache } from "./cache/write";
@@ -15,14 +15,14 @@ import {
   inlineFragments,
 } from "./graphql/ast";
 import { printDocument } from "./graphql/printDocument";
-import type { Connection, Edge, TypedDocumentNode } from "./types";
+import type { Connection, Edge, UnknownVariables } from "./types";
 
 type RequestConfig = {
   url: string;
   headers: Record<string, string>;
   operationName: string;
-  document: DocumentNode;
-  variables: Record<string, unknown>;
+  document: TypedDocumentNode;
+  variables: UnknownVariables;
   credentials?: RequestCredentials;
 };
 
@@ -98,7 +98,10 @@ const remove = <A>(
   return [connection, { remove: ids }];
 };
 
-export type GetConnectionUpdate<Data, Variables> = (config: {
+export type GetConnectionUpdate<
+  Data,
+  Variables extends UnknownVariables = UnknownVariables,
+> = (config: {
   data: Data;
   variables: Variables;
   prepend: <A>(
@@ -112,7 +115,10 @@ export type GetConnectionUpdate<Data, Variables> = (config: {
   remove: <A>(connection: Connection<A>, ids: string[]) => ConnectionUpdate<A>;
 }) => Option<ConnectionUpdate<unknown>>;
 
-type RequestOptions<Data, Variables> = {
+type RequestOptions<
+  Data,
+  Variables extends UnknownVariables = UnknownVariables,
+> = {
   connectionUpdates?: GetConnectionUpdate<Data, Variables>[] | undefined;
 };
 
@@ -125,8 +131,8 @@ export class Client {
 
   subscribers: Set<() => void>;
 
-  transformedDocuments: Map<DocumentNode, DocumentNode>;
-  transformedDocumentsForRequest: Map<DocumentNode, DocumentNode>;
+  transformedDocuments: Map<TypedDocumentNode, TypedDocumentNode>;
+  transformedDocumentsForRequest: Map<TypedDocumentNode, TypedDocumentNode>;
 
   constructor(config: ClientConfig) {
     this.url = config.url;
@@ -145,11 +151,9 @@ export class Client {
     this.transformedDocumentsForRequest = new Map();
   }
 
-  getTransformedDocument(document: DocumentNode): DocumentNode & {
-    readonly tokenCount?: number;
-  } {
+  getTransformedDocument(document: TypedDocumentNode): TypedDocumentNode {
     if (this.transformedDocuments.has(document)) {
-      return this.transformedDocuments.get(document) as DocumentNode;
+      return this.transformedDocuments.get(document) as TypedDocumentNode;
     } else {
       const transformedDocument = inlineFragments(addTypenames(document));
       this.transformedDocuments.set(document, transformedDocument);
@@ -157,11 +161,13 @@ export class Client {
     }
   }
 
-  getTransformedDocumentsForRequest(document: DocumentNode): DocumentNode & {
-    readonly tokenCount?: number;
-  } {
+  getTransformedDocumentsForRequest(
+    document: TypedDocumentNode,
+  ): TypedDocumentNode {
     if (this.transformedDocumentsForRequest.has(document)) {
-      return this.transformedDocumentsForRequest.get(document) as DocumentNode;
+      return this.transformedDocumentsForRequest.get(
+        document,
+      ) as TypedDocumentNode;
     } else {
       const transformedDocument = addTypenames(document);
       this.transformedDocumentsForRequest.set(document, transformedDocument);
@@ -174,35 +180,29 @@ export class Client {
     return () => this.subscribers.delete(func);
   }
 
-  request<Data, Variables>(
+  request<Data, Variables extends UnknownVariables = UnknownVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
     { connectionUpdates }: RequestOptions<Data, Variables> = {},
   ): Future<Result<Data, ClientError>> {
     const transformedDocument = this.getTransformedDocument(document);
+
     const transformedDocumentsForRequest =
       this.getTransformedDocumentsForRequest(document);
 
     const operationName =
       getExecutableOperationName(transformedDocument).getOr("Untitled");
 
-    const variablesAsRecord = variables as Record<string, unknown>;
-
     return this.makeRequest({
       url: this.url,
       operationName,
       document: transformedDocumentsForRequest,
-      variables: variablesAsRecord,
+      variables,
       headers: this.headers,
     })
       .mapOk((data) => data as Data)
       .tapOk((data) => {
-        writeOperationToCache(
-          this.cache,
-          transformedDocument,
-          data,
-          variablesAsRecord,
-        );
+        writeOperationToCache(this.cache, transformedDocument, data, variables);
       })
       .tapOk((data) => {
         if (connectionUpdates !== undefined) {
@@ -216,36 +216,28 @@ export class Client {
         }
       })
       .tap((result) => {
-        this.cache.setOperationInCache(
-          transformedDocument,
-          variablesAsRecord,
-          result,
-        );
+        this.cache.setOperationInCache(transformedDocument, variables, result);
         this.subscribers.forEach((func) => {
           func();
         });
       });
   }
 
-  readFromCache<Data, Variables>(
+  readFromCache<Data, Variables extends UnknownVariables = UnknownVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
   ): Option<Result<unknown, unknown>> {
-    const variablesAsRecord = variables as Record<string, unknown>;
     const transformedDocument = this.getTransformedDocument(document);
+
     const cached = this.cache.getOperationFromCache(
       transformedDocument,
-      variablesAsRecord,
+      variables,
     );
 
     if (cached.isSome() && cached.get().isError()) {
       return cached;
     }
 
-    return readOperationFromCache(
-      this.cache,
-      transformedDocument,
-      variablesAsRecord,
-    );
+    return readOperationFromCache(this.cache, transformedDocument, variables);
   }
 }

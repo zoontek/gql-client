@@ -1,9 +1,6 @@
-import {
-  Kind,
-  type DocumentNode,
-  type SelectionSetNode,
-} from "@0no-co/graphql.web";
+import { Kind, type SelectionSetNode } from "@0no-co/graphql.web";
 import { Array, Option, Result } from "@bloodyowl/boxed";
+import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import {
   getCacheKeyFromOperationNode,
   getFieldName,
@@ -12,6 +9,7 @@ import {
   isExcluded,
 } from "../graphql/ast";
 import { getTypename } from "../json/getTypename";
+import type { UnknownVariables } from "../types";
 import {
   REQUESTED_KEYS,
   containsAll,
@@ -46,14 +44,14 @@ const getFromCacheOrReturnValue = (
   return Option.Some(valueOrKey);
 };
 
-const STABILITY_CACHE = new WeakMap<DocumentNode, Map<string, unknown>>();
+const STABILITY_CACHE = new WeakMap<TypedDocumentNode, Map<string, unknown>>();
 
 const EXCLUDED = Symbol.for("EXCLUDED");
 
 export const readOperationFromCache = (
   cache: ClientCache,
-  document: DocumentNode,
-  variables: Record<string, unknown>,
+  document: TypedDocumentNode,
+  variables: UnknownVariables,
 ): Option<Result<unknown, unknown>> => {
   const traverse = (
     selections: SelectionSetNode,

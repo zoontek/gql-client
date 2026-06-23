@@ -1,3 +1,5 @@
+import type { UnknownVariables } from "./types";
+
 export const REQUESTED_KEYS = Symbol.for("__requestedKeys");
 
 export const CONNECTION_REF = "__connectionRef";
@@ -50,8 +52,6 @@ export const deepEqual = (a: any, b: any): boolean => {
   return true;
 };
 
-export const serializeVariables = (
-  variables: Record<string, unknown>,
-): string => {
+export const serializeVariables = (variables: UnknownVariables): string => {
   return JSON.stringify(variables);
 };

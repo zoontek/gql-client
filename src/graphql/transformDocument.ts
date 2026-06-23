@@ -1,10 +1,10 @@
 import {
   Kind,
   visit,
-  type DocumentNode,
   type FieldNode,
   type SelectionSetNode,
 } from "@0no-co/graphql.web";
+import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
 const TYPENAME_NODE: FieldNode = {
   kind: Kind.FIELD,
@@ -14,7 +14,7 @@ const TYPENAME_NODE: FieldNode = {
   },
 };
 
-const transformDocumentCache = new Map<DocumentNode, DocumentNode>();
+const transformDocumentCache = new Map<TypedDocumentNode, TypedDocumentNode>();
 
 /**
  * Simplifies the query for internal processing by inlining all fragments and
@@ -23,7 +23,9 @@ const transformDocumentCache = new Map<DocumentNode, DocumentNode>();
  * @param document
  * @returns transformedDocument
  */
-export const transformDocument = (document: DocumentNode): DocumentNode => {
+export const transformDocument = (
+  document: TypedDocumentNode,
+): TypedDocumentNode => {
   const cachedDocument = transformDocumentCache.get(document);
   let operationDefinitionFound = false;
 

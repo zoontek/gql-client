@@ -4,7 +4,6 @@ import {
   visit,
   type ASTNode,
   type DirectiveNode,
-  type DocumentNode,
   type FieldNode,
   type FragmentDefinitionNode,
   type InlineFragmentNode,
@@ -14,6 +13,8 @@ import {
   type ValueNode,
 } from "@0no-co/graphql.web";
 import { Array, Option } from "@bloodyowl/boxed";
+import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
+import type { UnknownVariables } from "../types";
 
 /**
  * Gets the field name in the response payload from its AST definition
@@ -34,7 +35,7 @@ export const getFieldName = (fieldNode: FieldNode): string => {
  */
 const extractValue = (
   valueNode: ValueNode,
-  variables: Record<string, unknown>,
+  variables: UnknownVariables,
 ): unknown => {
   switch (valueNode.kind) {
     case Kind.NULL:
@@ -70,8 +71,8 @@ const extractValue = (
  */
 export const extractArguments = (
   fieldNode: FieldNode,
-  variables: Record<string, unknown>,
-): Record<string, unknown> => {
+  variables: UnknownVariables,
+): UnknownVariables => {
   const args = fieldNode.arguments ?? [];
   return Object.fromEntries(
     args.map(({ name: { value: name }, value }) => [
@@ -99,7 +100,7 @@ export const extractArguments = (
  */
 export const getFieldNameWithArguments = (
   fieldNode: FieldNode,
-  variables: Record<string, unknown>,
+  variables: UnknownVariables,
 ): symbol => {
   const fieldName = getFieldName(fieldNode);
   const args = extractArguments(fieldNode, variables);
@@ -121,7 +122,7 @@ export const getFieldNameWithArguments = (
  */
 export const getSelectedKeys = (
   fieldNode: FieldNode | OperationDefinitionNode,
-  variables: Record<string, unknown>,
+  variables: UnknownVariables,
 ): Set<symbol> => {
   const selectedKeys = new Set<symbol>();
 
@@ -154,7 +155,9 @@ export const getSelectedKeys = (
  * @param documentNode
  * @returns documentNode
  */
-export const inlineFragments = (documentNode: DocumentNode): DocumentNode => {
+export const inlineFragments = (
+  documentNode: TypedDocumentNode,
+): TypedDocumentNode => {
   const fragmentMap: { [fragmentName: string]: FragmentDefinitionNode } = {};
 
   // Populate the fragment map
@@ -218,7 +221,9 @@ const TYPENAME_NODE: FieldNode = {
  * @param documentNode
  * @returns documentNode
  */
-export const addTypenames = (documentNode: DocumentNode): DocumentNode => {
+export const addTypenames = (
+  documentNode: TypedDocumentNode,
+): TypedDocumentNode => {
   return visit(documentNode, {
     [Kind.SELECTION_SET]: (selectionSet): SelectionSetNode => {
       if (
@@ -240,7 +245,7 @@ export const addTypenames = (documentNode: DocumentNode): DocumentNode => {
 };
 
 export const getExecutableOperationName = (
-  document: DocumentNode,
+  document: TypedDocumentNode,
 ): Option<string> => {
   return Array.findMap(document.definitions, (definition) => {
     if (definition.kind === Kind.OPERATION_DEFINITION) {
@@ -253,7 +258,7 @@ export const getExecutableOperationName = (
 
 export const isExcluded = (
   fieldNode: FieldNode,
-  variables: Record<string, unknown>,
+  variables: UnknownVariables,
 ): boolean => {
   if (!Array.isArray(fieldNode.directives)) {
     return false;
