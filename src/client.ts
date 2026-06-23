@@ -11,6 +11,7 @@ export type ClientConfig = {
   url: string;
   credentials?: RequestCredentials;
   headers?: Record<string, string>;
+  timeout?: number;
   schema: Schema;
 };
 
@@ -65,6 +66,7 @@ export class Client {
   private url: string;
   private credentials: RequestCredentials;
   private headers: Record<string, string>;
+  private timeout: number | undefined;
 
   private cache: ClientCache;
   private subscribers: Set<() => void>;
@@ -78,6 +80,7 @@ export class Client {
     this.url = config.url;
     this.credentials = config.credentials ?? "same-origin";
     this.headers = config.headers ?? {};
+    this.timeout = config.timeout;
 
     this.cache = new ClientCache(config.schema);
     this.subscribers = new Set<() => void>();
@@ -102,6 +105,7 @@ export class Client {
       url: this.url,
       credentials: this.credentials,
       headers: this.headers,
+      timeout: this.timeout,
       body: JSON.stringify({
         operationName: getOperationName(transformedDocument),
         query: printDocument(transformedDocument),

@@ -54,7 +54,7 @@ type Config = {
   body?: BodyInit | null;
   credentials?: RequestCredentials;
   headers?: Record<string, string>;
-  timeout?: number;
+  timeout?: number | undefined;
 };
 
 export const makeRequest = async ({

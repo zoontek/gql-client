@@ -56,16 +56,14 @@ const STABILITY_CACHE = new WeakMap<
   Map<string, JsonValue>
 >();
 
-const EXCLUDED = Symbol.for("EXCLUDED");
-
 // Sentinel used internally to signal a cache miss. It is distinct from a cached
 // `null`/`undefined` value, which are legitimate results that must be preserved.
 const MISS = Symbol("MISS");
 
 // Produces a plain-JSON copy of a traversed result in a single pass. The
 // traversal builds its objects with `{ ...acc }`, which also copies the
-// internal symbol-keyed cache metadata (REQUESTED_KEYS, field references) and
-// the `EXCLUDED` marker. This strips all of that — equivalent to the previous
+// internal symbol-keyed cache metadata (REQUESTED_KEYS, field references). This
+// strips all of that — equivalent to the previous
 // `JSON.parse(JSON.stringify(...))`, but without allocating an intermediate
 // JSON string. `Object.keys` already skips symbol keys; `undefined`/symbol
 // values are dropped in objects and become `null` in arrays, matching
@@ -163,19 +161,16 @@ export class ClientCache {
     return entry === undefined ? MISS : entry;
   }
 
-  private getOrCreateEntry(
-    cacheKey: symbol,
-    defaultValue: CacheEntry,
-  ): CacheEntry {
+  private getOrCreateEntry(cacheKey: symbol): CacheEntry {
     const cached = this.cache.get(cacheKey);
 
     if (cached != null) {
       return cached;
-    } else {
-      const entry = defaultValue;
-      this.cache.set(cacheKey, entry);
-      return entry;
     }
+
+    const entry = createEmptyCacheEntry();
+    this.cache.set(cacheKey, entry);
+    return entry;
   }
 
   private mapEdgesToCacheEntries<A>(edges: Edge<A>[]): CachedEdge[] {
@@ -299,11 +294,12 @@ export class ClientCache {
             hasOwn(acc, fieldNameWithArguments);
 
           if (!cacheHasKey) {
+            // A field excluded by `@include(if: false)` / `@skip(if: true)` is
+            // absent from the response, so its absence from the cache is not a
+            // miss. Skip it (leave `acc` untouched) so it never appears in the
+            // result, instead of marking it and stripping it again later.
             if (isExcluded(fieldNode, variables)) {
-              return {
-                ...acc,
-                [originalFieldName]: EXCLUDED,
-              };
+              return acc;
             } else {
               return MISS;
             }
@@ -556,7 +552,7 @@ export class ClientCache {
           const cacheKey = getCacheEntryKey(item);
           const cacheObject =
             cacheKey !== undefined
-              ? this.getOrCreateEntry(cacheKey, createEmptyCacheEntry())
+              ? this.getOrCreateEntry(cacheKey)
               : // @ts-expect-error It's fine
                 (arrayCache[index] ?? createEmptyCacheEntry());
 
@@ -578,7 +574,7 @@ export class ClientCache {
       const cacheKey = getCacheEntryKey(record);
       const cacheObject =
         cacheKey !== undefined
-          ? this.getOrCreateEntry(cacheKey, createEmptyCacheEntry())
+          ? this.getOrCreateEntry(cacheKey)
           : ((parentCache[fieldNameWithArguments] as CacheEntry | undefined) ??
             createEmptyCacheEntry());
 
@@ -637,10 +633,7 @@ export class ClientCache {
           return;
         }
 
-        const cacheEntry = this.getOrCreateEntry(
-          Symbol.for(operationName),
-          createEmptyCacheEntry(),
-        );
+        const cacheEntry = this.getOrCreateEntry(Symbol.for(operationName));
         return cacheSelectionSet(
           definition.selectionSet,
           response,
