@@ -13,10 +13,10 @@ import {
   getFieldNameWithArguments,
   getSelectedKeys,
   isExcluded,
-} from "../graphql/ast";
-import { getCacheEntryKey } from "../json/cacheEntryKey";
-import { getTypename } from "../json/getTypename";
-import type { AnyVariables, Connection, Edge, JsonValue } from "../types";
+} from "./graphql/ast";
+import { getCacheEntryKey } from "./json/cacheEntryKey";
+import { getTypename } from "./json/getTypename";
+import type { AnyVariables, Connection, Edge, JsonValue } from "./types";
 import {
   CONNECTION_REF,
   CURSOR_KEY,
@@ -30,8 +30,7 @@ import {
   hasOwn,
   isRecord,
   serializeVariables,
-} from "../utils";
-import { createEmptyCacheEntry, type CacheEntry } from "./entry";
+} from "./utils";
 
 export type Schema = {
   interfaceToTypes: Record<string, string[]>;
@@ -46,6 +45,15 @@ export type ConnectionInfo = {
   pathInQuery: PropertyKey[];
   fieldVariables: AnyVariables;
 };
+
+type CacheEntry = Record<symbol, unknown> & {
+  [REQUESTED_KEYS]: Set<symbol>;
+  [CONNECTION_REF]?: number;
+};
+
+const createEmptyCacheEntry = (): CacheEntry => ({
+  [REQUESTED_KEYS]: new Set<symbol>(),
+});
 
 const STABILITY_CACHE = new WeakMap<
   TypedDocumentNode,

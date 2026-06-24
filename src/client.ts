@@ -1,5 +1,5 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
-import { ClientCache, type ConnectionInfo, type Schema } from "./cache/cache";
+import { ClientCache, type ConnectionInfo, type Schema } from "./cache";
 import { getOperationName } from "./graphql/ast";
 import { printDocument } from "./graphql/printDocument";
 import { transformDocument } from "./graphql/transformDocument";

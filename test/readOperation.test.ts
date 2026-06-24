@@ -1,7 +1,7 @@
 import { parse } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { describe, expect, test } from "bun:test";
-import { ClientCache, type Schema } from "../src/cache/cache";
+import { ClientCache, type Schema } from "../src/cache";
 import { transformDocument } from "../src/graphql/transformDocument";
 import type { AnyVariables, JsonValue } from "../src/types";
 
@@ -75,10 +75,10 @@ describe("readOperation", () => {
   });
 
   test("returns a referentially stable value across reads", () => {
-    const { read } = setup(
-      `query Q { me { id name } }`,
-      { __typename: "Query", me: { __typename: "User", id: "1", name: "Jo" } },
-    );
+    const { read } = setup(`query Q { me { id name } }`, {
+      __typename: "Query",
+      me: { __typename: "User", id: "1", name: "Jo" },
+    });
 
     const a = read();
     const b = read();
@@ -88,13 +88,10 @@ describe("readOperation", () => {
   });
 
   test("preserves field aliases", () => {
-    const { read } = setup(
-      `query Q { account { handle: name owner: id } }`,
-      {
-        __typename: "Query",
-        account: { __typename: "Account", handle: "First", owner: "acc-1" },
-      },
-    );
+    const { read } = setup(`query Q { account { handle: name owner: id } }`, {
+      __typename: "Query",
+      account: { __typename: "Account", handle: "First", owner: "acc-1" },
+    });
 
     expect(read()).toMatchObject({
       account: { handle: "First", owner: "acc-1" },
@@ -125,13 +122,10 @@ describe("readOperation", () => {
   });
 
   test("keeps null nested objects as null", () => {
-    const { read } = setup(
-      `query Q { user { id avatar { url } } }`,
-      {
-        __typename: "Query",
-        user: { __typename: "User", id: "1", avatar: null },
-      },
-    );
+    const { read } = setup(`query Q { user { id avatar { url } } }`, {
+      __typename: "Query",
+      user: { __typename: "User", id: "1", avatar: null },
+    });
 
     expect(read()).toMatchObject({ user: { id: "1", avatar: null } });
   });
@@ -141,7 +135,10 @@ describe("readOperation", () => {
     const written = doc(`query Q { user { id name } }`);
     cache.writeOperation(
       written,
-      { __typename: "Query", user: { __typename: "User", id: "1", name: "Jo" } },
+      {
+        __typename: "Query",
+        user: { __typename: "User", id: "1", name: "Jo" },
+      },
       {},
     );
 
