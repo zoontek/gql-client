@@ -38,8 +38,14 @@ export const useMutation = <
   const [stableMutation] = useState(mutation);
   const [state, setState] = useState<MutationState<Data>>({ fetching: false });
 
+  // Identifies the most recent `mutate` call so that out-of-order responses
+  // from overlapping mutations don't clobber the state with stale results.
+  const latestCallRef = useRef(0);
+
   const mutate = useCallback(
     (variables: Variables) => {
+      const callId = ++latestCallRef.current;
+
       setState({ fetching: true });
 
       return client
@@ -47,11 +53,17 @@ export const useMutation = <
           connectionUpdates: connectionUpdatesRef.current,
         })
         .then((data) => {
-          setState({ fetching: false, data });
+          if (latestCallRef.current === callId) {
+            setState({ fetching: false, data });
+          }
+
           return data;
         })
-        .catch((error) => {
-          setState({ fetching: false, error });
+        .catch((error: ClientError) => {
+          if (latestCallRef.current === callId) {
+            setState({ fetching: false, error });
+          }
+
           throw error;
         });
     },
