@@ -56,6 +56,15 @@ const extractValue = (
   }
 };
 
+// Arguments are pure over `(fieldNode, variables)` and recomputed on every
+// read (via `getFieldNameWithArguments`) and write (connection registration).
+// Memoize on the stable AST node and variables reference. The result is treated
+// as read-only by callers, so sharing it is safe.
+const argumentsCache = new WeakMap<
+  FieldNode,
+  WeakMap<AnyVariables, AnyVariables>
+>();
+
 /**
  * Returns a record representation of the arguments passed to a given field
  *
@@ -67,13 +76,27 @@ export const extractArguments = (
   fieldNode: FieldNode,
   variables: AnyVariables,
 ): AnyVariables => {
+  let byVariables = argumentsCache.get(fieldNode);
+  if (byVariables === undefined) {
+    byVariables = new WeakMap<AnyVariables, AnyVariables>();
+    argumentsCache.set(fieldNode, byVariables);
+  }
+
+  const cached = byVariables.get(variables);
+  if (cached !== undefined) {
+    return cached;
+  }
+
   const args = fieldNode.arguments ?? [];
-  return Object.fromEntries(
+  const extracted = Object.fromEntries(
     args.map(({ name: { value: name }, value }) => [
       name,
       extractValue(value, variables),
     ]),
   );
+
+  byVariables.set(variables, extracted);
+  return extracted;
 };
 
 /**
@@ -92,16 +115,50 @@ export const extractArguments = (
  * @param variables The variables of the GraphQL operation
  * @returns symbol
  */
+// Field symbols are pure over `(fieldNode, variables)` but recomputed per field
+// on every cache read/write (Symbol.for lookup + extractArguments + JSON
+// serialization). The AST nodes are stable (documents are transformed once and
+// cached) and the variables reference is stable across re-renders, so memoize
+// on both: a plain symbol for argument-less fields, and a per-variables symbol
+// otherwise.
+const fieldSymbolCache = new WeakMap<FieldNode, symbol>();
+const fieldSymbolWithVariablesCache = new WeakMap<
+  FieldNode,
+  WeakMap<AnyVariables, symbol>
+>();
+
 export const getFieldNameWithArguments = (
   fieldNode: FieldNode,
   variables: AnyVariables,
 ): symbol => {
-  const fieldName = getFieldName(fieldNode);
-  const args = extractArguments(fieldNode, variables);
-  if (Object.keys(args).length === 0) {
-    return Symbol.for(fieldName);
+  const fieldArguments = fieldNode.arguments;
+
+  if (fieldArguments == null || fieldArguments.length === 0) {
+    let symbol = fieldSymbolCache.get(fieldNode);
+    if (symbol === undefined) {
+      symbol = Symbol.for(getFieldName(fieldNode));
+      fieldSymbolCache.set(fieldNode, symbol);
+    }
+    return symbol;
   }
-  return Symbol.for(`${fieldName}(${JSON.stringify(args)})`);
+
+  let byVariables = fieldSymbolWithVariablesCache.get(fieldNode);
+  if (byVariables === undefined) {
+    byVariables = new WeakMap<AnyVariables, symbol>();
+    fieldSymbolWithVariablesCache.set(fieldNode, byVariables);
+  }
+
+  let symbol = byVariables.get(variables);
+  if (symbol === undefined) {
+    const fieldName = getFieldName(fieldNode);
+    const args = extractArguments(fieldNode, variables);
+    symbol =
+      Object.keys(args).length === 0
+        ? Symbol.for(fieldName)
+        : Symbol.for(`${fieldName}(${JSON.stringify(args)})`);
+    byVariables.set(variables, symbol);
+  }
+  return symbol;
 };
 
 /**
@@ -114,11 +171,31 @@ export const getFieldNameWithArguments = (
  * @param fieldNode FieldNode | OperationDefinitionNode
  * @returns selectedKeys Set<string>
  */
+// Same memoization rationale as `getFieldNameWithArguments`: this runs per
+// field (and per array element) on every read, rebuilding a Set each time. The
+// returned Set is treated as read-only by callers, so it is safe to share.
+const selectedKeysCache = new WeakMap<
+  FieldNode | OperationDefinitionNode,
+  WeakMap<AnyVariables, Set<symbol>>
+>();
+
 export const getSelectedKeys = (
   fieldNode: FieldNode | OperationDefinitionNode,
   variables: AnyVariables,
 ): Set<symbol> => {
-  const selectedKeys = new Set<symbol>();
+  let byVariables = selectedKeysCache.get(fieldNode);
+  if (byVariables === undefined) {
+    byVariables = new WeakMap<AnyVariables, Set<symbol>>();
+    selectedKeysCache.set(fieldNode, byVariables);
+  }
+
+  let selectedKeys = byVariables.get(variables);
+  if (selectedKeys !== undefined) {
+    return selectedKeys;
+  }
+
+  selectedKeys = new Set<symbol>();
+  const computed = selectedKeys;
 
   const traverse = (selections: SelectionSetNode): void => {
     // We only need to care about FieldNode & InlineFragment node
@@ -129,7 +206,7 @@ export const getSelectedKeys = (
           selection,
           variables,
         );
-        selectedKeys.add(fieldNameWithArguments);
+        computed.add(fieldNameWithArguments);
       } else if (selection.kind === Kind.INLINE_FRAGMENT) {
         traverse(selection.selectionSet);
       }
@@ -140,6 +217,7 @@ export const getSelectedKeys = (
     traverse(fieldNode.selectionSet);
   }
 
+  byVariables.set(variables, selectedKeys);
   return selectedKeys;
 };
 

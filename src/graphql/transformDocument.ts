@@ -44,7 +44,10 @@ const getNodeKey = (node: MergeableNode): string => {
   }
 };
 
-const transformDocumentCache = new Map<TypedDocumentNode, TypedDocumentNode>();
+const transformDocumentCache = new WeakMap<
+  TypedDocumentNode,
+  TypedDocumentNode
+>();
 
 /**
  * Simplifies the query for internal processing by inlining all fragments and

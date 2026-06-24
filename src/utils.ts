@@ -9,8 +9,12 @@ export const EDGES_KEY = Symbol.for("edges");
 export const NODE_KEY = Symbol.for("node");
 
 export const containsAll = <T>(a: Set<T>, b: Set<T>): boolean => {
-  const keys = [...b.values()];
-  return keys.every((key) => a.has(key));
+  for (const key of b) {
+    if (!a.has(key)) {
+      return false;
+    }
+  }
+  return true;
 };
 
 export const isRecord = (

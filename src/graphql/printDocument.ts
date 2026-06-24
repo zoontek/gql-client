@@ -28,7 +28,7 @@ const toUTF8 = (hex: string): string => {
   return decodeText(bytes);
 };
 
-const printDocumentCache = new Map<TypedDocumentNode, string>();
+const printDocumentCache = new WeakMap<TypedDocumentNode, string>();
 
 export const printDocument = (document: TypedDocumentNode): string => {
   const cachedDocument = printDocumentCache.get(document);

@@ -2,6 +2,7 @@ import {
   Kind,
   OperationTypeNode,
   type FieldNode,
+  type InlineFragmentNode,
   type SelectionSetNode,
 } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
@@ -15,13 +16,7 @@ import {
 } from "../graphql/ast";
 import { getCacheEntryKey } from "../json/cacheEntryKey";
 import { getTypename } from "../json/getTypename";
-import type {
-  AnyVariables,
-  Connection,
-  Edge,
-  JsonObject,
-  JsonValue,
-} from "../types";
+import type { AnyVariables, Connection, Edge, JsonValue } from "../types";
 import {
   CONNECTION_REF,
   EDGES_KEY,
@@ -59,40 +54,6 @@ const STABILITY_CACHE = new WeakMap<
 // Sentinel used internally to signal a cache miss. It is distinct from a cached
 // `null`/`undefined` value, which are legitimate results that must be preserved.
 const MISS = Symbol("MISS");
-
-// Produces a plain-JSON copy of a traversed result in a single pass. The
-// traversal builds its objects with `{ ...acc }`, which also copies the
-// internal symbol-keyed cache metadata (REQUESTED_KEYS, field references). This
-// strips all of that — equivalent to the previous
-// `JSON.parse(JSON.stringify(...))`, but without allocating an intermediate
-// JSON string. `Object.keys` already skips symbol keys; `undefined`/symbol
-// values are dropped in objects and become `null` in arrays, matching
-// `JSON.stringify`.
-const toPlainJson = (value: unknown): JsonValue => {
-  if (Array.isArray(value)) {
-    return value.map((item) =>
-      item === undefined || typeof item === "symbol"
-        ? null
-        : toPlainJson(item),
-    );
-  }
-
-  if (isRecord(value)) {
-    const result: JsonObject = {};
-
-    for (const key of Object.keys(value)) {
-      const item = value[key];
-
-      if (item !== undefined && typeof item !== "symbol") {
-        result[key] = toPlainJson(item);
-      }
-    }
-
-    return result;
-  }
-
-  return value as JsonValue;
-};
 
 type CachedEdge = {
   [TYPENAME_KEY]: string | null | undefined;
@@ -269,168 +230,204 @@ export class ClientCache {
     document: TypedDocumentNode,
     variables: AnyVariables,
   ): JsonValue | undefined {
+    // Builds a clean, string-keyed result directly. `source` is read-only — a
+    // cache entry (whose field values live under argument-qualified symbol
+    // keys) or a previously-resolved plain object (string keys, hit when a
+    // field is shared across selections). Values are written into a fresh
+    // `result`, so the output never carries the internal symbol-keyed metadata
+    // and needs no separate cloning/stripping pass.
+    const applyField = (
+      fieldNode: FieldNode,
+      source: Record<PropertyKey, unknown>,
+      result: Record<PropertyKey, unknown>,
+    ): boolean => {
+      const originalFieldName = getFieldName(fieldNode);
+      const fieldNameWithArguments = getFieldNameWithArguments(
+        fieldNode,
+        variables,
+      );
+
+      // Already resolved by an earlier selection (e.g. a field shared between
+      // the base selection and an inline fragment).
+      const alreadyResolved = originalFieldName in result;
+      const cacheHasKey =
+        alreadyResolved ||
+        hasOwn(source, originalFieldName) ||
+        hasOwn(source, fieldNameWithArguments);
+
+      if (!cacheHasKey) {
+        // A field excluded by `@include(if: false)` / `@skip(if: true)` is
+        // absent from the response, so its absence from the cache is not a
+        // miss — skip it. Any other missing field is a genuine miss.
+        return isExcluded(fieldNode, variables);
+      }
+
+      const rawValue = alreadyResolved
+        ? result[originalFieldName]
+        : hasOwn(source, originalFieldName)
+          ? source[originalFieldName]
+          : source[fieldNameWithArguments];
+
+      if (rawValue == undefined) {
+        // Preserve a cached `null`; drop `undefined` (matches JSON output).
+        if (rawValue === null) {
+          result[originalFieldName] = null;
+        }
+        return true;
+      }
+
+      if (Array.isArray(rawValue)) {
+        const selectedKeys = getSelectedKeys(fieldNode, variables);
+        const items: unknown[] = [];
+
+        for (const valueOrKey of rawValue) {
+          const value = this.getFromCacheOrReturnValue(
+            valueOrKey,
+            selectedKeys,
+          );
+
+          if (value === MISS) {
+            return false;
+          }
+
+          if (isRecord(value) && fieldNode.selectionSet != undefined) {
+            // oxlint-disable-next-line no-use-before-define
+            const traversed = traverse(fieldNode.selectionSet, value);
+            if (traversed === MISS) {
+              return false;
+            }
+            items.push(traversed);
+          } else {
+            items.push(value === undefined ? null : value);
+          }
+        }
+
+        result[originalFieldName] = items;
+        return true;
+      }
+
+      const selectedKeys = getSelectedKeys(fieldNode, variables);
+      const value = this.getFromCacheOrReturnValue(rawValue, selectedKeys);
+
+      if (value === MISS) {
+        return false;
+      }
+
+      if (isRecord(value) && fieldNode.selectionSet != undefined) {
+        // oxlint-disable-next-line no-use-before-define
+        const traversed = traverse(fieldNode.selectionSet, value);
+        if (traversed === MISS) {
+          return false;
+        }
+        result[originalFieldName] = traversed;
+      } else {
+        result[originalFieldName] = value;
+      }
+
+      return true;
+    };
+
+    const applyInlineFragment = (
+      inlineFragmentNode: InlineFragmentNode,
+      source: Record<PropertyKey, unknown>,
+      result: Record<PropertyKey, unknown>,
+    ): boolean => {
+      const typeCondition = inlineFragmentNode.typeCondition?.name.value;
+      // `__typename` is selected first in every selection set, so by the time
+      // we reach an inline fragment it has already been written to `result`.
+      const dataTypename = getTypename(result);
+
+      if (typeCondition != null && dataTypename != null) {
+        if (this.isTypeCompatible(dataTypename, typeCondition)) {
+          // oxlint-disable-next-line no-use-before-define
+          return applySelections(
+            inlineFragmentNode.selectionSet,
+            source,
+            result,
+          );
+        }
+
+        // Incompatible type condition: if it nests inline fragments, keep only
+        // the ones still compatible with the concrete type; otherwise skip.
+        if (
+          inlineFragmentNode.selectionSet.selections.some(
+            (selection) => selection.kind === Kind.INLINE_FRAGMENT,
+          )
+        ) {
+          // oxlint-disable-next-line no-use-before-define
+          return applySelections(
+            {
+              ...inlineFragmentNode.selectionSet,
+              selections: inlineFragmentNode.selectionSet.selections.filter(
+                (selection) => {
+                  if (selection.kind === Kind.INLINE_FRAGMENT) {
+                    const nestedTypeCondition =
+                      selection.typeCondition?.name.value;
+                    return (
+                      nestedTypeCondition == null ||
+                      this.isTypeCompatible(dataTypename, nestedTypeCondition)
+                    );
+                  }
+                  return true;
+                },
+              ),
+            },
+            source,
+            result,
+          );
+        }
+
+        return true;
+      }
+
+      // oxlint-disable-next-line no-use-before-define
+      return applySelections(inlineFragmentNode.selectionSet, source, result);
+    };
+
+    const applySelections = (
+      selectionSet: SelectionSetNode,
+      source: Record<PropertyKey, unknown>,
+      result: Record<PropertyKey, unknown>,
+    ): boolean => {
+      if (source == undefined) {
+        return false;
+      }
+
+      for (const selection of selectionSet.selections) {
+        if (selection.kind === Kind.FIELD) {
+          if (!applyField(selection, source, result)) {
+            return false;
+          }
+        } else if (selection.kind === Kind.INLINE_FRAGMENT) {
+          if (!applyInlineFragment(selection, source, result)) {
+            return false;
+          }
+        } else {
+          return false;
+        }
+      }
+
+      return true;
+    };
+
     const traverse = (
       selections: SelectionSetNode,
-      data: Record<PropertyKey, unknown>,
+      source: Record<PropertyKey, unknown>,
     ): unknown => {
-      return selections.selections.reduce<unknown>((acc, selection) => {
-        if (acc === MISS) {
-          return MISS;
-        }
-        if (selection.kind === Kind.FIELD) {
-          const fieldNode = selection;
-          const originalFieldName = getFieldName(fieldNode);
-          const fieldNameWithArguments = getFieldNameWithArguments(
-            fieldNode,
-            variables,
-          );
+      const result: Record<PropertyKey, unknown> = {};
 
-          if (acc == undefined) {
-            return MISS;
-          }
+      if (!applySelections(selections, source, result)) {
+        return MISS;
+      }
 
-          const cacheHasKey =
-            hasOwn(acc, originalFieldName) ||
-            hasOwn(acc, fieldNameWithArguments);
+      // Carry over the connection reference (a string key, not a queried
+      // field) so consumers — `useForwardPagination`/`useBackwardPagination`
+      // and `updateConnection` — can locate the registered connection.
+      if (hasOwn(source, CONNECTION_REF)) {
+        result[CONNECTION_REF] = source[CONNECTION_REF];
+      }
 
-          if (!cacheHasKey) {
-            // A field excluded by `@include(if: false)` / `@skip(if: true)` is
-            // absent from the response, so its absence from the cache is not a
-            // miss. Skip it (leave `acc` untouched) so it never appears in the
-            // result, instead of marking it and stripping it again later.
-            if (isExcluded(fieldNode, variables)) {
-              return acc;
-            } else {
-              return MISS;
-            }
-          }
-
-          // in case a the data is read across multiple selections, get the actual one if generated,
-          // otherwise, read from cache (e.g. fragments)
-          const valueOrKeyFromCache =
-            // @ts-expect-error `acc` is indexable at this point
-            originalFieldName in acc
-              ? // @ts-expect-error `acc` is indexable at this point
-                acc[originalFieldName]
-              : // @ts-expect-error `acc` is indexable at this point
-                acc[fieldNameWithArguments];
-
-          if (valueOrKeyFromCache == undefined) {
-            return {
-              ...acc,
-              [originalFieldName]: valueOrKeyFromCache,
-            };
-          }
-
-          if (Array.isArray(valueOrKeyFromCache)) {
-            const selectedKeys = getSelectedKeys(fieldNode, variables);
-            const result: unknown[] = [];
-
-            for (const valueOrKey of valueOrKeyFromCache) {
-              const value = this.getFromCacheOrReturnValue(
-                valueOrKey,
-                selectedKeys,
-              );
-
-              if (value === MISS) {
-                return MISS;
-              }
-
-              if (isRecord(value) && fieldNode.selectionSet != undefined) {
-                const traversed = traverse(fieldNode.selectionSet, value);
-                if (traversed === MISS) {
-                  return MISS;
-                }
-                result.push(traversed);
-              } else {
-                result.push(value);
-              }
-            }
-
-            return {
-              ...acc,
-              [originalFieldName]: result,
-            };
-          } else {
-            const selectedKeys = getSelectedKeys(fieldNode, variables);
-
-            const value = this.getFromCacheOrReturnValue(
-              valueOrKeyFromCache,
-              selectedKeys,
-            );
-
-            if (value === MISS) {
-              return MISS;
-            }
-
-            if (isRecord(value) && fieldNode.selectionSet != undefined) {
-              const result = traverse(fieldNode.selectionSet, value);
-              if (result === MISS) {
-                return MISS;
-              }
-              return {
-                ...acc,
-                [originalFieldName]: result,
-              };
-            } else {
-              return { ...acc, [originalFieldName]: value };
-            }
-          }
-        }
-        if (selection.kind === Kind.INLINE_FRAGMENT) {
-          const inlineFragmentNode = selection;
-          const typeCondition = inlineFragmentNode.typeCondition?.name.value;
-          const dataTypename = getTypename(acc);
-
-          if (typeCondition != null && dataTypename != null) {
-            if (this.isTypeCompatible(dataTypename, typeCondition)) {
-              return traverse(
-                inlineFragmentNode.selectionSet,
-                acc as Record<PropertyKey, unknown>,
-              );
-            } else {
-              if (
-                inlineFragmentNode.selectionSet.selections.some(
-                  (selection) => selection.kind === Kind.INLINE_FRAGMENT,
-                )
-              ) {
-                return traverse(
-                  {
-                    ...inlineFragmentNode.selectionSet,
-                    selections:
-                      inlineFragmentNode.selectionSet.selections.filter(
-                        (selection) => {
-                          if (selection.kind === Kind.INLINE_FRAGMENT) {
-                            const typeCondition =
-                              selection.typeCondition?.name.value;
-                            if (typeCondition == null) {
-                              return true;
-                            } else {
-                              return this.isTypeCompatible(
-                                dataTypename,
-                                typeCondition,
-                              );
-                            }
-                          }
-                          return true;
-                        },
-                      ),
-                  },
-                  acc as Record<PropertyKey, unknown>,
-                );
-              } else {
-                return acc;
-              }
-            }
-          }
-          return traverse(
-            inlineFragmentNode.selectionSet,
-            acc as Record<PropertyKey, unknown>,
-          );
-        } else {
-          return MISS;
-        }
-      }, data);
+      return result;
     };
 
     const operation = document.definitions.find(
@@ -465,7 +462,8 @@ export class ClientCache {
       return undefined;
     }
 
-    const value = toPlainJson(traversed);
+    // `traverse` already produced a clean, string-keyed plain-JSON tree.
+    const value = traversed as JsonValue;
 
     // We use a trick to return stable values, the document holds a WeakMap
     // that for each key (serialized variables), stores the last returned result.
