@@ -1,10 +1,4 @@
-import {
-  BadStatusError,
-  InvalidResponseError,
-  NetworkError,
-  parseGraphQLError,
-  TimeoutError,
-} from "./errors";
+import { ClientError, parseGraphQLError } from "./errors";
 import type { JsonValue } from "./types";
 import { isRecord } from "./utils";
 
@@ -28,7 +22,7 @@ export const makeRequest = async ({
 
   if (Number.isFinite(timeout) && timeout >= 0) {
     timer = setTimeout(() => {
-      controller.abort(new TimeoutError(url, timeout));
+      controller.abort(ClientError.timeout(url, timeout));
     }, timeout);
   }
 
@@ -46,42 +40,33 @@ export const makeRequest = async ({
   })
     .then(async (response) => {
       if (!response.ok) {
-        throw new BadStatusError(response);
+        throw ClientError.badStatus(response);
       }
 
       const json: JsonValue = await response.json().catch(() => null);
 
       if (isRecord(json)) {
         if ("errors" in json && Array.isArray(json.errors)) {
-          throw json.errors.map(parseGraphQLError);
+          throw ClientError.graphql(
+            url,
+            response,
+            json.errors.map(parseGraphQLError),
+          );
         }
+
         if ("data" in json && json.data != null) {
           return json.data as JsonValue;
         }
       }
 
-      throw new InvalidResponseError(response);
+      throw ClientError.invalidResponse(url, response);
     })
     .catch((error) => {
-      if (
-        Array.isArray(error) ||
-        error instanceof BadStatusError ||
-        error instanceof InvalidResponseError
-      ) {
+      if (error instanceof ClientError) {
         throw error;
       }
 
-      // Some runtimes reject an aborted fetch with a generic `AbortError`
-      // instead of propagating the abort reason, so recover the `TimeoutError`
-      // from the signal rather than misreporting a timeout as a network error.
-      if (
-        controller.signal.aborted &&
-        controller.signal.reason instanceof TimeoutError
-      ) {
-        throw controller.signal.reason;
-      }
-
-      throw new NetworkError(url);
+      throw ClientError.network(url);
     })
     .finally(() => {
       clearTimeout(timer);

@@ -1,59 +1,79 @@
 import { type ASTNode, GraphQLError } from "@0no-co/graphql.web";
 import type { JsonValue } from "./types";
 
-export class NetworkError extends Error {
+export type ClientErrorReason =
+  | "network"
+  | "timeout"
+  | "badStatus"
+  | "invalidResponse"
+  | "graphql";
+
+export class ClientError extends Error {
+  reason: ClientErrorReason;
   url: string;
-  constructor(url: string) {
-    super(`Request to ${url} failed`);
-    Object.setPrototypeOf(this, NetworkError.prototype);
-    this.name = "NetworkError";
-    this.url = url;
+  response: Response | undefined;
+  graphQLErrors: GraphQLError[];
+
+  constructor(
+    message: string,
+    options: {
+      reason: ClientErrorReason;
+      url: string;
+      response?: Response | undefined;
+      graphQLErrors?: GraphQLError[];
+    },
+  ) {
+    super(message);
+    Object.setPrototypeOf(this, ClientError.prototype);
+    this.name = "ClientError";
+    this.reason = options.reason;
+    this.url = options.url;
+    this.response = options.response;
+    this.graphQLErrors = options.graphQLErrors ?? [];
+  }
+
+  static network(url: string): ClientError {
+    return new ClientError(`Request to ${url} failed`, {
+      reason: "network",
+      url,
+    });
+  }
+
+  static timeout(url: string, timeout?: number): ClientError {
+    return new ClientError(
+      timeout == undefined
+        ? `Request to ${url} timed out`
+        : `Request to ${url} timed out (> ${timeout}ms)`,
+      { reason: "timeout", url },
+    );
+  }
+
+  static badStatus(response: Response): ClientError {
+    return new ClientError(
+      `Request to ${response.url} gave status ${response.status}`,
+      { reason: "badStatus", url: response.url, response },
+    );
+  }
+
+  static invalidResponse(url: string, response: Response): ClientError {
+    return new ClientError("Received an invalid GraphQL response", {
+      reason: "invalidResponse",
+      url,
+      response,
+    });
+  }
+
+  static graphql(
+    url: string,
+    response: Response,
+    graphQLErrors: GraphQLError[],
+  ): ClientError {
+    return new ClientError(
+      graphQLErrors[0]?.message ?? "Received a GraphQL error",
+      { reason: "graphql", url, response, graphQLErrors },
+    );
   }
 }
-
-export class TimeoutError extends Error {
-  url: string;
-  timeout: number | undefined;
-  constructor(url: string, timeout?: number) {
-    if (timeout == undefined) {
-      super(`Request to ${url} timed out`);
-    } else {
-      super(`Request to ${url} timed out (> ${timeout}ms)`);
-    }
-    Object.setPrototypeOf(this, TimeoutError.prototype);
-    this.name = "TimeoutError";
-    this.url = url;
-    this.timeout = timeout;
-  }
-}
-
-export class BadStatusError extends Error {
-  response: Response;
-
-  constructor(response: Response) {
-    super(`Request to ${response.url} gave status ${response.status}`);
-    Object.setPrototypeOf(this, BadStatusError.prototype);
-    this.name = "BadStatusError";
-    this.response = response;
-  }
-}
-
-export class InvalidResponseError extends Error {
-  response: unknown;
-  constructor(response: unknown) {
-    super("Received an invalid GraphQL response");
-    Object.setPrototypeOf(this, InvalidResponseError.prototype);
-    this.name = "InvalidResponseError";
-    this.response = response;
-  }
-}
-
-export type ClientError =
-  | NetworkError
-  | TimeoutError
-  | BadStatusError
-  | InvalidResponseError
-  | GraphQLError[];
 
 export const parseGraphQLError = (error: unknown): GraphQLError => {
   if (
@@ -62,9 +82,10 @@ export const parseGraphQLError = (error: unknown): GraphQLError => {
     "message" in error &&
     typeof error.message === "string"
   ) {
-    const graphqlError = error as Record<PropertyKey, JsonValue> & {
+    const graphQLError = error as Record<PropertyKey, JsonValue> & {
       message: string;
     };
+
     const originalError =
       "error" in error &&
       typeof error.error === "object" &&
@@ -73,17 +94,16 @@ export const parseGraphQLError = (error: unknown): GraphQLError => {
       typeof error.error.message === "string"
         ? new Error(error.error.message)
         : null;
+
     return new GraphQLError(
-      graphqlError.message,
-      graphqlError.nodes as readonly ASTNode[] | ASTNode | null | undefined,
-      graphqlError.source,
-      graphqlError.positions as readonly number[] | null | undefined,
-      graphqlError.path as readonly (string | number)[] | null | undefined,
+      graphQLError.message,
+      graphQLError.nodes as readonly ASTNode[] | ASTNode | null | undefined,
+      graphQLError.source,
+      graphQLError.positions as readonly number[] | null | undefined,
+      graphQLError.path as readonly (string | number)[] | null | undefined,
       originalError,
-      graphqlError.extensions as
-        | {
-            [extension: string]: unknown;
-          }
+      graphQLError.extensions as
+        | { [extension: string]: unknown }
         | null
         | undefined,
     );
