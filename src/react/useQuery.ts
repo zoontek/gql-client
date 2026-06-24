@@ -7,6 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import type { ClientError } from "../errors";
 import type { AnyVariables } from "../types";
 import { deepEqual } from "../utils";
 import { useClient } from "./context";
@@ -72,22 +73,44 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
     StableVariables<Variables>
   >({ provided: variables, effective: variables });
 
+  // A query rejection captured while stale data was shown (the suspending path
+  // throws through `use`). It is re-thrown during render so the nearest
+  // ErrorBoundary catches it, and cleared whenever the variables change so a
+  // retry can run instead of re-throwing a stale error.
+  const [error, setError] = useState<ClientError | undefined>(undefined);
+
   // When the caller passes new (deeply unequal) variables, reset both: the new
   // prop becomes the effective set and any `setVariables` override is dropped.
-  useEffect(() => {
-    if (!deepEqual(stableVariables.provided, variables)) {
-      setStableVariables({ provided: variables, effective: variables });
+  // Adjusting state during render (rather than in an effect) makes the new
+  // variables take effect on this render; an effect would let one render commit
+  // and fetch with the stale variables first. React discards and re-renders on
+  // the in-render `setState`, so nothing commits with the old variables.
+  const propsChanged = !deepEqual(stableVariables.provided, variables);
+
+  if (propsChanged) {
+    setStableVariables({ provided: variables, effective: variables });
+
+    if (error !== undefined) {
+      setError(undefined);
     }
-  }, [stableVariables, variables]);
+  }
+
+  const effective = propsChanged ? variables : stableVariables.effective;
+  const provided = propsChanged ? variables : stableVariables.provided;
 
   // Get data from cache
   const getSnapshot = useCallback(() => {
-    return client.readFromCache(stableQuery, stableVariables.effective);
-  }, [client, stableQuery, stableVariables]);
+    return client.readFromCache(stableQuery, effective);
+  }, [client, stableQuery, effective]);
 
-  const data = useSyncExternalStore((fn) => client.subscribe(fn), getSnapshot);
+  const subscribe = useCallback(
+    (fn: () => void) => client.subscribe(fn),
+    [client],
+  );
 
-  const previousData = usePreviousData(data, stableVariables.provided);
+  const data = useSyncExternalStore(subscribe, getSnapshot);
+
+  const previousData = usePreviousData(data, provided);
 
   const fetching = data === undefined;
   const dataToExpose = fetching ? previousData : data;
@@ -102,16 +125,28 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
     });
   }, []);
 
+  // Surface a captured query rejection to the nearest ErrorBoundary. Ignore an
+  // error captured for the previous variables (`propsChanged` already cleared
+  // it from state above) so new variables retry from scratch.
+  if (!propsChanged && error !== undefined) {
+    throw error;
+  }
+
   // While there's no fresh data for the current variables, (re)issue the
   // request. The client deduplicates in-flight requests, so calling this on
   // every render fires at most one network request per set of variables.
   if (fetching) {
-    const promise = client.query(stableQuery, stableVariables.effective);
+    const promise = client.query(stableQuery, effective);
 
-    // With nothing to show yet, suspend until the first result arrives.
-    // Otherwise keep showing the previous data with `fetching: true`.
     if (dataToExpose === undefined) {
+      // Nothing to show yet: suspend until the first result, and let a
+      // rejection throw straight through to the ErrorBoundary.
       use(promise);
+    } else {
+      // Keep showing the previous data with `fetching: true`. We can't `use`
+      // the promise (it would suspend away the stale data), so capture a
+      // rejection into state; the re-render then throws it (above).
+      promise.catch((queryError: ClientError) => setError(queryError));
     }
   }
 

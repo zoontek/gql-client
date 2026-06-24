@@ -15,8 +15,4 @@ export type {
   MutationState,
 } from "./react/useMutation";
 export type { Query, QueryState } from "./react/useQuery";
-export type {
-  Connection,
-  Edge,
-  AnyVariables as UnknownVariables,
-} from "./types";
+export type { AnyVariables, Connection, Edge } from "./types";
