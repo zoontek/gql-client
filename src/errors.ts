@@ -2,11 +2,11 @@ import { type ASTNode, GraphQLError } from "@0no-co/graphql.web";
 import type { JsonValue } from "./types";
 
 export type ClientErrorReason =
+  | "graphql"
+  | "httpStatus"
+  | "malformedResponse"
   | "network"
-  | "timeout"
-  | "badStatus"
-  | "invalidResponse"
-  | "graphql";
+  | "timeout";
 
 export class ClientError extends Error {
   reason: ClientErrorReason;
@@ -48,16 +48,16 @@ export class ClientError extends Error {
     );
   }
 
-  static badStatus(response: Response): ClientError {
+  static httpStatus(response: Response): ClientError {
     return new ClientError(
       `Request to ${response.url} gave status ${response.status}`,
-      { reason: "badStatus", url: response.url, response },
+      { reason: "httpStatus", url: response.url, response },
     );
   }
 
-  static invalidResponse(url: string, response: Response): ClientError {
-    return new ClientError("Received an invalid GraphQL response", {
-      reason: "invalidResponse",
+  static malformedResponse(url: string, response: Response): ClientError {
+    return new ClientError("Received a malformed GraphQL response", {
+      reason: "malformedResponse",
       url,
       response,
     });

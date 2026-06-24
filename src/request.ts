@@ -40,7 +40,7 @@ export const makeRequest = async ({
   })
     .then(async (response) => {
       if (!response.ok) {
-        throw ClientError.badStatus(response);
+        throw ClientError.httpStatus(response);
       }
 
       const json: JsonValue = await response.json().catch(() => null);
@@ -59,7 +59,7 @@ export const makeRequest = async ({
         }
       }
 
-      throw ClientError.invalidResponse(url, response);
+      throw ClientError.malformedResponse(url, response);
     })
     .catch((error) => {
       if (error instanceof ClientError) {
