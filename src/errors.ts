@@ -1,5 +1,5 @@
 import { type ASTNode, GraphQLError } from "@0no-co/graphql.web";
-import type { JsonValue } from "./types";
+import type { JsonArray, JsonValue } from "./types";
 
 export type ClientErrorReason =
   | "graphql"
@@ -7,6 +7,42 @@ export type ClientErrorReason =
   | "malformedResponse"
   | "network"
   | "timeout";
+
+const parseGraphQLError = (error: unknown): GraphQLError => {
+  if (
+    typeof error === "object" &&
+    error != null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    const graphQLError = error as Record<PropertyKey, JsonValue> & {
+      message: string;
+    };
+
+    const originalError =
+      "error" in error &&
+      typeof error.error === "object" &&
+      error.error != null &&
+      "message" in error.error &&
+      typeof error.error.message === "string"
+        ? new Error(error.error.message)
+        : null;
+
+    return new GraphQLError(
+      graphQLError.message,
+      graphQLError.nodes as readonly ASTNode[] | ASTNode | null | undefined,
+      graphQLError.source,
+      graphQLError.positions as readonly number[] | null | undefined,
+      graphQLError.path as readonly (string | number)[] | null | undefined,
+      originalError,
+      graphQLError.extensions as
+        | { [extension: string]: unknown }
+        | null
+        | undefined,
+    );
+  }
+  return new GraphQLError(JSON.stringify(error));
+};
 
 export class ClientError extends Error {
   reason: ClientErrorReason;
@@ -66,47 +102,13 @@ export class ClientError extends Error {
   static graphql(
     url: string,
     response: Response,
-    graphQLErrors: GraphQLError[],
+    errors: JsonArray,
   ): ClientError {
+    const graphQLErrors = errors.map(parseGraphQLError);
+
     return new ClientError(
       graphQLErrors[0]?.message ?? "Received a GraphQL error",
       { reason: "graphql", url, response, graphQLErrors },
     );
   }
 }
-
-export const parseGraphQLError = (error: unknown): GraphQLError => {
-  if (
-    typeof error === "object" &&
-    error != null &&
-    "message" in error &&
-    typeof error.message === "string"
-  ) {
-    const graphQLError = error as Record<PropertyKey, JsonValue> & {
-      message: string;
-    };
-
-    const originalError =
-      "error" in error &&
-      typeof error.error === "object" &&
-      error.error != null &&
-      "message" in error.error &&
-      typeof error.error.message === "string"
-        ? new Error(error.error.message)
-        : null;
-
-    return new GraphQLError(
-      graphQLError.message,
-      graphQLError.nodes as readonly ASTNode[] | ASTNode | null | undefined,
-      graphQLError.source,
-      graphQLError.positions as readonly number[] | null | undefined,
-      graphQLError.path as readonly (string | number)[] | null | undefined,
-      originalError,
-      graphQLError.extensions as
-        | { [extension: string]: unknown }
-        | null
-        | undefined,
-    );
-  }
-  return new GraphQLError(JSON.stringify(error));
-};

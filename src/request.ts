@@ -1,4 +1,4 @@
-import { ClientError, parseGraphQLError } from "./errors";
+import { ClientError } from "./errors";
 import type { JsonValue } from "./types";
 import { isRecord } from "./utils";
 
@@ -47,13 +47,8 @@ export const makeRequest = async ({
 
       if (isRecord(json)) {
         if ("errors" in json && Array.isArray(json.errors)) {
-          throw ClientError.graphql(
-            url,
-            response,
-            json.errors.map(parseGraphQLError),
-          );
+          throw ClientError.graphql(url, response, json.errors);
         }
-
         if ("data" in json && json.data != null) {
           return json.data as JsonValue;
         }

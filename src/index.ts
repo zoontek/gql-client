@@ -1,5 +1,5 @@
 export { Client } from "./client";
-export { ClientError, parseGraphQLError } from "./errors";
+export { ClientError } from "./errors";
 export { ClientProvider, useClient } from "./react/context";
 export { useMutation } from "./react/useMutation";
 export {
