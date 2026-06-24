@@ -32,8 +32,8 @@ export const useMutation = <
 ): Mutation<Data, Variables> => {
   const client = useClient();
 
-  const connectionUpdatesRef = useRef(config?.connectionUpdates);
-  connectionUpdatesRef.current = config?.connectionUpdates;
+  const connectionUpdatesRef = useRef(config.connectionUpdates);
+  connectionUpdatesRef.current = config.connectionUpdates;
 
   const [stableMutation] = useState(mutation);
   const [state, setState] = useState<MutationState<Data>>({ fetching: false });

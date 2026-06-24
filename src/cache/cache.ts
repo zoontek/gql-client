@@ -103,18 +103,16 @@ export class ClientCache {
 
   private getFromCache(cacheKey: symbol, requestedKeys: Set<symbol>): unknown {
     const entry = this.get(cacheKey);
-    if (entry === MISS) {
-      return MISS;
-    }
+
+    // `entry` is either a record cache entry, a scalar, or the MISS sentinel
+    // (a symbol, so it falls through to the return below).
     if (isRecord(entry)) {
-      if (containsAll(entry[REQUESTED_KEYS] as Set<symbol>, requestedKeys)) {
-        return entry;
-      } else {
-        return MISS;
-      }
-    } else {
-      return entry;
+      return containsAll(entry[REQUESTED_KEYS] as Set<symbol>, requestedKeys)
+        ? entry
+        : MISS;
     }
+
+    return entry;
   }
 
   private get(cacheKey: symbol): unknown {
@@ -276,54 +274,49 @@ export class ClientCache {
         return true;
       }
 
+      const selectedKeys = getSelectedKeys(fieldNode, variables);
+
+      // Resolve a single cached value or key: pull it from the cache, then
+      // recurse into any nested selection set. Returns MISS on a cache miss.
+      const resolve = (valueOrKey: unknown): unknown => {
+        const value = this.getFromCacheOrReturnValue(valueOrKey, selectedKeys);
+
+        if (value === MISS) {
+          return MISS;
+        }
+
+        if (isRecord(value) && fieldNode.selectionSet != undefined) {
+          // oxlint-disable-next-line no-use-before-define
+          return traverse(fieldNode.selectionSet, value);
+        }
+
+        return value;
+      };
+
       if (Array.isArray(rawValue)) {
-        const selectedKeys = getSelectedKeys(fieldNode, variables);
         const items: unknown[] = [];
 
         for (const valueOrKey of rawValue) {
-          const value = this.getFromCacheOrReturnValue(
-            valueOrKey,
-            selectedKeys,
-          );
+          const value = resolve(valueOrKey);
 
           if (value === MISS) {
             return false;
           }
 
-          if (isRecord(value) && fieldNode.selectionSet != undefined) {
-            // oxlint-disable-next-line no-use-before-define
-            const traversed = traverse(fieldNode.selectionSet, value);
-            if (traversed === MISS) {
-              return false;
-            }
-            items.push(traversed);
-          } else {
-            items.push(value === undefined ? null : value);
-          }
+          items.push(value === undefined ? null : value);
         }
 
         result[originalFieldName] = items;
         return true;
       }
 
-      const selectedKeys = getSelectedKeys(fieldNode, variables);
-      const value = this.getFromCacheOrReturnValue(rawValue, selectedKeys);
+      const value = resolve(rawValue);
 
       if (value === MISS) {
         return false;
       }
 
-      if (isRecord(value) && fieldNode.selectionSet != undefined) {
-        // oxlint-disable-next-line no-use-before-define
-        const traversed = traverse(fieldNode.selectionSet, value);
-        if (traversed === MISS) {
-          return false;
-        }
-        result[originalFieldName] = traversed;
-      } else {
-        result[originalFieldName] = value;
-      }
-
+      result[originalFieldName] = value;
       return true;
     };
 
@@ -617,28 +610,23 @@ export class ClientCache {
       }
     };
 
-    document.definitions.forEach((definition) => {
-      if (definition.kind === Kind.OPERATION_DEFINITION) {
-        // Root __typename can vary, but we can't guess it from the document alone
-        const operationName =
-          definition.operation === OperationTypeNode.QUERY
-            ? "Query"
-            : definition.operation === OperationTypeNode.SUBSCRIPTION
-              ? "Subscription"
-              : "Mutation";
+    const operation = document.definitions.find(
+      (definition) => definition.kind === Kind.OPERATION_DEFINITION,
+    );
 
-        if (!isRecord(response)) {
-          return;
-        }
+    if (operation === undefined || !isRecord(response)) {
+      return;
+    }
 
-        const cacheEntry = this.getOrCreateEntry(Symbol.for(operationName));
-        return cacheSelectionSet(
-          definition.selectionSet,
-          response,
-          cacheEntry,
-          [],
-        );
-      }
-    });
+    // Root __typename can vary, but we can't guess it from the document alone
+    const operationName =
+      operation.operation === OperationTypeNode.QUERY
+        ? "Query"
+        : operation.operation === OperationTypeNode.SUBSCRIPTION
+          ? "Subscription"
+          : "Mutation";
+
+    const cacheEntry = this.getOrCreateEntry(Symbol.for(operationName));
+    cacheSelectionSet(operation.selectionSet, response, cacheEntry, []);
   }
 }
