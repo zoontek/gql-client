@@ -1,53 +1,12 @@
-import { parseGraphQLError } from "./errors";
+import {
+  BadStatusError,
+  InvalidResponseError,
+  NetworkError,
+  parseGraphQLError,
+  TimeoutError,
+} from "./errors";
 import type { JsonValue } from "./types";
 import { isRecord } from "./utils";
-
-export class NetworkError extends Error {
-  url: string;
-  constructor(url: string) {
-    super(`Request to ${url} failed`);
-    Object.setPrototypeOf(this, NetworkError.prototype);
-    this.name = "NetworkError";
-    this.url = url;
-  }
-}
-
-export class TimeoutError extends Error {
-  url: string;
-  timeout: number | undefined;
-  constructor(url: string, timeout?: number) {
-    if (timeout == undefined) {
-      super(`Request to ${url} timed out`);
-    } else {
-      super(`Request to ${url} timed out (> ${timeout}ms)`);
-    }
-    Object.setPrototypeOf(this, TimeoutError.prototype);
-    this.name = "TimeoutError";
-    this.url = url;
-    this.timeout = timeout;
-  }
-}
-
-export class BadStatusError extends Error {
-  response: Response;
-
-  constructor(response: Response) {
-    super(`Request to ${response.url} gave status ${response.status}`);
-    Object.setPrototypeOf(this, BadStatusError.prototype);
-    this.name = "BadStatusError";
-    this.response = response;
-  }
-}
-
-export class InvalidResponseError extends Error {
-  response: unknown;
-  constructor(response: unknown) {
-    super("Received an invalid GraphQL response");
-    Object.setPrototypeOf(this, InvalidResponseError.prototype);
-    this.name = "InvalidResponseError";
-    this.response = response;
-  }
-}
 
 type Config = {
   url: string;
@@ -107,10 +66,19 @@ export const makeRequest = async ({
       if (
         Array.isArray(error) ||
         error instanceof BadStatusError ||
-        error instanceof InvalidResponseError ||
-        error instanceof TimeoutError
+        error instanceof InvalidResponseError
       ) {
         throw error;
+      }
+
+      // Some runtimes reject an aborted fetch with a generic `AbortError`
+      // instead of propagating the abort reason, so recover the `TimeoutError`
+      // from the signal rather than misreporting a timeout as a network error.
+      if (
+        controller.signal.aborted &&
+        controller.signal.reason instanceof TimeoutError
+      ) {
+        throw controller.signal.reason;
       }
 
       throw new NetworkError(url);

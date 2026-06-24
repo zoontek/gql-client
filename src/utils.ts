@@ -7,6 +7,7 @@ export const CONNECTION_REF = "__connectionRef";
 export const TYPENAME_KEY = Symbol.for("__typename");
 export const EDGES_KEY = Symbol.for("edges");
 export const NODE_KEY = Symbol.for("node");
+export const CURSOR_KEY = Symbol.for("cursor");
 
 export const containsAll = <T>(a: Set<T>, b: Set<T>): boolean => {
   for (const key of b) {
@@ -58,7 +59,7 @@ export const deepEqual = (a: any, b: any): boolean => {
 };
 
 export const serializeVariables = (variables: AnyVariables): string => {
-  return JSON.stringify(variables);
+  return JSON.stringify(variables, Object.keys(variables).sort());
 };
 
 export const filterMap = <A, B>(

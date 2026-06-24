@@ -1,32 +1,59 @@
 import { type ASTNode, GraphQLError } from "@0no-co/graphql.web";
-import {
-  BadStatusError,
-  InvalidResponseError,
-  NetworkError,
-  TimeoutError,
-} from "./request";
 import type { JsonValue } from "./types";
+
+export class NetworkError extends Error {
+  url: string;
+  constructor(url: string) {
+    super(`Request to ${url} failed`);
+    Object.setPrototypeOf(this, NetworkError.prototype);
+    this.name = "NetworkError";
+    this.url = url;
+  }
+}
+
+export class TimeoutError extends Error {
+  url: string;
+  timeout: number | undefined;
+  constructor(url: string, timeout?: number) {
+    if (timeout == undefined) {
+      super(`Request to ${url} timed out`);
+    } else {
+      super(`Request to ${url} timed out (> ${timeout}ms)`);
+    }
+    Object.setPrototypeOf(this, TimeoutError.prototype);
+    this.name = "TimeoutError";
+    this.url = url;
+    this.timeout = timeout;
+  }
+}
+
+export class BadStatusError extends Error {
+  response: Response;
+
+  constructor(response: Response) {
+    super(`Request to ${response.url} gave status ${response.status}`);
+    Object.setPrototypeOf(this, BadStatusError.prototype);
+    this.name = "BadStatusError";
+    this.response = response;
+  }
+}
+
+export class InvalidResponseError extends Error {
+  response: unknown;
+  constructor(response: unknown) {
+    super("Received an invalid GraphQL response");
+    Object.setPrototypeOf(this, InvalidResponseError.prototype);
+    this.name = "InvalidResponseError";
+    this.response = response;
+  }
+}
 
 export type ClientError =
   | NetworkError
   | TimeoutError
   | BadStatusError
   | InvalidResponseError
-  | CacheError
   | GraphQLError[];
-
-export class CacheError extends Error {
-  constructor(operationName: string | undefined) {
-    super(
-      operationName != null
-        ? `Unable to read operation "${operationName}" from cache`
-        : "Unable to read operation from cache",
-    );
-
-    Object.setPrototypeOf(this, CacheError.prototype);
-    this.name = "CacheError";
-  }
-}
 
 export const parseGraphQLError = (error: unknown): GraphQLError => {
   if (

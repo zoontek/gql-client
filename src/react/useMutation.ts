@@ -6,10 +6,10 @@ import type { AnyVariables } from "../types";
 import { useClient } from "./context";
 
 export type MutationState<Data> =
-  | { fetching: false }
-  | { fetching: true }
-  | { fetching: false; data: Data }
-  | { fetching: false; error: ClientError };
+  | { status: "idle"; fetching: false }
+  | { status: "loading"; fetching: true }
+  | { status: "success"; fetching: false; data: Data }
+  | { status: "error"; fetching: false; error: ClientError };
 
 export type Mutation<
   Data,
@@ -36,7 +36,10 @@ export const useMutation = <
   connectionUpdatesRef.current = config.connectionUpdates;
 
   const [stableMutation] = useState(mutation);
-  const [state, setState] = useState<MutationState<Data>>({ fetching: false });
+  const [state, setState] = useState<MutationState<Data>>({
+    status: "idle",
+    fetching: false,
+  });
 
   // Identifies the most recent `mutate` call so that out-of-order responses
   // from overlapping mutations don't clobber the state with stale results.
@@ -46,7 +49,7 @@ export const useMutation = <
     (variables: Variables) => {
       const callId = ++latestCallRef.current;
 
-      setState({ fetching: true });
+      setState({ status: "loading", fetching: true });
 
       return client
         .request(stableMutation, variables, {
@@ -54,14 +57,14 @@ export const useMutation = <
         })
         .then((data) => {
           if (latestCallRef.current === callId) {
-            setState({ fetching: false, data });
+            setState({ status: "success", fetching: false, data });
           }
 
           return data;
         })
         .catch((error: ClientError) => {
           if (latestCallRef.current === callId) {
-            setState({ fetching: false, error });
+            setState({ status: "error", fetching: false, error });
           }
 
           throw error;

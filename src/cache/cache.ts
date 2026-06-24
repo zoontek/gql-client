@@ -19,6 +19,7 @@ import { getTypename } from "../json/getTypename";
 import type { AnyVariables, Connection, Edge, JsonValue } from "../types";
 import {
   CONNECTION_REF,
+  CURSOR_KEY,
   EDGES_KEY,
   NODE_KEY,
   REQUESTED_KEYS,
@@ -58,6 +59,7 @@ const MISS = Symbol("MISS");
 type CachedEdge = {
   [TYPENAME_KEY]: string | null | undefined;
   [NODE_KEY]: symbol;
+  [CURSOR_KEY]?: string | null | undefined;
 };
 
 export class ClientCache {
@@ -133,15 +135,19 @@ export class ClientCache {
   }
 
   private mapEdgesToCacheEntries<A>(edges: Edge<A>[]): CachedEdge[] {
-    return filterMap(edges, ({ node, __typename }) => {
+    return filterMap(edges, ({ node, __typename, cursor }) => {
       const key = getCacheEntryKey(node);
       // we can omit the requested fields here because the Connection<A> contrains the fields
       if (key === undefined || this.get(key) === MISS) {
         return undefined;
       }
+      // Preserve `cursor` alongside the node reference. Without it, a query that
+      // selects `edges { cursor ... }` reads the synthesized edge as a miss and
+      // the whole connection read fails.
       return {
         [TYPENAME_KEY]: __typename,
         [NODE_KEY]: key,
+        [CURSOR_KEY]: cursor,
       };
     });
   }
@@ -167,37 +173,45 @@ export class ClientCache {
         return;
       }
 
+      // `edges` may not be cached at all (e.g. the connection was queried with
+      // only `pageInfo`, or its edges haven't resolved yet), so default to an
+      // empty list rather than spreading/filtering `undefined`.
+      const currentEdges =
+        (connectionConfig.cacheEntry[EDGES_KEY] as CachedEdge[] | undefined) ??
+        [];
+
       if ("prepend" in config) {
         connectionConfig.cacheEntry[EDGES_KEY] = [
           ...this.mapEdgesToCacheEntries(config.prepend),
-          ...(connectionConfig.cacheEntry[EDGES_KEY] as CachedEdge[]),
+          ...currentEdges,
         ];
         return;
       }
 
       if ("append" in config) {
         connectionConfig.cacheEntry[EDGES_KEY] = [
-          ...(connectionConfig.cacheEntry[EDGES_KEY] as CachedEdge[]),
+          ...currentEdges,
           ...this.mapEdgesToCacheEntries(config.append),
         ];
         return;
       }
 
       const nodeIds = new Set(config.remove);
-      connectionConfig.cacheEntry[EDGES_KEY] = (
-        connectionConfig.cacheEntry[EDGES_KEY] as CachedEdge[]
-      ).filter((edge) => {
+      connectionConfig.cacheEntry[EDGES_KEY] = currentEdges.filter((edge) => {
         const description = edge[NODE_KEY].description;
 
         if (description === undefined) {
           return true;
         }
 
-        // Cache keys are `${typename}<${id}>`. Match the id segment exactly so
-        // `"1"` doesn't accidentally remove `"11"` or an id that happens to
-        // appear elsewhere in the key.
-        const match = /<([^<>]*)>$/.exec(description);
-        return match === null || !nodeIds.has(match[1] as string);
+        // Cache keys are `${typename}<${id}>`. A GraphQL type name never
+        // contains `<`, so the first `<` and the trailing `>` bound the id
+        // exactly — even when the id itself contains angle brackets. Anchoring
+        // on those (rather than a greedy regex) also avoids `"1"` matching the
+        // `"11"` segment of another key.
+        const start = description.indexOf("<");
+        const id = start === -1 ? undefined : description.slice(start + 1, -1);
+        return id === undefined || !nodeIds.has(id);
       });
     }
   }
