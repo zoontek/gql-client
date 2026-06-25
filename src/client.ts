@@ -1,11 +1,11 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { ClientCache, type ConnectionInfo, type Schema } from "./cache";
+import { ClientError } from "./errors";
 import { getOperationName } from "./graphql/ast";
 import { printDocument } from "./graphql/printDocument";
 import { transformDocument } from "./graphql/transformDocument";
-import { makeRequest } from "./request";
 import type { AnyVariables, Connection, Edge, JsonValue } from "./types";
-import { serializeVariables } from "./utils";
+import { isRecord, serializeVariables } from "./utils";
 
 export type ClientConfig = {
   url: string;
@@ -66,7 +66,7 @@ export class Client {
   private url: string;
   private credentials: RequestCredentials;
   private headers: Record<string, string>;
-  private timeout: number | undefined;
+  private timeout: number;
 
   private cache: ClientCache;
   private subscribers: Set<() => void>;
@@ -79,8 +79,13 @@ export class Client {
   public constructor(config: ClientConfig) {
     this.url = config.url;
     this.credentials = config.credentials ?? "same-origin";
-    this.headers = config.headers ?? {};
-    this.timeout = config.timeout;
+    this.timeout = config.timeout ?? 10_000;
+
+    this.headers = {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(config.headers ?? {}),
+    };
 
     this.cache = new ClientCache(config.schema);
     this.subscribers = new Set<() => void>();
@@ -99,42 +104,82 @@ export class Client {
     variables: NoInfer<Variables>,
     { connectionUpdates }: RequestOptions<Data, Variables> = {},
   ): Promise<Data> {
+    const controller = new AbortController();
     const transformedDocument = transformDocument(document);
 
-    return makeRequest({
-      url: this.url,
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    if (Number.isFinite(this.timeout) && this.timeout >= 0) {
+      timer = setTimeout(() => {
+        controller.abort(ClientError.timeout(this.url, this.timeout));
+      }, this.timeout);
+    }
+
+    return fetch(this.url, {
+      cache: "no-store",
       credentials: this.credentials,
       headers: this.headers,
-      timeout: this.timeout,
+      method: "POST",
+      signal: controller.signal,
       body: JSON.stringify({
         operationName: getOperationName(transformedDocument),
         query: printDocument(transformedDocument),
         variables,
       }),
-    }).then((data) => {
-      this.cache.writeOperation(transformedDocument, data, variables);
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw ClientError.httpStatus(response);
+        }
 
-      if (connectionUpdates !== undefined) {
-        connectionUpdates.forEach((getUpdate) => {
-          const result = getUpdate({
-            data: data as Data,
-            variables,
-            prepend,
-            append,
-            remove,
-          });
+        const json: JsonValue = await response.json().catch(() => null);
 
-          if (result !== undefined) {
-            const [connection, update] = result;
-            this.cache.updateConnection(connection, update);
+        // TODO: invert logic
+        if (isRecord(json)) {
+          if ("errors" in json && Array.isArray(json.errors)) {
+            throw ClientError.graphql(this.url, response, json.errors);
           }
-        });
-      }
+          if ("data" in json && json.data != null) {
+            return json.data as JsonValue;
+          }
+        }
 
-      this.subscribers.forEach((fn) => fn());
+        throw ClientError.malformedResponse(this.url, response);
+      })
+      .then((data) => {
+        this.cache.writeOperation(transformedDocument, data, variables);
 
-      return data as Data;
-    });
+        if (connectionUpdates !== undefined) {
+          connectionUpdates.forEach((getUpdate) => {
+            const result = getUpdate({
+              data: data as Data,
+              variables,
+              prepend,
+              append,
+              remove,
+            });
+
+            if (result !== undefined) {
+              const [connection, update] = result;
+              this.cache.updateConnection(connection, update);
+            }
+          });
+        }
+
+        this.subscribers.forEach((fn) => fn());
+
+        return data as Data;
+      })
+      .catch((error) => {
+        if (error instanceof ClientError) {
+          throw error;
+        }
+
+        throw ClientError.network(this.url);
+      })
+      .finally(() => {
+        clearTimeout(timer);
+      });
   }
 
   // Suspense-friendly request: deduplicates concurrent requests for the same

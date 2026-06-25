@@ -14,8 +14,6 @@ import {
   getSelectedKeys,
   isExcluded,
 } from "./graphql/ast";
-import { getCacheEntryKey } from "./json/cacheEntryKey";
-import { getTypename } from "./json/getTypename";
 import type { AnyVariables, Connection, Edge, JsonValue } from "./types";
 import {
   CONNECTION_REF,
@@ -31,6 +29,10 @@ import {
   isRecord,
   serializeVariables,
 } from "./utils";
+
+// Sentinel used internally to signal a cache miss. It is distinct from a cached
+// `null`/`undefined` value, which are legitimate results that must be preserved.
+const MISS = Symbol("MISS");
 
 export type Schema = {
   interfaceToTypes: Record<string, string[]>;
@@ -60,14 +62,42 @@ const STABILITY_CACHE = new WeakMap<
   Map<string, JsonValue>
 >();
 
-// Sentinel used internally to signal a cache miss. It is distinct from a cached
-// `null`/`undefined` value, which are legitimate results that must be preserved.
-const MISS = Symbol("MISS");
-
 type CachedEdge = {
   [TYPENAME_KEY]: string | null | undefined;
   [NODE_KEY]: symbol;
   [CURSOR_KEY]?: string | null | undefined;
+};
+
+const getCacheEntryKey = (json: unknown): symbol | undefined => {
+  if (typeof json === "object" && json != null) {
+    if ("__typename" in json && typeof json.__typename === "string") {
+      const typename = json.__typename;
+
+      if (
+        typename === "Mutation" ||
+        typename === "Query" ||
+        typename === "Subscription"
+      ) {
+        return Symbol.for(typename);
+      }
+
+      if ("id" in json && typeof json.id === "string") {
+        return Symbol.for(`${typename}<${json.id}>`);
+      }
+    }
+  }
+  return undefined;
+};
+
+const getTypename = (json: unknown): string | undefined => {
+  if (typeof json === "object" && json != null) {
+    if (Array.isArray(json)) {
+      return getTypename(json[0]);
+    }
+    if ("__typename" in json && typeof json.__typename === "string") {
+      return json.__typename;
+    }
+  }
 };
 
 export class ClientCache {
