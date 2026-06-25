@@ -1,6 +1,5 @@
 import {
   Kind,
-  OperationTypeNode,
   type DirectiveNode,
   type FieldNode,
   type OperationDefinitionNode,
@@ -10,23 +9,11 @@ import {
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import type { AnyVariables } from "../types";
 
-/**
- * Gets the field name in the response payload from its AST definition
- *
- * @param fieldNode
- * @returns field name
- */
-export const getFieldName = (fieldNode: FieldNode): string => {
-  return fieldNode.alias ? fieldNode.alias.value : fieldNode.name.value;
-};
+// Field name as it appears in the response payload (alias if present).
+export const getFieldName = (fieldNode: FieldNode): string =>
+  fieldNode.alias ? fieldNode.alias.value : fieldNode.name.value;
 
-/**
- * Resolves and serializes a GraphQL value
- *
- * @param valueNode: ValueNode
- * @param variables: Record<string, any>
- * @returns Record<string, any>
- */
+// Resolves a GraphQL AST value node to a plain JS value, inlining variables.
 const extractValue = (
   valueNode: ValueNode,
   variables: AnyVariables,
@@ -56,48 +43,60 @@ const extractValue = (
   }
 };
 
-// Arguments are pure over `(fieldNode, variables)` and recomputed on every
-// read (via `getFieldNameWithArguments`) and write (connection registration).
-// Memoize on the stable AST node and variables reference. The result is treated
-// as read-only by callers, so sharing it is safe.
+// Two-level memoization keyed on the (stable) AST node and the (stable across
+// re-renders) variables reference. The inner WeakMap is created lazily and
+// `compute` is a module-level function passed by reference, so cache hits — the
+// hot path — allocate nothing. Computed values are treated as read-only by
+// callers, so sharing them is safe.
+const memoizeByNodeAndVariables = <K extends object, V>(
+  cache: WeakMap<K, WeakMap<AnyVariables, V>>,
+  node: K,
+  variables: AnyVariables,
+  compute: (node: K, variables: AnyVariables) => V,
+): V => {
+  let byVariables = cache.get(node);
+  if (byVariables === undefined) {
+    byVariables = new WeakMap<AnyVariables, V>();
+    cache.set(node, byVariables);
+  }
+
+  let value = byVariables.get(variables);
+  if (value === undefined) {
+    value = compute(node, variables);
+    byVariables.set(variables, value);
+  }
+  return value;
+};
+
+// Arguments are pure over `(fieldNode, variables)` and recomputed on every read
+// (via `getFieldNameWithArguments`) and write (connection registration).
 const argumentsCache = new WeakMap<
   FieldNode,
   WeakMap<AnyVariables, AnyVariables>
 >();
 
-/**
- * Returns a record representation of the arguments passed to a given field
- *
- * @param fieldNode
- * @param variables
- * @returns Record<string, any>
- */
-export const extractArguments = (
+const computeArguments = (
   fieldNode: FieldNode,
   variables: AnyVariables,
-): AnyVariables => {
-  let byVariables = argumentsCache.get(fieldNode);
-  if (byVariables === undefined) {
-    byVariables = new WeakMap<AnyVariables, AnyVariables>();
-    argumentsCache.set(fieldNode, byVariables);
-  }
-
-  const cached = byVariables.get(variables);
-  if (cached !== undefined) {
-    return cached;
-  }
-
-  const args = fieldNode.arguments ?? [];
-  const extracted = Object.fromEntries(
-    args.map(({ name: { value: name }, value }) => [
+): AnyVariables =>
+  Object.fromEntries(
+    (fieldNode.arguments ?? []).map(({ name: { value: name }, value }) => [
       name,
       extractValue(value, variables),
     ]),
   );
 
-  byVariables.set(variables, extracted);
-  return extracted;
-};
+// Record representation of the arguments passed to a given field.
+export const extractArguments = (
+  fieldNode: FieldNode,
+  variables: AnyVariables,
+): AnyVariables =>
+  memoizeByNodeAndVariables(
+    argumentsCache,
+    fieldNode,
+    variables,
+    computeArguments,
+  );
 
 /**
  * Serializes the field name and arguments as a symbol.
@@ -127,6 +126,17 @@ const fieldSymbolWithVariablesCache = new WeakMap<
   WeakMap<AnyVariables, symbol>
 >();
 
+const computeFieldSymbol = (
+  fieldNode: FieldNode,
+  variables: AnyVariables,
+): symbol => {
+  const fieldName = getFieldName(fieldNode);
+  const args = extractArguments(fieldNode, variables);
+  return Object.keys(args).length === 0
+    ? Symbol.for(fieldName)
+    : Symbol.for(`${fieldName}(${JSON.stringify(args)})`);
+};
+
 export const getFieldNameWithArguments = (
   fieldNode: FieldNode,
   variables: AnyVariables,
@@ -142,23 +152,12 @@ export const getFieldNameWithArguments = (
     return symbol;
   }
 
-  let byVariables = fieldSymbolWithVariablesCache.get(fieldNode);
-  if (byVariables === undefined) {
-    byVariables = new WeakMap<AnyVariables, symbol>();
-    fieldSymbolWithVariablesCache.set(fieldNode, byVariables);
-  }
-
-  let symbol = byVariables.get(variables);
-  if (symbol === undefined) {
-    const fieldName = getFieldName(fieldNode);
-    const args = extractArguments(fieldNode, variables);
-    symbol =
-      Object.keys(args).length === 0
-        ? Symbol.for(fieldName)
-        : Symbol.for(`${fieldName}(${JSON.stringify(args)})`);
-    byVariables.set(variables, symbol);
-  }
-  return symbol;
+  return memoizeByNodeAndVariables(
+    fieldSymbolWithVariablesCache,
+    fieldNode,
+    variables,
+    computeFieldSymbol,
+  );
 };
 
 /**
@@ -179,34 +178,18 @@ const selectedKeysCache = new WeakMap<
   WeakMap<AnyVariables, Set<symbol>>
 >();
 
-export const getSelectedKeys = (
+const computeSelectedKeys = (
   fieldNode: FieldNode | OperationDefinitionNode,
   variables: AnyVariables,
 ): Set<symbol> => {
-  let byVariables = selectedKeysCache.get(fieldNode);
-  if (byVariables === undefined) {
-    byVariables = new WeakMap<AnyVariables, Set<symbol>>();
-    selectedKeysCache.set(fieldNode, byVariables);
-  }
-
-  let selectedKeys = byVariables.get(variables);
-  if (selectedKeys !== undefined) {
-    return selectedKeys;
-  }
-
-  selectedKeys = new Set<symbol>();
-  const computed = selectedKeys;
+  const selectedKeys = new Set<symbol>();
 
   const traverse = (selections: SelectionSetNode): void => {
     // We only need to care about FieldNode & InlineFragment node
     // as we inline all fragments in the query
     selections.selections.forEach((selection) => {
       if (selection.kind === Kind.FIELD) {
-        const fieldNameWithArguments = getFieldNameWithArguments(
-          selection,
-          variables,
-        );
-        computed.add(fieldNameWithArguments);
+        selectedKeys.add(getFieldNameWithArguments(selection, variables));
       } else if (selection.kind === Kind.INLINE_FRAGMENT) {
         traverse(selection.selectionSet);
       }
@@ -217,19 +200,33 @@ export const getSelectedKeys = (
     traverse(fieldNode.selectionSet);
   }
 
-  byVariables.set(variables, selectedKeys);
   return selectedKeys;
+};
+
+export const getSelectedKeys = (
+  fieldNode: FieldNode | OperationDefinitionNode,
+  variables: AnyVariables,
+): Set<symbol> =>
+  memoizeByNodeAndVariables(
+    selectedKeysCache,
+    fieldNode,
+    variables,
+    computeSelectedKeys,
+  );
+
+export const getOperationDefinition = (
+  document: TypedDocumentNode,
+): OperationDefinitionNode | undefined => {
+  for (const definition of document.definitions) {
+    if (definition.kind === Kind.OPERATION_DEFINITION) {
+      return definition;
+    }
+  }
 };
 
 export const getOperationName = (
   document: TypedDocumentNode,
-): string | undefined => {
-  for (const definition of document.definitions) {
-    if (definition.kind === Kind.OPERATION_DEFINITION) {
-      return definition.name?.value;
-    }
-  }
-};
+): string | undefined => getOperationDefinition(document)?.name?.value;
 
 export const isExcluded = (
   fieldNode: FieldNode,
@@ -261,40 +258,6 @@ export const isExcluded = (
         extractValue(arg.value, variables) === excludeWhen,
     );
   });
-};
-
-export const getCacheKeyFromOperationNode = (
-  operationNode: OperationDefinitionNode,
-): symbol | undefined => {
-  switch (operationNode.operation) {
-    case OperationTypeNode.QUERY:
-      return Symbol.for("Query");
-    case OperationTypeNode.SUBSCRIPTION:
-      return Symbol.for("Subscription");
-    default:
-      return undefined;
-  }
-};
-
-export const getCacheEntryKey = (json: unknown): symbol | undefined => {
-  if (typeof json === "object" && json != null) {
-    if ("__typename" in json && typeof json.__typename === "string") {
-      const typename = json.__typename;
-
-      if (
-        typename === "Mutation" ||
-        typename === "Query" ||
-        typename === "Subscription"
-      ) {
-        return Symbol.for(typename);
-      }
-
-      if ("id" in json && typeof json.id === "string") {
-        return Symbol.for(`${typename}<${json.id}>`);
-      }
-    }
-  }
-  return undefined;
 };
 
 export const getTypename = (json: unknown): string | undefined => {

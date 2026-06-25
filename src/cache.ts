@@ -3,15 +3,15 @@ import {
   OperationTypeNode,
   type FieldNode,
   type InlineFragmentNode,
+  type OperationDefinitionNode,
   type SelectionSetNode,
 } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import {
   extractArguments,
-  getCacheEntryKey,
-  getCacheKeyFromOperationNode,
   getFieldName,
   getFieldNameWithArguments,
+  getOperationDefinition,
   getSelectedKeys,
   getTypename,
   isExcluded,
@@ -35,6 +35,44 @@ import {
 // Sentinel used internally to signal a cache miss. It is distinct from a cached
 // `null`/`undefined` value, which are legitimate results that must be preserved.
 const MISS = Symbol("MISS");
+
+// Cache-key conventions. The root entry of a query/subscription is keyed by its
+// operation type; mutations are never read back, so they have no root key. Every
+// other entry is keyed by `${typename}<${id}>` — a format `updateConnection`
+// relies on when it parses ids back out of a node reference.
+const getCacheKeyFromOperationNode = (
+  operationNode: OperationDefinitionNode,
+): symbol | undefined => {
+  switch (operationNode.operation) {
+    case OperationTypeNode.QUERY:
+      return Symbol.for("Query");
+    case OperationTypeNode.SUBSCRIPTION:
+      return Symbol.for("Subscription");
+    default:
+      return undefined;
+  }
+};
+
+const getCacheEntryKey = (json: unknown): symbol | undefined => {
+  if (typeof json === "object" && json != null) {
+    if ("__typename" in json && typeof json.__typename === "string") {
+      const typename = json.__typename;
+
+      if (
+        typename === "Mutation" ||
+        typename === "Query" ||
+        typename === "Subscription"
+      ) {
+        return Symbol.for(typename);
+      }
+
+      if ("id" in json && typeof json.id === "string") {
+        return Symbol.for(`${typename}<${json.id}>`);
+      }
+    }
+  }
+  return undefined;
+};
 
 export type Schema = {
   interfaceToTypes: Record<string, string[]>;
@@ -140,6 +178,22 @@ export class ClientCache {
     const entry = createEmptyCacheEntry();
     this.cache.set(cacheKey, entry);
     return entry;
+  }
+
+  // Resolve the cache entry for a nested object (creating it if needed) and the
+  // value to store in the parent: a shared symbol key for identifiable entities
+  // (so they are deduplicated and updated in one place), otherwise the inline
+  // entry. `existing` is the parent's current slot, reused for keyless entries.
+  private linkCacheEntry(
+    json: unknown,
+    existing: unknown,
+  ): { entry: CacheEntry; stored: symbol | CacheEntry } {
+    const cacheKey = getCacheEntryKey(json);
+    const entry =
+      cacheKey !== undefined
+        ? this.getOrCreateEntry(cacheKey)
+        : ((existing as CacheEntry | undefined) ?? createEmptyCacheEntry());
+    return { entry, stored: cacheKey ?? entry };
   }
 
   private mapEdgesToCacheEntries<A>(edges: Edge<A>[]): CachedEdge[] {
@@ -445,9 +499,7 @@ export class ClientCache {
       return result;
     };
 
-    const operation = document.definitions.find(
-      (definition) => definition.kind === Kind.OPERATION_DEFINITION,
-    );
+    const operation = getOperationDefinition(document);
 
     if (operation === undefined) {
       return undefined;
@@ -560,15 +612,11 @@ export class ClientCache {
             arrayCache[index] = item;
             return;
           }
-          const cacheKey = getCacheEntryKey(item);
-          const cacheObject =
-            cacheKey !== undefined
-              ? this.getOrCreateEntry(cacheKey)
-              : ((arrayCache[index] as CacheEntry | undefined) ??
-                createEmptyCacheEntry());
-
-          const cacheValueInParent = cacheKey ?? cacheObject;
-          arrayCache[index] = cacheValueInParent;
+          const { entry: cacheObject, stored } = this.linkCacheEntry(
+            item,
+            arrayCache[index],
+          );
+          arrayCache[index] = stored;
 
           // oxlint-disable-next-line no-use-before-define
           cacheSelectionSet(subSelectionSet, item, cacheObject, [
@@ -581,15 +629,11 @@ export class ClientCache {
       }
       // object with selection
       const record = fieldValue as Record<PropertyKey, unknown>;
-      const cacheKey = getCacheEntryKey(record);
-      const cacheObject =
-        cacheKey !== undefined
-          ? this.getOrCreateEntry(cacheKey)
-          : ((parentCache[fieldNameWithArguments] as CacheEntry | undefined) ??
-            createEmptyCacheEntry());
-
-      const cacheValueInParent = cacheKey ?? cacheObject;
-      parentCache[fieldNameWithArguments] = cacheValueInParent;
+      const { entry: cacheObject, stored } = this.linkCacheEntry(
+        record,
+        parentCache[fieldNameWithArguments],
+      );
+      parentCache[fieldNameWithArguments] = stored;
 
       if (
         typeof record.__typename === "string" &&
@@ -629,9 +673,7 @@ export class ClientCache {
       }
     };
 
-    const operation = document.definitions.find(
-      (definition) => definition.kind === Kind.OPERATION_DEFINITION,
-    );
+    const operation = getOperationDefinition(document);
 
     if (operation === undefined || !isRecord(response)) {
       return;
