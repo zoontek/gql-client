@@ -8,10 +8,12 @@ import {
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import {
   extractArguments,
+  getCacheEntryKey,
   getCacheKeyFromOperationNode,
   getFieldName,
   getFieldNameWithArguments,
   getSelectedKeys,
+  getTypename,
   isExcluded,
 } from "./graphql/ast";
 import type { AnyVariables, Connection, Edge, JsonValue } from "./types";
@@ -66,38 +68,6 @@ type CachedEdge = {
   [TYPENAME_KEY]: string | null | undefined;
   [NODE_KEY]: symbol;
   [CURSOR_KEY]?: string | null | undefined;
-};
-
-const getCacheEntryKey = (json: unknown): symbol | undefined => {
-  if (typeof json === "object" && json != null) {
-    if ("__typename" in json && typeof json.__typename === "string") {
-      const typename = json.__typename;
-
-      if (
-        typename === "Mutation" ||
-        typename === "Query" ||
-        typename === "Subscription"
-      ) {
-        return Symbol.for(typename);
-      }
-
-      if ("id" in json && typeof json.id === "string") {
-        return Symbol.for(`${typename}<${json.id}>`);
-      }
-    }
-  }
-  return undefined;
-};
-
-const getTypename = (json: unknown): string | undefined => {
-  if (typeof json === "object" && json != null) {
-    if (Array.isArray(json)) {
-      return getTypename(json[0]);
-    }
-    if ("__typename" in json && typeof json.__typename === "string") {
-      return json.__typename;
-    }
-  }
 };
 
 export class ClientCache {
