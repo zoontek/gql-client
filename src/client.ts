@@ -134,11 +134,11 @@ export class Client {
 
         const json: JsonValue = await response.json().catch(() => null);
 
-        // TODO: invert logic
         if (isRecord(json)) {
           if ("errors" in json && Array.isArray(json.errors)) {
             throw ClientError.graphql(this.url, response, json.errors);
           }
+
           if ("data" in json && json.data != null) {
             return json.data as JsonValue;
           }
