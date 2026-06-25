@@ -51,7 +51,7 @@ const createPaginationHook = (direction: "after" | "before") => {
               pathInQuery.reduce<JsonValue>(
                 (acc, key) =>
                   acc != null && typeof acc === "object" && key in acc
-                    ? (acc as Record<PropertyKey, JsonValue>)[key]
+                    ? ((acc as Record<PropertyKey, JsonValue>)[key] ?? null)
                     : null,
                 query,
               ),

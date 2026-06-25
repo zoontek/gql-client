@@ -1,7 +1,7 @@
 // From type-fest
 export type JsonObject = { [Key in string]: JsonValue };
-export type JsonArray = JsonValue[]; // | readonly JsonValue[];
-export type JsonPrimitive = string | number | boolean | null | undefined; // undefined is not standard
+export type JsonArray = JsonValue[] | readonly JsonValue[];
+export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
 
 export type AnyVariables = Record<string, unknown>;
