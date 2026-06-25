@@ -579,16 +579,14 @@ export class ClientCache {
       }
       // array with selection
       if (Array.isArray(fieldValue)) {
-        const arrayCache =
-          parentCache[fieldNameWithArguments] ?? Array(fieldValue.length);
-        // @ts-expect-error it's an array
+        const arrayCache = (parentCache[fieldNameWithArguments] ??
+          Array(fieldValue.length)) as (symbol | CacheEntry | null)[];
         arrayCache.length = fieldValue.length;
         if (parentCache[fieldNameWithArguments] == undefined) {
           parentCache[fieldNameWithArguments] = arrayCache;
         }
         fieldValue.forEach((item, index) => {
           if (item == null) {
-            // @ts-expect-error It's fine
             arrayCache[index] = item;
             return;
           }
@@ -596,11 +594,10 @@ export class ClientCache {
           const cacheObject =
             cacheKey !== undefined
               ? this.getOrCreateEntry(cacheKey)
-              : // @ts-expect-error It's fine
-                (arrayCache[index] ?? createEmptyCacheEntry());
+              : ((arrayCache[index] as CacheEntry | undefined) ??
+                createEmptyCacheEntry());
 
           const cacheValueInParent = cacheKey ?? cacheObject;
-          // @ts-expect-error It's fine
           arrayCache[index] = cacheValueInParent;
 
           // oxlint-disable-next-line no-use-before-define
