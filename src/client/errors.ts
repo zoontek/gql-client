@@ -27,27 +27,20 @@ const parseGraphQLError = (error: unknown): GraphQLError => {
     // This reconstructs an error from an arbitrary network payload, so nothing
     // short of a full runtime schema check could verify these fields actually
     // hold the shapes below.
+    const field = <T>(key: string): T | undefined =>
+      key in error ? ((error as Record<string, unknown>)[key] as T) : undefined;
+
     return new GraphQLError(
       error.message,
-      "nodes" in error
-        ? (error.nodes as readonly ASTNode[] | ASTNode | null | undefined)
-        : undefined,
+      field<readonly ASTNode[] | ASTNode | null | undefined>("nodes"),
       "source" in error ? error.source : undefined,
-      "positions" in error
-        ? (error.positions as readonly number[] | null | undefined)
-        : undefined,
-      "path" in error
-        ? (error.path as readonly (string | number)[] | null | undefined)
-        : undefined,
+      field<readonly number[] | null | undefined>("positions"),
+      field<readonly (string | number)[] | null | undefined>("path"),
       originalError,
-      "extensions" in error
-        ? (error.extensions as
-            | { [extension: string]: unknown }
-            | null
-            | undefined)
-        : undefined,
+      field<{ [extension: string]: unknown } | null | undefined>("extensions"),
     );
   }
+
   return new GraphQLError(JSON.stringify(error));
 };
 

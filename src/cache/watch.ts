@@ -1,3 +1,5 @@
+import { TYPENAME_KEY } from "./keys";
+
 // Tracks which (cache entry, field) pairs a read touched, or which a write
 // modified. `object` (not `CacheEntry`) is used as the map key so this module
 // stays decoupled from the cache's internal entry shape — only identity
@@ -19,6 +21,15 @@ export const trackField = (
   entry: object,
   field: symbol,
 ): void => {
+  // `transformDocument` injects `__typename` into every selection set,
+  // including every operation's root. Tracking it would make every read/write
+  // touching the shared Query/Mutation root entry look dependent on every
+  // other one — it never changes for an existing entry, so there is nothing
+  // meaningful to invalidate on.
+  if (field === TYPENAME_KEY) {
+    return;
+  }
+
   let fields = watched.get(entry);
 
   if (fields === undefined) {

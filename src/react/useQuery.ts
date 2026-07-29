@@ -1,17 +1,10 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
-import {
-  use,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
-import type { WatchedEntriesBox } from "../cache/watch";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import type { ClientError } from "../client/errors";
 import type { AnyVariables } from "../types";
 import { deepEqual } from "../utils";
 import { useClient } from "./context";
+import { useCacheSubscription } from "./useCacheSubscription";
 
 export type QueryState<Data> = {
   fetching: boolean;
@@ -96,35 +89,17 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
     }
   }
 
-  const effective = propsChanged ? variables : stableVariables.effective;
-  const provided = propsChanged ? variables : stableVariables.provided;
+  const { provided, effective } = propsChanged
+    ? { provided: variables, effective: variables }
+    : stableVariables;
 
-  // A stable box the client's subscription reads from at notify time. Updated
-  // by `getSnapshot` after every read, so the subscription stays scoped to
-  // whatever this query actually reads without needing to re-subscribe.
-  const [watchedEntries] = useState<WatchedEntriesBox>(() => ({
-    current: undefined,
-  }));
-
-  // Get data from cache
-  const getSnapshot = useCallback(() => {
-    const watched = new Map<object, Set<symbol>>();
-    const data = client.readFromCache(stableQuery, effective, watched);
-
-    // On a miss, leave the subscription unscoped (matches any write): we don't
-    // yet know what this query will end up reading, so we can't narrow it down
-    // without risking missing the write that resolves this query's own fetch.
-    watchedEntries.current = data === undefined ? undefined : watched;
-
-    return data;
-  }, [client, stableQuery, effective, watchedEntries]);
-
-  const subscribe = useCallback(
-    (fn: () => void) => client.subscribe(fn, watchedEntries),
-    [client, watchedEntries],
+  const readSnapshot = useCallback(
+    (watched: Map<object, Set<symbol>>) =>
+      client.readFromCache(stableQuery, effective, watched),
+    [client, stableQuery, effective],
   );
 
-  const data = useSyncExternalStore(subscribe, getSnapshot);
+  const data = useCacheSubscription(client, readSnapshot);
 
   const previousData = usePreviousData(data, provided);
 

@@ -23,7 +23,7 @@ import {
 import { trackField } from "./watch";
 import { createWriteOperation } from "./write";
 
-export type { CachedEdge, ConnectionInfo, Schema } from "./types";
+export type { ConnectionInfo, Schema } from "./types";
 
 export class ClientCache {
   private cache = new Map<symbol, CacheEntry>();

@@ -1,6 +1,5 @@
 import {
   Kind,
-  OperationTypeNode,
   type FieldNode,
   type SelectionSetNode,
 } from "@0no-co/graphql.web";
@@ -13,7 +12,11 @@ import {
 } from "../graphql/ast";
 import type { AnyVariables, JsonValue } from "../types";
 import { isRecord } from "../utils";
-import { CONNECTION_REF, REQUESTED_KEYS, TYPENAME_KEY } from "./keys";
+import {
+  CONNECTION_REF,
+  getCacheKeyFromOperationNode,
+  REQUESTED_KEYS,
+} from "./keys";
 import {
   isCacheEntryArrayItem,
   type CacheEntry,
@@ -83,10 +86,7 @@ export const createWriteOperation = (
         );
       }
 
-      // See the matching note in `read.ts`: `__typename` is excluded so that
-      // every operation writing to the shared Query/Mutation root entry
-      // doesn't look like it touches every other one.
-      if (touched !== undefined && fieldNameWithArguments !== TYPENAME_KEY) {
+      if (touched !== undefined) {
         trackField(touched, parentCache, fieldNameWithArguments);
       }
 
@@ -184,14 +184,10 @@ export const createWriteOperation = (
     }
 
     // Root __typename can vary, but we can't guess it from the document alone
-    const operationName =
-      operation.operation === OperationTypeNode.QUERY
-        ? "Query"
-        : operation.operation === OperationTypeNode.SUBSCRIPTION
-          ? "Subscription"
-          : "Mutation";
+    const cacheKey =
+      getCacheKeyFromOperationNode(operation) ?? Symbol.for("Mutation");
 
-    const cacheEntry = deps.getOrCreateEntry(Symbol.for(operationName));
+    const cacheEntry = deps.getOrCreateEntry(cacheKey);
     cacheSelectionSet(operation.selectionSet, response, cacheEntry, []);
   };
 };

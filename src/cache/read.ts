@@ -13,7 +13,7 @@ import {
   getTypename,
   isExcluded,
 } from "../graphql/ast";
-import type { AnyVariables, JsonObject, JsonValue } from "../types";
+import type { AnyVariables, JsonValue } from "../types";
 import {
   containsAll,
   deepEqual,
@@ -25,46 +25,14 @@ import {
   CONNECTION_REF,
   getCacheKeyFromOperationNode,
   REQUESTED_KEYS,
-  TYPENAME_KEY,
 } from "./keys";
-import { MISS, type CacheEntry } from "./types";
+import { isCacheEntry, MISS, type CacheEntry } from "./types";
 import { trackField } from "./watch";
 
 const STABILITY_CACHE = new WeakMap<
   TypedDocumentNode,
   Map<string, JsonValue>
 >();
-
-// `traverse` builds its result from cache entries whose field values are
-// untyped at the storage level (a field's shape depends on the query, not on
-// the entry's own type). This walks the built tree with runtime checks to
-// hand back a properly-typed `JsonValue` instead of asserting the shape.
-const toJsonValue = (value: unknown): JsonValue => {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    return value.map(toJsonValue);
-  }
-
-  if (isRecord(value)) {
-    const result: JsonObject = {};
-
-    for (const key of Object.keys(value)) {
-      result[key] = toJsonValue(value[key]);
-    }
-
-    return result;
-  }
-
-  return null;
-};
 
 export type ReadDeps = {
   // Raw map lookup, defaulting to MISS. Shared with the write/connection-update
@@ -101,11 +69,7 @@ export const createReadOperation = (
       const entry = getFromCache(valueOrKey, selectedKeys);
       return entry === MISS || entry == null ? MISS : entry;
     }
-    if (
-      isRecord(valueOrKey) &&
-      REQUESTED_KEYS in valueOrKey &&
-      valueOrKey[REQUESTED_KEYS] instanceof Set
-    ) {
+    if (isCacheEntry(valueOrKey)) {
       if (containsAll(valueOrKey[REQUESTED_KEYS], selectedKeys)) {
         return valueOrKey;
       } else {
@@ -152,21 +116,13 @@ export const createReadOperation = (
         return isExcluded(fieldNode, variables);
       }
 
-      if (
-        !alreadyResolved &&
-        watched !== undefined &&
-        fieldNameWithArguments !== TYPENAME_KEY
-      ) {
+      if (!alreadyResolved && watched !== undefined) {
         // Record that this read depends on `source`'s value for this field —
         // writes storing under the same key (always `fieldNameWithArguments`,
         // see `write.ts`) must wake up whoever reads this. Skipped when
         // `alreadyResolved`: that reads from the local `result`, not from a
-        // cache entry, so there is nothing to depend on. `__typename` is
-        // excluded too: `transformDocument` injects it into every selection
-        // set, including every operation's root, so tracking it would make
-        // every query touching the shared Query/Mutation root entry look
-        // dependent on every other one — it never changes for an existing
-        // entry anyway, so there is nothing meaningful to invalidate on.
+        // cache entry, so there is nothing to depend on. (`trackField` itself
+        // excludes `__typename`, see `watch.ts`.)
         trackField(watched, source, fieldNameWithArguments);
       }
 
@@ -357,7 +313,11 @@ export const createReadOperation = (
       return undefined;
     }
 
-    const value = toJsonValue(traversed);
+    // `traverse` builds this from cache entries whose field values are
+    // untyped at the storage level, but it only ever writes plain scalars,
+    // plain objects, and plain arrays into `result` — never a raw cache entry
+    // or a symbol key — so the tree is already `JsonValue`-shaped.
+    const value = traversed as JsonValue;
 
     // We use a trick to return stable values, the document holds a WeakMap
     // that for each key (serialized variables), stores the last returned result.

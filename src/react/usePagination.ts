@@ -1,9 +1,9 @@
-import { useCallback, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useRef } from "react";
 import { CONNECTION_REF } from "../cache/keys";
-import type { WatchedEntriesBox } from "../cache/watch";
 import type { Connection, JsonValue } from "../types";
 import { deepEqual, filterMap, isRecord } from "../utils";
 import { useClient } from "./context";
+import { useCacheSubscription } from "./useCacheSubscription";
 
 // A path segment is either a field name (object) or a list index (array) —
 // which one depends on the query, not on anything the cached JSON tree's own
@@ -46,62 +46,48 @@ const createPaginationHook = (direction: "after" | "before") => {
       }
     }
 
-    // A stable box the client's subscription reads from at notify time. Updated
-    // by `getSnapshot` after every read, so the subscription stays scoped to
-    // whatever this hook actually reads without needing to re-subscribe.
-    const [watchedEntries] = useState<WatchedEntriesBox>(() => ({
-      current: undefined,
-    }));
-
     // Get fresh data from cache
-    const getSnapshot = useCallback(() => {
-      const infos = filterMap(connectionRefs.current, (id) =>
-        client.getCachedConnection(id),
-      );
-
-      const watched = new Map<object, Set<symbol>>();
-
-      const queries = filterMap(infos, (info) => {
-        const query = client.readFromCache(
-          info.document,
-          info.variables,
-          watched,
+    const readSnapshot = useCallback(
+      (watched: Map<object, Set<symbol>>) => {
+        const infos = filterMap(connectionRefs.current, (id) =>
+          client.getCachedConnection(id),
         );
-        return query === undefined
-          ? undefined
-          : { query, pathInQuery: info.pathInQuery };
-      });
 
-      // If any cached connection couldn't be read, treat the whole thing as a miss
-      const allResolved = queries.length === infos.length;
+        const queries = filterMap(infos, (info) => {
+          const query = client.readFromCache(
+            info.document,
+            info.variables,
+            watched,
+          );
+          return query === undefined
+            ? undefined
+            : { query, pathInQuery: info.pathInQuery };
+        });
 
-      // On a miss, leave the subscription unscoped (matches any write): we
-      // don't yet know what this hook will end up reading, so we can't narrow
-      // it down without risking missing the write that resolves the miss.
-      watchedEntries.current = allResolved ? watched : undefined;
+        // If any cached connection couldn't be read, treat the whole thing as a miss
+        const allResolved = queries.length === infos.length;
 
-      // Each cache read resolves to `JsonValue`, drilled down to `T` here via
-      // the connection's known query path. The result is trusted to match `T`
-      // — the shape the caller's typed query declares — the same way any
-      // GraphQL response is trusted to match its document's result type.
-      const value: T[] | undefined = allResolved
-        ? (queries.map(({ query, pathInQuery }) =>
-            pathInQuery.reduce(readJsonPathSegment, query),
-          ) as T[])
-        : undefined;
+        // Each cache read resolves to `JsonValue`, drilled down to `T` here via
+        // the connection's known query path. The result is trusted to match `T`
+        // — the shape the caller's typed query declares — the same way any
+        // GraphQL response is trusted to match its document's result type.
+        const value: T[] | undefined = allResolved
+          ? (queries.map(({ query, pathInQuery }) =>
+              pathInQuery.reduce(readJsonPathSegment, query),
+            ) as T[])
+          : undefined;
 
-      if (!deepEqual(value, lastReturnedValueRef.current)) {
-        lastReturnedValueRef.current = value;
-        return value;
-      } else {
-        return lastReturnedValueRef.current;
-      }
-    }, [client, watchedEntries]);
-
-    const data = useSyncExternalStore(
-      (fn) => client.subscribe(fn, watchedEntries),
-      getSnapshot,
+        if (!deepEqual(value, lastReturnedValueRef.current)) {
+          lastReturnedValueRef.current = value;
+          return value;
+        } else {
+          return lastReturnedValueRef.current;
+        }
+      },
+      [client],
     );
+
+    const data = useCacheSubscription(client, readSnapshot);
 
     if (data === undefined) {
       return connection;
