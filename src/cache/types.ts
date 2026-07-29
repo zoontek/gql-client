@@ -1,5 +1,6 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import type { AnyVariables } from "../types";
+import { isRecord } from "../utils";
 import {
   CONNECTION_REF,
   CURSOR_KEY,
@@ -26,7 +27,7 @@ export type ConnectionInfo = {
   fieldVariables: AnyVariables;
 };
 
-export type CacheEntry = Record<symbol, unknown> & {
+export type CacheEntry = Record<PropertyKey, unknown> & {
   [REQUESTED_KEYS]: Set<symbol>;
   [CONNECTION_REF]?: number;
 };
@@ -35,8 +36,21 @@ export const createEmptyCacheEntry = (): CacheEntry => ({
   [REQUESTED_KEYS]: new Set<symbol>(),
 });
 
+export const isCacheEntry = (value: unknown): value is CacheEntry =>
+  isRecord(value) &&
+  REQUESTED_KEYS in value &&
+  value[REQUESTED_KEYS] instanceof Set;
+
+export const isCacheEntryArrayItem = (
+  value: unknown,
+): value is symbol | CacheEntry | null =>
+  value === null || typeof value === "symbol" || isCacheEntry(value);
+
 export type CachedEdge = {
   [TYPENAME_KEY]: string | null | undefined;
   [NODE_KEY]: symbol;
   [CURSOR_KEY]?: string | null | undefined;
 };
+
+export const isCachedEdge = (value: unknown): value is CachedEdge =>
+  isRecord(value) && typeof value[NODE_KEY] === "symbol";

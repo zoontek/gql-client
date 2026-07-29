@@ -14,7 +14,11 @@ import {
 import type { AnyVariables, JsonValue } from "../types";
 import { isRecord } from "../utils";
 import { CONNECTION_REF, REQUESTED_KEYS, TYPENAME_KEY } from "./keys";
-import type { CacheEntry, ConnectionInfo } from "./types";
+import {
+  isCacheEntryArrayItem,
+  type CacheEntry,
+  type ConnectionInfo,
+} from "./types";
 import { trackField } from "./watch";
 
 export type WriteDeps = {
@@ -94,8 +98,12 @@ export const createWriteOperation = (
       }
       // array with selection
       if (Array.isArray(fieldValue)) {
-        const arrayCache = (parentCache[fieldNameWithArguments] ??
-          Array(fieldValue.length)) as (symbol | CacheEntry | null)[];
+        const existingArray = parentCache[fieldNameWithArguments];
+        const arrayCache: (symbol | CacheEntry | null)[] =
+          Array.isArray(existingArray) &&
+          existingArray.every(isCacheEntryArrayItem)
+            ? existingArray
+            : Array(fieldValue.length);
         arrayCache.length = fieldValue.length;
         if (parentCache[fieldNameWithArguments] == undefined) {
           parentCache[fieldNameWithArguments] = arrayCache;
@@ -121,7 +129,10 @@ export const createWriteOperation = (
         return;
       }
       // object with selection
-      const record = fieldValue as Record<PropertyKey, unknown>;
+      if (!isRecord(fieldValue)) {
+        return;
+      }
+      const record = fieldValue;
       const { entry: cacheObject, stored } = deps.linkCacheEntry(
         record,
         parentCache[fieldNameWithArguments],

@@ -72,10 +72,7 @@ export class Client {
   private cache: ClientCache;
   private subscribers: Map<() => void, WatchedEntriesBox>;
 
-  private inflightRequests: WeakMap<
-    TypedDocumentNode,
-    Map<string, Promise<unknown>>
-  >;
+  private inflightRequests: WeakMap<object, Map<string, Promise<unknown>>>;
 
   public constructor(config: ClientConfig) {
     this.url = config.url;
@@ -161,18 +158,22 @@ export class Client {
           }
 
           if ("data" in json && json.data != null) {
-            return json.data as JsonValue;
+            return json.data;
           }
         }
 
         throw ClientError.malformedResponse(this.url, response);
       })
-      .then((data) => {
+      .then((json) => {
+        // The server response is trusted to match `Data`, the shape the caller's
+        // `TypedDocumentNode` declares — nothing short of runtime schema
+        // validation could verify that from a parsed JSON payload alone.
+        const data: Data = json as Data;
         const touched = new Map<object, Set<symbol>>();
 
         this.cache.writeOperation(
           transformedDocument,
-          data,
+          json,
           variables,
           touched,
         );
@@ -180,7 +181,7 @@ export class Client {
         if (connectionUpdates !== undefined) {
           connectionUpdates.forEach((getUpdate) => {
             const result = getUpdate({
-              data: data as Data,
+              data,
               variables,
               prepend,
               append,
@@ -196,7 +197,7 @@ export class Client {
 
         this.notify(touched);
 
-        return data as Data;
+        return data;
       })
       .catch((error) => {
         if (error instanceof ClientError) {
@@ -219,19 +220,21 @@ export class Client {
     variables: NoInfer<Variables>,
     options: RequestOptions<Data, Variables> = {},
   ): Promise<Data> {
-    const documentKey = document as unknown as TypedDocumentNode;
     const key = serializeVariables(variables);
 
-    let documentRequests = this.inflightRequests.get(documentKey);
+    let documentRequests = this.inflightRequests.get(document);
     const existing = documentRequests?.get(key);
 
     if (existing !== undefined) {
+      // The in-flight map is shared across every document, so a cached promise
+      // is stored as `Promise<unknown>`; it was created by `request<Data>` below
+      // for this exact document, so it does resolve to `Data`.
       return existing as Promise<Data>;
     }
 
     if (documentRequests === undefined) {
       documentRequests = new Map();
-      this.inflightRequests.set(documentKey, documentRequests);
+      this.inflightRequests.set(document, documentRequests);
     }
 
     const promise = this.request(document, variables, options);

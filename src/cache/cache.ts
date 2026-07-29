@@ -13,6 +13,8 @@ import { createReadOperation } from "./read";
 import {
   MISS,
   createEmptyCacheEntry,
+  isCacheEntry,
+  isCachedEdge,
   type CacheEntry,
   type CachedEdge,
   type ConnectionInfo,
@@ -91,7 +93,7 @@ export class ClientCache {
 
   // Raw map lookup, defaulting to the MISS sentinel. Shared by the read path
   // (via `readOperation`'s injected `get`) and `mapEdgesToCacheEntries` below.
-  private get(cacheKey: symbol): unknown {
+  private get(cacheKey: symbol): CacheEntry | typeof MISS {
     const entry = this.cache.get(cacheKey);
     return entry === undefined ? MISS : entry;
   }
@@ -120,7 +122,9 @@ export class ClientCache {
     const entry =
       cacheKey !== undefined
         ? this.getOrCreateEntry(cacheKey)
-        : ((existing as CacheEntry | undefined) ?? createEmptyCacheEntry());
+        : isCacheEntry(existing)
+          ? existing
+          : createEmptyCacheEntry();
     return { entry, stored: cacheKey ?? entry };
   }
 
@@ -167,9 +171,11 @@ export class ClientCache {
       // `edges` may not be cached at all (e.g. the connection was queried with
       // only `pageInfo`, or its edges haven't resolved yet), so default to an
       // empty list rather than spreading/filtering `undefined`.
+      const cachedEdges = connectionConfig.cacheEntry[EDGES_KEY];
       const currentEdges =
-        (connectionConfig.cacheEntry[EDGES_KEY] as CachedEdge[] | undefined) ??
-        [];
+        Array.isArray(cachedEdges) && cachedEdges.every(isCachedEdge)
+          ? cachedEdges
+          : [];
 
       if (touched !== undefined) {
         trackField(touched, connectionConfig.cacheEntry, EDGES_KEY);

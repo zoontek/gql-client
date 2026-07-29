@@ -2,8 +2,21 @@ import { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import { CONNECTION_REF } from "../cache/keys";
 import type { WatchedEntriesBox } from "../cache/watch";
 import type { Connection, JsonValue } from "../types";
-import { deepEqual, filterMap } from "../utils";
+import { deepEqual, filterMap, isRecord } from "../utils";
 import { useClient } from "./context";
+
+// A path segment is either a field name (object) or a list index (array) —
+// which one depends on the query, not on anything the cached JSON tree's own
+// type can express, so this dispatches at runtime instead of asserting it.
+const readJsonPathSegment = (value: JsonValue, key: PropertyKey): JsonValue => {
+  if (Array.isArray(value) && typeof key === "number") {
+    return value[key] ?? null;
+  }
+  if (isRecord(value) && typeof key === "string") {
+    return value[key] ?? null;
+  }
+  return null;
+};
 
 const createPaginationHook = (direction: "after" | "before") => {
   const isForwardPagination = direction === "after";
@@ -67,15 +80,13 @@ const createPaginationHook = (direction: "after" | "before") => {
       // it down without risking missing the write that resolves the miss.
       watchedEntries.current = allResolved ? watched : undefined;
 
+      // Each cache read resolves to `JsonValue`, drilled down to `T` here via
+      // the connection's known query path. The result is trusted to match `T`
+      // — the shape the caller's typed query declares — the same way any
+      // GraphQL response is trusted to match its document's result type.
       const value: T[] | undefined = allResolved
         ? (queries.map(({ query, pathInQuery }) =>
-            pathInQuery.reduce<JsonValue>(
-              (acc, key) =>
-                acc != null && typeof acc === "object" && key in acc
-                  ? ((acc as Record<PropertyKey, JsonValue>)[key] ?? null)
-                  : null,
-              query,
-            ),
+            pathInQuery.reduce(readJsonPathSegment, query),
           ) as T[])
         : undefined;
 
@@ -93,15 +104,19 @@ const createPaginationHook = (direction: "after" | "before") => {
     );
 
     if (data === undefined) {
-      return connection as T;
+      return connection;
     }
 
     const connections = data.filter((query) => query != null);
 
     if (connections.length === 0) {
-      return connection as T;
+      return connection;
     }
 
+    // The merged connection is built from `previous`/`next`, both real `T`
+    // instances, but a fresh object literal can't be verified against the
+    // generic `T` itself — TypeScript can't confirm a constructed value matches
+    // an abstract type parameter, only a concrete one.
     return connections.reduce((previous, next) => {
       if (previous.pageInfo[cursor] === next.pageInfo[cursor]) {
         return previous;

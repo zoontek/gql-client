@@ -1,5 +1,5 @@
 import { type ASTNode, GraphQLError } from "@0no-co/graphql.web";
-import type { JsonArray, JsonValue } from "../types";
+import type { JsonArray } from "../types";
 
 export type ClientErrorReason =
   | "graphql"
@@ -15,10 +15,6 @@ const parseGraphQLError = (error: unknown): GraphQLError => {
     "message" in error &&
     typeof error.message === "string"
   ) {
-    const graphQLError = error as Record<PropertyKey, JsonValue> & {
-      message: string;
-    };
-
     const originalError =
       "error" in error &&
       typeof error.error === "object" &&
@@ -28,17 +24,28 @@ const parseGraphQLError = (error: unknown): GraphQLError => {
         ? new Error(error.error.message)
         : null;
 
+    // This reconstructs an error from an arbitrary network payload, so nothing
+    // short of a full runtime schema check could verify these fields actually
+    // hold the shapes below.
     return new GraphQLError(
-      graphQLError.message,
-      graphQLError.nodes as readonly ASTNode[] | ASTNode | null | undefined,
-      graphQLError.source,
-      graphQLError.positions as readonly number[] | null | undefined,
-      graphQLError.path as readonly (string | number)[] | null | undefined,
+      error.message,
+      "nodes" in error
+        ? (error.nodes as readonly ASTNode[] | ASTNode | null | undefined)
+        : undefined,
+      "source" in error ? error.source : undefined,
+      "positions" in error
+        ? (error.positions as readonly number[] | null | undefined)
+        : undefined,
+      "path" in error
+        ? (error.path as readonly (string | number)[] | null | undefined)
+        : undefined,
       originalError,
-      graphQLError.extensions as
-        | { [extension: string]: unknown }
-        | null
-        | undefined,
+      "extensions" in error
+        ? (error.extensions as
+            | { [extension: string]: unknown }
+            | null
+            | undefined)
+        : undefined,
     );
   }
   return new GraphQLError(JSON.stringify(error));

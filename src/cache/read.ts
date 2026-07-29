@@ -13,7 +13,7 @@ import {
   getTypename,
   isExcluded,
 } from "../graphql/ast";
-import type { AnyVariables, JsonValue } from "../types";
+import type { AnyVariables, JsonObject, JsonValue } from "../types";
 import {
   containsAll,
   deepEqual,
@@ -27,7 +27,7 @@ import {
   REQUESTED_KEYS,
   TYPENAME_KEY,
 } from "./keys";
-import { MISS } from "./types";
+import { MISS, type CacheEntry } from "./types";
 import { trackField } from "./watch";
 
 const STABILITY_CACHE = new WeakMap<
@@ -35,10 +35,41 @@ const STABILITY_CACHE = new WeakMap<
   Map<string, JsonValue>
 >();
 
+// `traverse` builds its result from cache entries whose field values are
+// untyped at the storage level (a field's shape depends on the query, not on
+// the entry's own type). This walks the built tree with runtime checks to
+// hand back a properly-typed `JsonValue` instead of asserting the shape.
+const toJsonValue = (value: unknown): JsonValue => {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(toJsonValue);
+  }
+
+  if (isRecord(value)) {
+    const result: JsonObject = {};
+
+    for (const key of Object.keys(value)) {
+      result[key] = toJsonValue(value[key]);
+    }
+
+    return result;
+  }
+
+  return null;
+};
+
 export type ReadDeps = {
   // Raw map lookup, defaulting to MISS. Shared with the write/connection-update
   // paths, so it lives on the class rather than being duplicated here.
-  get: (cacheKey: symbol) => unknown;
+  get: (cacheKey: symbol) => CacheEntry | typeof MISS;
   isTypeCompatible: (typename: string, typeCondition: string) => boolean;
 };
 
@@ -52,18 +83,14 @@ export const createReadOperation = (
   const getFromCache = (
     cacheKey: symbol,
     requestedKeys: Set<symbol>,
-  ): unknown => {
+  ): CacheEntry | typeof MISS => {
     const entry = deps.get(cacheKey);
 
-    // `entry` is either a record cache entry, a scalar, or the MISS sentinel
-    // (a symbol, so it falls through to the return below).
-    if (isRecord(entry)) {
-      return containsAll(entry[REQUESTED_KEYS] as Set<symbol>, requestedKeys)
-        ? entry
-        : MISS;
+    if (entry === MISS) {
+      return MISS;
     }
 
-    return entry;
+    return containsAll(entry[REQUESTED_KEYS], requestedKeys) ? entry : MISS;
   };
 
   const getFromCacheOrReturnValue = (
@@ -324,17 +351,13 @@ export const createReadOperation = (
       return undefined;
     }
 
-    const traversed = traverse(
-      operation.selectionSet,
-      cache as Record<PropertyKey, unknown>,
-    );
+    const traversed = traverse(operation.selectionSet, cache);
 
     if (traversed === MISS) {
       return undefined;
     }
 
-    // `traverse` already produced a clean, string-keyed plain-JSON tree.
-    const value = traversed as JsonValue;
+    const value = toJsonValue(traversed);
 
     // We use a trick to return stable values, the document holds a WeakMap
     // that for each key (serialized variables), stores the last returned result.
