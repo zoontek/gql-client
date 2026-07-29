@@ -3,7 +3,7 @@ import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { describe, expect, test } from "bun:test";
 import { ClientCache } from "../src/cache/cache";
 import { entriesOverlap } from "../src/cache/watch";
-import { transformDocument } from "../src/graphql/transformDocument";
+import { transformDocument } from "../src/graphql/transform";
 import type { AnyVariables, JsonValue } from "../src/types";
 
 const doc = (source: string): TypedDocumentNode =>
