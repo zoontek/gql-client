@@ -1,5 +1,5 @@
-export { Client } from "./client";
-export { ClientError } from "./errors";
+export { Client } from "./client/client";
+export { ClientError } from "./client/errors";
 export { ClientProvider, useClient } from "./react/context";
 export { useMutation } from "./react/useMutation";
 export {
@@ -8,7 +8,7 @@ export {
 } from "./react/usePagination";
 export { useQuery } from "./react/useQuery";
 
-export type { ClientErrorReason } from "./errors";
+export type { ClientErrorReason } from "./client/errors";
 export type {
   Mutation,
   MutationConfig,

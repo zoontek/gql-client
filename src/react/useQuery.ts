@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { ClientError } from "../errors";
+import type { ClientError } from "../client/errors";
 import type { AnyVariables } from "../types";
 import { deepEqual } from "../utils";
 import { useClient } from "./context";

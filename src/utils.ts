@@ -1,14 +1,5 @@
 import type { AnyVariables } from "./types";
 
-export const REQUESTED_KEYS = Symbol.for("__requestedKeys");
-
-export const CONNECTION_REF = "__connectionRef";
-
-export const TYPENAME_KEY = Symbol.for("__typename");
-export const EDGES_KEY = Symbol.for("edges");
-export const NODE_KEY = Symbol.for("node");
-export const CURSOR_KEY = Symbol.for("cursor");
-
 export const containsAll = <T>(a: Set<T>, b: Set<T>): boolean => {
   for (const key of b) {
     if (!a.has(key)) {

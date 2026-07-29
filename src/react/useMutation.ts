@@ -1,7 +1,7 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { useCallback, useRef, useState } from "react";
-import type { GetConnectionUpdate } from "../client";
-import type { ClientError } from "../errors";
+import type { GetConnectionUpdate } from "../client/client";
+import type { ClientError } from "../client/errors";
 import type { AnyVariables } from "../types";
 import { useClient } from "./context";
 

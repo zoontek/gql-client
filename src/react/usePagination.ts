@@ -1,6 +1,7 @@
 import { useCallback, useRef, useSyncExternalStore } from "react";
+import { CONNECTION_REF } from "../cache/keys";
 import type { Connection, JsonValue } from "../types";
-import { CONNECTION_REF, deepEqual, filterMap } from "../utils";
+import { deepEqual, filterMap } from "../utils";
 import { useClient } from "./context";
 
 const createPaginationHook = (direction: "after" | "before") => {

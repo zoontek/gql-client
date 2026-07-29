@@ -1,5 +1,5 @@
 import { type ASTNode, GraphQLError } from "@0no-co/graphql.web";
-import type { JsonArray, JsonValue } from "./types";
+import type { JsonArray, JsonValue } from "../types";
 
 export type ClientErrorReason =
   | "graphql"

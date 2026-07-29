@@ -5,7 +5,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Client } from "../client";
+import { Client } from "../client/client";
 
 const ClientContext = createContext(
   new Client({ url: "/graphql", schema: { interfaceToTypes: {} } }),

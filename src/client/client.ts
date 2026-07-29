@@ -1,11 +1,11 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
-import { ClientCache, type ConnectionInfo, type Schema } from "./cache";
+import { ClientCache, type ConnectionInfo, type Schema } from "../cache/cache";
+import { getOperationName } from "../graphql/ast";
+import { printDocument } from "../graphql/printDocument";
+import { transformDocument } from "../graphql/transformDocument";
+import type { AnyVariables, Connection, Edge, JsonValue } from "../types";
+import { isRecord, serializeVariables } from "../utils";
 import { ClientError } from "./errors";
-import { getOperationName } from "./graphql/ast";
-import { printDocument } from "./graphql/printDocument";
-import { transformDocument } from "./graphql/transformDocument";
-import type { AnyVariables, Connection, Edge, JsonValue } from "./types";
-import { isRecord, serializeVariables } from "./utils";
 
 export type ClientConfig = {
   url: string;
