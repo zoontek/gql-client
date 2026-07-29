@@ -13,8 +13,9 @@ import {
 } from "../graphql/ast";
 import type { AnyVariables, JsonValue } from "../types";
 import { isRecord } from "../utils";
-import { CONNECTION_REF, REQUESTED_KEYS } from "./keys";
+import { CONNECTION_REF, REQUESTED_KEYS, TYPENAME_KEY } from "./keys";
 import type { CacheEntry, ConnectionInfo } from "./types";
+import { trackField } from "./watch";
 
 export type WriteDeps = {
   getOrCreateEntry: (cacheKey: symbol) => CacheEntry;
@@ -31,11 +32,13 @@ export const createWriteOperation = (
   document: TypedDocumentNode,
   response: JsonValue,
   variables: AnyVariables,
+  touched?: Map<object, Set<symbol>>,
 ) => void) => {
   return (
     document: TypedDocumentNode,
     response: JsonValue,
     variables: AnyVariables,
+    touched?: Map<object, Set<symbol>>,
   ): void => {
     const registerConnection = (
       cacheEntry: CacheEntry,
@@ -74,6 +77,13 @@ export const createWriteOperation = (
         console.error(
           `GraphQL Client cache error: ${path.join(".")} likely didn't query its \`id\` field`,
         );
+      }
+
+      // See the matching note in `read.ts`: `__typename` is excluded so that
+      // every operation writing to the shared Query/Mutation root entry
+      // doesn't look like it touches every other one.
+      if (touched !== undefined && fieldNameWithArguments !== TYPENAME_KEY) {
+        trackField(touched, parentCache, fieldNameWithArguments);
       }
 
       // either scalar type with no selection, or a null/undefined value

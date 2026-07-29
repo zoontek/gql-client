@@ -18,6 +18,7 @@ import {
   type ConnectionInfo,
   type Schema,
 } from "./types";
+import { trackField } from "./watch";
 import { createWriteOperation } from "./write";
 
 export type { CachedEdge, ConnectionInfo, Schema } from "./types";
@@ -31,12 +32,14 @@ export class ClientCache {
   public readonly readOperation: (
     document: TypedDocumentNode,
     variables: AnyVariables,
+    watched?: Map<object, Set<symbol>>,
   ) => JsonValue | undefined;
 
   public readonly writeOperation: (
     document: TypedDocumentNode,
     response: JsonValue,
     variables: AnyVariables,
+    touched?: Map<object, Set<symbol>>,
   ) => void;
 
   public constructor(schema: Schema) {
@@ -145,6 +148,7 @@ export class ClientCache {
       | { prepend: Edge<A>[] }
       | { append: Edge<A>[] }
       | { remove: string[] },
+    touched?: Map<object, Set<symbol>>,
   ): void {
     if (connection == null) {
       return;
@@ -166,6 +170,10 @@ export class ClientCache {
       const currentEdges =
         (connectionConfig.cacheEntry[EDGES_KEY] as CachedEdge[] | undefined) ??
         [];
+
+      if (touched !== undefined) {
+        trackField(touched, connectionConfig.cacheEntry, EDGES_KEY);
+      }
 
       if ("prepend" in config) {
         connectionConfig.cacheEntry[EDGES_KEY] = [

@@ -1,5 +1,6 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { ClientCache, type ConnectionInfo, type Schema } from "../cache/cache";
+import { entriesOverlap, type WatchedEntriesBox } from "../cache/watch";
 import { getOperationName } from "../graphql/ast";
 import { printDocument } from "../graphql/printDocument";
 import { transformDocument } from "../graphql/transformDocument";
@@ -69,7 +70,7 @@ export class Client {
   private timeout: number;
 
   private cache: ClientCache;
-  private subscribers: Set<() => void>;
+  private subscribers: Map<() => void, WatchedEntriesBox>;
 
   private inflightRequests: WeakMap<
     TypedDocumentNode,
@@ -88,15 +89,35 @@ export class Client {
     };
 
     this.cache = new ClientCache(config.schema);
-    this.subscribers = new Set<() => void>();
+    this.subscribers = new Map();
     this.inflightRequests = new WeakMap();
   }
 
-  public subscribe(fn: () => void): () => void {
-    this.subscribers.add(fn);
+  // `watched` is a mutable box a subscriber can update (via `readFromCache`'s
+  // `watched` out-param) after every read, without re-subscribing. Omitting it
+  // — as any direct caller outside the provided hooks would — keeps it
+  // unscoped, matching every write, which is the previous global-notify
+  // behavior.
+  public subscribe(
+    fn: () => void,
+    watched: WatchedEntriesBox = { current: undefined },
+  ): () => void {
+    this.subscribers.set(fn, watched);
     return () => {
       this.subscribers.delete(fn);
     };
+  }
+
+  // Notifies only subscribers whose last-known read touched one of the same
+  // (cache entry, field) pairs this write touched, instead of every mounted
+  // query. A subscriber with no successful read yet stays unscoped (see
+  // `subscribe`), so its own eventual write still reaches it.
+  private notify(touched: Map<object, Set<symbol>>): void {
+    this.subscribers.forEach((watched, fn) => {
+      if (entriesOverlap(watched.current, touched)) {
+        fn();
+      }
+    });
   }
 
   public request<Data, Variables extends AnyVariables = AnyVariables>(
@@ -147,7 +168,14 @@ export class Client {
         throw ClientError.malformedResponse(this.url, response);
       })
       .then((data) => {
-        this.cache.writeOperation(transformedDocument, data, variables);
+        const touched = new Map<object, Set<symbol>>();
+
+        this.cache.writeOperation(
+          transformedDocument,
+          data,
+          variables,
+          touched,
+        );
 
         if (connectionUpdates !== undefined) {
           connectionUpdates.forEach((getUpdate) => {
@@ -161,12 +189,12 @@ export class Client {
 
             if (result !== undefined) {
               const [connection, update] = result;
-              this.cache.updateConnection(connection, update);
+              this.cache.updateConnection(connection, update, touched);
             }
           });
         }
 
-        this.subscribers.forEach((fn) => fn());
+        this.notify(touched);
 
         return data as Data;
       })
@@ -227,9 +255,10 @@ export class Client {
   public readFromCache<Data, Variables extends AnyVariables = AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
+    watched?: Map<object, Set<symbol>>,
   ): JsonValue | undefined {
     const transformedDocument = transformDocument(document);
-    return this.cache.readOperation(transformedDocument, variables);
+    return this.cache.readOperation(transformedDocument, variables, watched);
   }
 
   public getCachedConnection(id: number): ConnectionInfo | undefined {

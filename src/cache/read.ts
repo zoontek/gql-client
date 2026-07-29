@@ -25,8 +25,10 @@ import {
   CONNECTION_REF,
   getCacheKeyFromOperationNode,
   REQUESTED_KEYS,
+  TYPENAME_KEY,
 } from "./keys";
 import { MISS } from "./types";
+import { trackField } from "./watch";
 
 const STABILITY_CACHE = new WeakMap<
   TypedDocumentNode,
@@ -45,6 +47,7 @@ export const createReadOperation = (
 ): ((
   document: TypedDocumentNode,
   variables: AnyVariables,
+  watched?: Map<object, Set<symbol>>,
 ) => JsonValue | undefined) => {
   const getFromCache = (
     cacheKey: symbol,
@@ -88,6 +91,7 @@ export const createReadOperation = (
   return (
     document: TypedDocumentNode,
     variables: AnyVariables,
+    watched?: Map<object, Set<symbol>>,
   ): JsonValue | undefined => {
     // Builds a clean, string-keyed result directly. `source` is read-only — a
     // cache entry (whose field values live under argument-qualified symbol
@@ -119,6 +123,24 @@ export const createReadOperation = (
         // absent from the response, so its absence from the cache is not a
         // miss — skip it. Any other missing field is a genuine miss.
         return isExcluded(fieldNode, variables);
+      }
+
+      if (
+        !alreadyResolved &&
+        watched !== undefined &&
+        fieldNameWithArguments !== TYPENAME_KEY
+      ) {
+        // Record that this read depends on `source`'s value for this field —
+        // writes storing under the same key (always `fieldNameWithArguments`,
+        // see `write.ts`) must wake up whoever reads this. Skipped when
+        // `alreadyResolved`: that reads from the local `result`, not from a
+        // cache entry, so there is nothing to depend on. `__typename` is
+        // excluded too: `transformDocument` injects it into every selection
+        // set, including every operation's root, so tracking it would make
+        // every query touching the shared Query/Mutation root entry look
+        // dependent on every other one — it never changes for an existing
+        // entry anyway, so there is nothing meaningful to invalidate on.
+        trackField(watched, source, fieldNameWithArguments);
       }
 
       const rawValue = alreadyResolved
