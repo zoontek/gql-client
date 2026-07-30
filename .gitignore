@@ -9,6 +9,9 @@
 /tests/react/report
 /tests/react/results
 
+# generated
+/example/gql
+
 # misc
 .DS_Store
 .env
