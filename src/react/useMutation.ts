@@ -12,10 +12,10 @@ import { useClient } from "./context";
  * Reflects only the most recently started call to the mutate function.
  */
 export type MutationState<Data> =
-  | { status: "idle"; fetching: false }
-  | { status: "loading"; fetching: true }
-  | { status: "success"; fetching: false; data: Data }
-  | { status: "error"; fetching: false; error: ClientError };
+  | { fetching: false; status: "idle" }
+  | { fetching: true; status: "loading" }
+  | { fetching: false; status: "success"; data: Data }
+  | { fetching: false; status: "error"; error: ClientError };
 
 /** Return type of `useMutation`: a `[state, mutate]` tuple. */
 export type Mutation<

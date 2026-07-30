@@ -52,25 +52,25 @@ const FilmRatingForm = ({ filmId }: { filmId: string }) => {
 ### Signature
 
 ```ts
-function useMutation<Data, Variables extends AnyVariables = AnyVariables>(
-  mutation: TypedDocumentNode<Data, Variables>,
-  config?: MutationConfig<Data, Variables>,
-): Mutation<Data, Variables>;
+type MutationState<Data> =
+  | { fetching: false; status: "idle" }
+  | { fetching: true; status: "loading" }
+  | { fetching: false; status: "success"; data: Data }
+  | { fetching: false; status: "error"; error: ClientError };
 
-type MutationConfig<Data, Variables extends AnyVariables = AnyVariables> = {
-  connectionUpdates?: GetConnectionUpdate<Data, Variables>[];
-};
-
-type Mutation<Data, Variables extends AnyVariables = AnyVariables> = readonly [
+type Mutation<Data, Variables> = readonly [
   MutationState<Data>,
   (variables: Variables) => Promise<Data>,
 ];
 
-type MutationState<Data> =
-  | { status: "idle"; fetching: false }
-  | { status: "loading"; fetching: true }
-  | { status: "success"; fetching: false; data: Data }
-  | { status: "error"; fetching: false; error: ClientError };
+type MutationConfig<Data, Variables> = {
+  connectionUpdates?: GetConnectionUpdate<Data, Variables>[];
+};
+
+function useMutation<Data, Variables>(
+  mutation: TypedDocumentNode<Data, Variables>,
+  config?: MutationConfig<Data, Variables>,
+): Mutation<Data, Variables>;
 ```
 
 ### Params
@@ -148,10 +148,7 @@ Each entry in `connectionUpdates` is called with the mutation's `data` and `vari
 ### Signature
 
 ```ts
-type GetConnectionUpdate<
-  Data,
-  Variables extends AnyVariables = AnyVariables,
-> = (config: {
+type GetConnectionUpdate<Data, Variables> = (config: {
   data: Data;
   variables: Variables;
   prepend: <A>(

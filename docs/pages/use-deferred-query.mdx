@@ -58,23 +58,20 @@ const FilmSearch = () => {
 ### Signature
 
 ```ts
-function useDeferredQuery<Data, Variables extends AnyVariables = AnyVariables>(
-  query: TypedDocumentNode<Data, Variables>,
-): DeferredQuery<Data, Variables>;
+type DeferredQueryState<Data> =
+  | { fetching: false; status: "idle" }
+  | { fetching: true; status: "loading" }
+  | { fetching: false; status: "success"; data: Data }
+  | { fetching: false; status: "error"; error: ClientError };
 
-type DeferredQuery<
-  Data,
-  Variables extends AnyVariables = AnyVariables,
-> = readonly [
+type DeferredQuery<Data, Variables> = readonly [
   DeferredQueryState<Data>,
   (variables: Variables) => Promise<Data>,
 ];
 
-type DeferredQueryState<Data> =
-  | { status: "idle"; fetching: false }
-  | { status: "loading"; fetching: true }
-  | { status: "success"; fetching: false; data: Data }
-  | { status: "error"; fetching: false; error: ClientError };
+function useDeferredQuery<Data, Variables>(
+  query: TypedDocumentNode<Data, Variables>,
+): DeferredQuery<Data, Variables>;
 ```
 
 ### Params

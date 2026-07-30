@@ -4,7 +4,7 @@
 
 ```ts title="src/client.ts"
 import { Client } from "@zoontek/gql-client";
-import schemaConfig from "./dist/schemaConfig.json";
+import schemaConfig from "./schemaConfig.json";
 
 const client = new Client({
   url: "/graphql",
@@ -51,16 +51,16 @@ Sends `document` to the server, writes the response into the cache, and resolves
 #### Signature
 
 ```ts
-query<Data, Variables extends AnyVariables = AnyVariables>(
+function query<Data, Variables>(
   document: TypedDocumentNode<Data, Variables>,
-  variables: NoInfer<Variables>,
-): Promise<Data>
+  variables: Variables,
+): Promise<Data>;
 ```
 
 | Param       | Type                                 | Description                 |
 | ----------- | ------------------------------------ | --------------------------- |
 | `document`  | `TypedDocumentNode<Data, Variables>` | The query document to send. |
-| `variables` | `NoInfer<Variables>`                 | The document's variables.   |
+| `variables` | `Variables`                          | The document's variables.   |
 
 Returns `Promise<Data>`, resolving with the response data. Throws a [`ClientError`](/errors) on failure.
 
@@ -71,15 +71,15 @@ Same as `query`, but doesn't deduplicate concurrent calls.
 #### Signature
 
 ```ts
-mutate<Data, Variables extends AnyVariables = AnyVariables>(
-  document: TypedDocumentNode<Data, Variables>,
-  variables: NoInfer<Variables>,
-  config?: MutationConfig<Data, Variables>,
-): Promise<Data>
-
-type MutationConfig<Data, Variables extends AnyVariables = AnyVariables> = {
+type MutationConfig<Data, Variables> = {
   connectionUpdates?: GetConnectionUpdate<Data, Variables>[];
 };
+
+function mutate<Data, Variables>(
+  document: TypedDocumentNode<Data, Variables>,
+  variables: Variables,
+  config?: MutationConfig<Data, Variables>,
+): Promise<Data>;
 ```
 
 #### Usage
@@ -91,7 +91,7 @@ const data = await client.mutate(mutation, variables);
 | Param                      | Type                                     | Description                                                                            |
 | -------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------- |
 | `document`                 | `TypedDocumentNode<Data, Variables>`     | The mutation document to send.                                                         |
-| `variables`                | `NoInfer<Variables>`                     | The document's variables.                                                              |
+| `variables`                | `Variables`                              | The document's variables.                                                              |
 | `config.connectionUpdates` | `GetConnectionUpdate<Data, Variables>[]` | Optional. See [useMutation: Updating connections](/use-mutation#updating-connections). |
 
 Returns `Promise<Data>`, resolving with the response data. Throws a [`ClientError`](/errors) on failure.
@@ -103,15 +103,15 @@ Reads `document` with `variables` straight from the cache, without a network cal
 #### Signature
 
 ```ts
-readFromCache<Data, Variables extends AnyVariables = AnyVariables>(
+function readFromCache<Data, Variables>(
   document: TypedDocumentNode<Data, Variables>,
-  variables: NoInfer<Variables>,
-): JsonValue | undefined
+  variables: Variables,
+): JsonValue | undefined;
 ```
 
 | Param       | Type                                 | Description               |
 | ----------- | ------------------------------------ | ------------------------- |
 | `document`  | `TypedDocumentNode<Data, Variables>` | The document to read.     |
-| `variables` | `NoInfer<Variables>`                 | The document's variables. |
+| `variables` | `Variables`                          | The document's variables. |
 
 Returns the cached data as `JsonValue`, trusted to match `Data`, or `undefined` on a cache miss.

@@ -43,20 +43,20 @@ const FilmDetails = ({ filmId }: { filmId: string }) => {
 ### Signature
 
 ```ts
-function useQuery<Data, Variables extends AnyVariables = AnyVariables>(
-  query: TypedDocumentNode<Data, Variables>,
-  variables: NoInfer<Variables>,
-): Query<Data, Variables>;
-
-type Query<Data, Variables extends AnyVariables = AnyVariables> = readonly [
-  QueryState<Data>,
-  { setVariables: (variables: Partial<Variables>) => void },
-];
-
 type QueryState<Data> = {
   fetching: boolean;
   data: Data;
 };
+
+type Query<Data, Variables> = readonly [
+  QueryState<Data>,
+  { setVariables: (variables: Partial<Variables>) => void },
+];
+
+function useQuery<Data, Variables>(
+  query: TypedDocumentNode<Data, Variables>,
+  variables: Variables,
+): Query<Data, Variables>;
 ```
 
 ### Params
@@ -64,7 +64,7 @@ type QueryState<Data> = {
 | Param       | Type                                 | Description               |
 | ----------- | ------------------------------------ | ------------------------- |
 | `query`     | `TypedDocumentNode<Data, Variables>` | Your query document node. |
-| `variables` | `NoInfer<Variables>`                 | Your query variables.     |
+| `variables` | `Variables`                          | Your query variables.     |
 
 ### Returns
 

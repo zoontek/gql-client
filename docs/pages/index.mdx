@@ -47,19 +47,19 @@ gql-schema-config <schema> <output>
 :::code-group
 
 ```bash [npm]
-npx gql-schema-config path/to/schema.graphql dist/schemaConfig.json
+npx gql-schema-config path/to/schema.graphql path/to/schemaConfig.json
 ```
 
 ```bash [pnpm]
-pnpm dlx gql-schema-config path/to/schema.graphql dist/schemaConfig.json
+pnpm dlx gql-schema-config path/to/schema.graphql path/to/schemaConfig.json
 ```
 
 ```bash [yarn]
-yarn dlx gql-schema-config path/to/schema.graphql dist/schemaConfig.json
+yarn dlx gql-schema-config path/to/schema.graphql path/to/schemaConfig.json
 ```
 
 ```bash [bun]
-bunx gql-schema-config path/to/schema.graphql dist/schemaConfig.json
+bunx gql-schema-config path/to/schema.graphql path/to/schemaConfig.json
 ```
 
 :::
@@ -69,19 +69,19 @@ bunx gql-schema-config path/to/schema.graphql dist/schemaConfig.json
 :::code-group
 
 ```bash [npm]
-npx gql-schema-config https://api.example.com/graphql dist/schemaConfig.json
+npx gql-schema-config https://api.example.com/graphql path/to/schemaConfig.json
 ```
 
 ```bash [pnpm]
-pnpm dlx gql-schema-config https://api.example.com/graphql dist/schemaConfig.json
+pnpm dlx gql-schema-config https://api.example.com/graphql path/to/schemaConfig.json
 ```
 
 ```bash [yarn]
-yarn dlx gql-schema-config https://api.example.com/graphql dist/schemaConfig.json
+yarn dlx gql-schema-config https://api.example.com/graphql path/to/schemaConfig.json
 ```
 
 ```bash [bun]
-bunx gql-schema-config https://api.example.com/graphql dist/schemaConfig.json
+bunx gql-schema-config https://api.example.com/graphql path/to/schemaConfig.json
 ```
 
 :::
@@ -96,7 +96,7 @@ Configure a `Client` with your `url` and the generated `schemaConfig`, then make
 import { Client, ClientProvider } from "@zoontek/gql-client";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import schemaConfig from "./dist/schemaConfig.json";
+import schemaConfig from "./schemaConfig.json";
 
 const client = new Client({
   url: "/graphql",

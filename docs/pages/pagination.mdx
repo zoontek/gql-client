@@ -62,6 +62,12 @@ const FilmList = () => {
 The pagination hooks work on any object matching these shapes, exported for use in your own type annotations:
 
 ```ts
+type Edge<T> = {
+  __typename?: string | null | undefined;
+  cursor?: string | null | undefined;
+  node?: T | null | undefined;
+};
+
 type Connection<T> =
   | {
       edges?: (Edge<T> | null | undefined)[] | null | undefined;
@@ -74,12 +80,6 @@ type Connection<T> =
     }
   | null
   | undefined;
-
-type Edge<T> = {
-  __typename?: string | null | undefined;
-  cursor?: string | null | undefined;
-  node?: T | null | undefined;
-};
 ```
 
 ## Beyond loading more pages

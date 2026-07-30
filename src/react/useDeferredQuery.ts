@@ -11,10 +11,10 @@ import { useClient } from "./context";
  * Reflects only the most recently started call to the query function.
  */
 export type DeferredQueryState<Data> =
-  | { status: "idle"; fetching: false }
-  | { status: "loading"; fetching: true }
-  | { status: "success"; fetching: false; data: Data }
-  | { status: "error"; fetching: false; error: ClientError };
+  | { fetching: false; status: "idle" }
+  | { fetching: true; status: "loading" }
+  | { fetching: false; status: "success"; data: Data }
+  | { fetching: false; status: "error"; error: ClientError };
 
 /** Return type of `useDeferredQuery`: a `[state, query]` tuple. */
 export type DeferredQuery<
