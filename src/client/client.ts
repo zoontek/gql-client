@@ -200,7 +200,7 @@ export class Client {
     })
       .then(async (response) => {
         if (!response.ok) {
-          throw ClientError.httpStatus(response);
+          throw ClientError.status(response);
         }
 
         const json: JsonValue = await response.json().catch(() => null);
@@ -215,7 +215,7 @@ export class Client {
           }
         }
 
-        throw ClientError.malformedResponse(this.url, response);
+        throw ClientError.malformed(this.url, response);
       })
       .then((json) => {
         // The response is trusted to match `Data`, the shape the caller's

@@ -5,16 +5,16 @@ import type { JsonArray } from "../types";
 /**
  * Why a `ClientError` was thrown:
  * - `"graphql"`: the response had a top-level `errors` array.
- * - `"httpStatus"`: the response status was not ok (outside 200-299).
- * - `"malformedResponse"`: the response body wasn't valid GraphQL JSON.
+ * - `"malformed"`: the response body wasn't valid GraphQL JSON.
  * - `"network"`: the request failed before a response was received.
+ * - `"status"`: the response status was not ok (outside 200-299).
  * - `"timeout"`: the request exceeded the client's configured `timeout`.
  */
 export type ClientErrorReason =
   | "graphql"
-  | "httpStatus"
-  | "malformedResponse"
+  | "malformed"
   | "network"
+  | "status"
   | "timeout";
 
 const parseGraphQLError = (error: unknown): GraphQLError => {
@@ -103,16 +103,16 @@ export class ClientError extends Error {
     );
   }
 
-  static httpStatus(response: Response): ClientError {
+  static status(response: Response): ClientError {
     return new ClientError(
       `Request to ${response.url} gave status ${response.status}`,
-      { reason: "httpStatus", url: response.url, response },
+      { reason: "status", url: response.url, response },
     );
   }
 
-  static malformedResponse(url: string, response: Response): ClientError {
+  static malformed(url: string, response: Response): ClientError {
     return new ClientError("Received a malformed GraphQL response", {
-      reason: "malformedResponse",
+      reason: "malformed",
       url,
       response,
     });
