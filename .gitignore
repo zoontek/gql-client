@@ -1,20 +1,17 @@
 # dependencies
-/node_modules
+node_modules/
 
 # production
-/dist
-
-# playwright testing
-/tests/react/mount/.cache
-/tests/react/report
-/tests/react/results
+dist/
 
 # generated
+/docs/pages.gen.ts
 /example/gql
 
 # misc
 .DS_Store
-.env
 
-yarn-debug.log*
-yarn-error.log*
+# playwright
+/tests/react/mount/.cache
+/tests/react/report
+/tests/react/results

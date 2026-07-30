@@ -39,6 +39,9 @@
     "format": "oxfmt",
     "lint": "oxlint",
     "typecheck": "tsc",
+    "docs": "vocs dev",
+    "docs:build": "vocs build",
+    "docs:preview": "vocs preview",
     "test:unit": "bun test tests/unit/",
     "test:react": "playwright test",
     "test": "bun run test:unit && bun run test:react",
@@ -69,7 +72,9 @@
     "react-error-boundary": "^6.1.2",
     "tsdown": "^0.22.14",
     "typescript": "^7.0.2",
-    "vite": "^8.1.5"
+    "vite": "^8.1.5",
+    "vocs": "^2.8.0",
+    "waku": "^1.0.0-beta.8"
   },
   "peerDependencies": {
     "react": ">=19.2.0"
