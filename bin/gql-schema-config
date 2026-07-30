@@ -11,12 +11,17 @@ const cwd = process.cwd();
 const args = process.argv;
 
 const schemaPath = args[2];
-const distPath = args[3];
+const distArg = path.join(cwd, args[3]);
+
+const distPath =
+  fs.existsSync(distArg) && fs.statSync(distArg).isDirectory()
+    ? path.join(distArg, "schemaConfig.json")
+    : distArg;
 
 const introspection = schemaPath.startsWith("http")
-  ? fetch(schemaPath + "?test", {
+  ? fetch(schemaPath, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: getIntrospectionQuery() }),
     })
       .then((res) => res.json())
@@ -44,9 +49,5 @@ introspection.then((introspection) => {
     ),
   };
 
-  fs.writeFileSync(
-    path.join(cwd, distPath),
-    JSON.stringify(json, null, 2),
-    "utf-8",
-  );
+  fs.writeFileSync(distPath, JSON.stringify(json, null, 2), "utf-8");
 });

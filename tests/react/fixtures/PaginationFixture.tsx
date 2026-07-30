@@ -66,7 +66,7 @@ export const PaginationFixture = ({
 }: {
   url: string;
 }): React.ReactNode => {
-  const client = new Client({ url, schema: { interfaceToTypes: {} } });
+  const client = new Client({ url, schemaConfig: { interfaceToTypes: {} } });
 
   return (
     <ClientProvider value={client}>

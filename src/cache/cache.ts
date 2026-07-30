@@ -18,12 +18,12 @@ import {
   type CacheEntry,
   type CachedEdge,
   type ConnectionInfo,
-  type Schema,
+  type SchemaConfig,
 } from "./types";
 import { trackField } from "./watch";
 import { createWriteOperation } from "./write";
 
-export type { ConnectionInfo, Schema } from "./types";
+export type { ConnectionInfo, SchemaConfig } from "./types";
 
 export class ClientCache {
   private cache = new Map<symbol, CacheEntry>();
@@ -44,9 +44,9 @@ export class ClientCache {
     touched?: Map<object, Set<symbol>>,
   ) => void;
 
-  public constructor(schema: Schema) {
+  public constructor(schemaConfig: SchemaConfig) {
     this.interfaceToType = Object.fromEntries(
-      Object.entries(schema.interfaceToTypes).map(([key, value]) => [
+      Object.entries(schemaConfig.interfaceToTypes).map(([key, value]) => [
         key,
         new Set<string>(value),
       ]),

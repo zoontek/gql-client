@@ -13,7 +13,7 @@ import {
 // `null`/`undefined` value, which are legitimate results that must be preserved.
 export const MISS = Symbol("MISS");
 
-export type Schema = {
+export type SchemaConfig = {
   interfaceToTypes: Record<string, string[]>;
 };
 

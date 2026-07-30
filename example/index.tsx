@@ -3,14 +3,11 @@ import { createRoot } from "react-dom/client";
 import { ErrorBoundary } from "react-error-boundary";
 import { Client, ClientProvider } from "../src";
 import { App } from "./components/App";
-import schema from "./schema.json";
+import schemaConfig from "./schemaConfig.json";
 
 const client = new Client({
-  schema,
   url: "https://swapi-graphql.netlify.app/graphql",
-  headers: {
-    "Content-Type": "application/json",
-  },
+  schemaConfig,
 });
 
 const Root = () => {

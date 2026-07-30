@@ -1,5 +1,9 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
-import { ClientCache, type ConnectionInfo, type Schema } from "../cache/cache";
+import {
+  ClientCache,
+  type ConnectionInfo,
+  type SchemaConfig,
+} from "../cache/cache";
 import { entriesOverlap, type WatchedEntriesBox } from "../cache/watch";
 import { getOperationName } from "../graphql/ast";
 import { printDocument } from "../graphql/print";
@@ -17,8 +21,8 @@ export type ClientConfig = {
   headers?: Record<string, string>;
   /** Request timeout in milliseconds. Defaults to `10_000`. Set to `Infinity` to disable. */
   timeout?: number;
-  /** Interface-to-implementing-types map, used by the cache to match fragments on interfaces. Generate it with `generate-schema-config`. */
-  schema: Schema;
+  /** Interface-to-implementing-types map, used by the cache to match fragments on interfaces. Generate it with `gql-schema-config`. */
+  schemaConfig: SchemaConfig;
 };
 
 type ConnectionUpdate<Node> = [
@@ -102,7 +106,7 @@ export class Client {
       ...(config.headers ?? {}),
     };
 
-    this.cache = new ClientCache(config.schema);
+    this.cache = new ClientCache(config.schemaConfig);
     this.subscribers = new Map();
     this.inflightRequests = new WeakMap();
   }

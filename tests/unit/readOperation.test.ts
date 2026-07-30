@@ -1,7 +1,7 @@
 import { parse } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { describe, expect, test } from "bun:test";
-import { ClientCache, type Schema } from "../../src/cache/cache";
+import { ClientCache, type SchemaConfig } from "../../src/cache/cache";
 import { transformDocument } from "../../src/graphql/transform";
 import type { AnyVariables, JsonValue } from "../../src/types";
 
@@ -14,9 +14,9 @@ const setup = (
   source: string,
   response: JsonValue,
   variables: AnyVariables = {},
-  schema: Schema = { interfaceToTypes: {} },
+  schemaConfig: SchemaConfig = { interfaceToTypes: {} },
 ) => {
-  const cache = new ClientCache(schema);
+  const cache = new ClientCache(schemaConfig);
   const document = doc(source);
   cache.writeOperation(document, response, variables);
   return {
@@ -148,7 +148,9 @@ describe("readOperation", () => {
   });
 
   describe("inline fragments", () => {
-    const schema: Schema = { interfaceToTypes: { Animal: ["Dog", "Cat"] } };
+    const schemaConfig: SchemaConfig = {
+      interfaceToTypes: { Animal: ["Dog", "Cat"] },
+    };
 
     test("narrows to the matching type and skips incompatible fragments", () => {
       const { read } = setup(
@@ -171,7 +173,7 @@ describe("readOperation", () => {
           },
         },
         {},
-        schema,
+        schemaConfig,
       );
 
       const result = read() as { pet: Record<string, unknown> };
@@ -203,7 +205,7 @@ describe("readOperation", () => {
           pet: { __typename: "Dog", id: "1", name: "Rex", barkVolume: 11 },
         },
         {},
-        schema,
+        schemaConfig,
       );
 
       expect((read() as { pet: unknown }).pet).toMatchObject({
@@ -227,7 +229,7 @@ describe("readOperation", () => {
           pet: { __typename: "Dog", id: "1", name: "Rex" },
         },
         {},
-        schema,
+        schemaConfig,
       );
 
       expect((read() as { pet: unknown }).pet).toMatchObject({
