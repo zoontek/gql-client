@@ -1,10 +1,12 @@
-# useMutation
+---
+description: Send a mutation and update paginated connections it affects.
+---
 
-## `useMutation(mutation, config?)`
+# useMutation [Send a mutation and update paginated connections it affects.]
 
 Returns a `mutate` function for `mutation` against the `Client` from the nearest `ClientProvider`, and its current state.
 
-### Basic usage
+## Basic usage
 
 ```tsx title="src/FilmRatingForm.tsx"
 import { useState } from "react";
@@ -49,7 +51,7 @@ const FilmRatingForm = ({ filmId }: { filmId: string }) => {
 };
 ```
 
-### Signature
+## Signature
 
 ```ts
 type MutationState<Data> =
@@ -73,14 +75,14 @@ function useMutation<Data, Variables>(
 ): Mutation<Data, Variables>;
 ```
 
-### Params
+## Params
 
 | Param                      | Type                                     | Description                                                  |
 | -------------------------- | ---------------------------------------- | ------------------------------------------------------------ |
 | `mutation`                 | `TypedDocumentNode<Data, Variables>`     | Your mutation document node.                                 |
 | `config.connectionUpdates` | `GetConnectionUpdate<Data, Variables>[]` | Optional. See [Updating connections](#updating-connections). |
 
-### Returns
+## Returns
 
 A `[state, mutate]` tuple:
 

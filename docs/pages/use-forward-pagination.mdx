@@ -1,10 +1,12 @@
-# useForwardPagination
+---
+description: Merge later pages into a connection as they load.
+---
 
-## `useForwardPagination(connection)`
+# useForwardPagination [Merge later pages into a connection as they load.]
 
 Takes the connection from a query result and returns it merged with every later page fetched for it with an `after` cursor. Returns the connection unchanged until a next page shows up in the cache.
 
-### Signature
+## Signature
 
 ```ts
 function useForwardPagination<A, T extends Connection<A>>(connection: T): T;
@@ -16,7 +18,7 @@ function useForwardPagination<A, T extends Connection<A>>(connection: T): T;
 
 Returns `T`: `connection` unchanged until a next page for it appears in the cache, then the accumulated result with pages joined end-to-end.
 
-### Basic usage
+## Basic usage
 
 ```tsx title="src/FilmList.tsx"
 import { useQuery, useForwardPagination } from "@zoontek/gql-client";

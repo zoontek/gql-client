@@ -1,4 +1,8 @@
-# Caching
+---
+description: How the normalized cache stores and reads back query results.
+---
+
+# Caching [How the normalized cache stores and reads back query results.]
 
 `Client` keeps every response in a single normalized cache, shared by all queries. This is what lets `useQuery` read a result instantly when another query already fetched the same data, and what makes a mutation's effect show up everywhere the affected object is rendered.
 

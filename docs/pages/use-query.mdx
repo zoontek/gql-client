@@ -1,10 +1,12 @@
-# useQuery
+---
+description: Run a query and keep its result in sync with the cache.
+---
 
-## `useQuery(query, variables)`
+# useQuery [Run a query and keep its result in sync with the cache.]
 
 Runs `query` with `variables` against the `Client` from the nearest `ClientProvider`, and keeps the result in sync with the cache.
 
-### Basic usage
+## Basic usage
 
 ```tsx title="src/FilmDetails.tsx"
 import { useQuery } from "@zoontek/gql-client";
@@ -40,7 +42,7 @@ const FilmDetails = ({ filmId }: { filmId: string }) => {
 };
 ```
 
-### Signature
+## Signature
 
 ```ts
 type QueryState<Data> = {
@@ -59,14 +61,14 @@ function useQuery<Data, Variables>(
 ): Query<Data, Variables>;
 ```
 
-### Params
+## Params
 
 | Param       | Type                                 | Description               |
 | ----------- | ------------------------------------ | ------------------------- |
 | `query`     | `TypedDocumentNode<Data, Variables>` | Your query document node. |
 | `variables` | `Variables`                          | Your query variables.     |
 
-### Returns
+## Returns
 
 A `[state, actions]` tuple, like `useState`:
 
@@ -76,16 +78,16 @@ A `[state, actions]` tuple, like `useState`:
 | `state.fetching`                  | `boolean`                                 | `true` while a request for the current variables is in flight. `data` may still hold the previous result while this is `true`, so a loading UI is optional. |
 | `actions.setVariables(variables)` | `(variables: Partial<Variables>) => void` | Patches the variables in place, without a full reload. Used for pagination, see [Pagination](/pagination).                                                  |
 
-### Suspense
+## Suspense
 
 `useQuery` suspends the first time it's called for a given set of variables, and resumes once the result arrives. Render it under a `Suspense` boundary, as shown in [Getting started](/#4-wrap-queries-in-suspense).
 
 A later call to `setVariables` doesn't suspend again: the component keeps rendering with the previous result and `fetching: true` until the new one lands.
 
-### Errors
+## Errors
 
 A failed request throws during render, to be caught by the nearest `ErrorBoundary`. See [Errors](/errors) for what `ClientError` exposes.
 
-### Reloading
+## Reloading
 
 Passing a new, structurally different `variables` object (not deeply equal to the previous one) reloads the query from scratch: it suspends again, and any pending `setVariables` patch is discarded.

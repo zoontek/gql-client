@@ -1,10 +1,12 @@
-# useDeferredQuery
+---
+description: Run a query on demand instead of automatically on render.
+---
 
-## `useDeferredQuery(query)`
+# useDeferredQuery [Run a query on demand instead of automatically on render.]
 
 Like `useQuery`, but the request isn't sent automatically: call the returned function to send it.
 
-### Basic usage
+## Basic usage
 
 ```tsx title="src/FilmSearch.tsx"
 import { useState } from "react";
@@ -55,7 +57,7 @@ const FilmSearch = () => {
 };
 ```
 
-### Signature
+## Signature
 
 ```ts
 type DeferredQueryState<Data> =
@@ -74,13 +76,13 @@ function useDeferredQuery<Data, Variables>(
 ): DeferredQuery<Data, Variables>;
 ```
 
-### Params
+## Params
 
 | Param   | Type                                 | Description               |
 | ------- | ------------------------------------ | ------------------------- |
 | `query` | `TypedDocumentNode<Data, Variables>` | Your query document node. |
 
-### Returns
+## Returns
 
 A `[state, query]` tuple:
 
@@ -96,7 +98,7 @@ A `[state, query]` tuple:
 | `"success"` | `{ status: "success", fetching: false, data }` |
 | `"error"`   | `{ status: "error", fetching: false, error }`  |
 
-### `useQuery` vs `useDeferredQuery`
+## `useQuery` vs `useDeferredQuery`
 
 `useQuery` suspends and runs as soon as it's called with a set of variables, so it fits data a component needs to render. `useDeferredQuery` doesn't run until you call the returned function, so it fits data triggered by a user action, such as a search form.
 

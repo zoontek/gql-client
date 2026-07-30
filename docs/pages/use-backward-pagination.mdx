@@ -1,10 +1,12 @@
-# useBackwardPagination
+---
+description: Merge earlier pages into a connection as they load.
+---
 
-## `useBackwardPagination(connection)`
+# useBackwardPagination [Merge earlier pages into a connection as they load.]
 
 Takes the connection from a query result and returns it merged with every earlier page fetched for it with a `before` cursor, prepending each new page ahead of `connection`'s existing edges. Returns the connection unchanged until a previous page shows up in the cache.
 
-### Signature
+## Signature
 
 ```ts
 function useBackwardPagination<A, T extends Connection<A>>(connection: T): T;
@@ -16,7 +18,7 @@ function useBackwardPagination<A, T extends Connection<A>>(connection: T): T;
 
 Returns `T`: `connection` unchanged until an earlier page for it appears in the cache, then the accumulated result with pages joined end-to-end.
 
-### Basic usage
+## Basic usage
 
 ```tsx title="src/FilmReviews.tsx"
 import { useQuery, useBackwardPagination } from "@zoontek/gql-client";
