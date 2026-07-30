@@ -25,7 +25,7 @@
     "registry": "https://registry.npmjs.org"
   },
   "bin": {
-    "generate-schema-config": "bin/generate-schema-config"
+    "gql-config": "bin/gql-config"
   },
   "files": [
     "bin",
@@ -43,7 +43,7 @@
     "typecheck": "tsc --noEmit",
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "prepack": "bun typecheck && bun run test && bun run build",
-    "codegen": "graphql-codegen && bin/generate-schema-config 'https://swapi-graphql.netlify.app/graphql' example/schema.json"
+    "codegen": "graphql-codegen && bin/gql-config 'https://swapi-graphql.netlify.app/graphql' example/schema.json"
   },
   "prettier": {
     "plugins": [
