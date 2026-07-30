@@ -77,7 +77,6 @@
     "react-dom": "^19.2.7",
     "react-error-boundary": "^6.1.2",
     "tsup": "^8.5.1",
-    "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vite": "^8.1.0"
   }
