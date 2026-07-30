@@ -2,6 +2,10 @@
 
 ## `useMutation(mutation, config?)`
 
+Returns a `mutate` function for `mutation` against the `Client` from the nearest `ClientProvider`, and its current state.
+
+### Basic usage
+
 ```tsx title="src/FilmRatingForm.tsx"
 import { useState } from "react";
 import { useMutation } from "@zoontek/gql-client";

@@ -16,6 +16,8 @@ function useBackwardPagination<A, T extends Connection<A>>(connection: T): T;
 
 Returns `T`: `connection` unchanged until an earlier page for it appears in the cache, then the accumulated result with pages joined end-to-end.
 
+### Basic usage
+
 ```tsx title="src/FilmReviews.tsx"
 import { useQuery, useBackwardPagination } from "@zoontek/gql-client";
 import { graphql } from "./gql";

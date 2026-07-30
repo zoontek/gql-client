@@ -2,50 +2,49 @@ import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
 import { Client } from "../../../src/client/client";
 import { ClientProvider } from "../../../src/react/context";
-import { useMutation } from "../../../src/react/useMutation";
+import { useDeferredQuery } from "../../../src/react/useDeferredQuery";
 
 type Variables = { id: string };
 
-const MutationInner = <Data,>({
-  mutation,
+const DeferredQueryInner = <Data,>({
+  query,
 }: {
-  mutation: TypedDocumentNode<Data, Variables>;
+  query: TypedDocumentNode<Data, Variables>;
 }) => {
-  const [state, mutate] = useMutation(mutation);
+  const [state, executeQuery] = useDeferredQuery(query);
 
   return (
     <div>
       <pre data-testid="state">{JSON.stringify(state)}</pre>
-
       <button
-        data-testid="mutate-ok"
-        onClick={() => mutate({ id: "1" }).catch(() => {})}
+        data-testid="query-ok"
+        onClick={() => executeQuery({ id: "1" }).catch(() => {})}
       >
-        mutate ok
+        query ok
       </button>
 
       <button
-        data-testid="mutate-fail"
-        onClick={() => mutate({ id: "bad" }).catch(() => {})}
+        data-testid="query-fail"
+        onClick={() => executeQuery({ id: "bad" }).catch(() => {})}
       >
-        mutate fail
+        query fail
       </button>
     </div>
   );
 };
 
-export const MutationFixture = <Data,>({
+export const DeferredQueryFixture = <Data,>({
   url,
-  mutation,
+  query,
 }: {
   url: string;
-  mutation: TypedDocumentNode<Data, Variables>;
+  query: TypedDocumentNode<Data, Variables>;
 }) => {
   const client = new Client({ url, schemaConfig: { interfaceToTypes: {} } });
 
   return (
     <ClientProvider value={client}>
-      <MutationInner mutation={mutation} />
+      <DeferredQueryInner query={query} />
     </ClientProvider>
   );
 };

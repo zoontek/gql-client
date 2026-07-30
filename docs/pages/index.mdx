@@ -1,6 +1,6 @@
 # @zoontek/gql-client
 
-A simple, typesafe GraphQL client for React. It normalizes responses into an in-memory cache, and exposes a small hook-based API: `useQuery`, `useMutation`, and pagination helpers.
+A simple, typesafe GraphQL client for React. It normalizes responses into an in-memory cache, and exposes a small hook-based API: `useQuery`, `useDeferredQuery`, `useMutation`, and pagination helpers.
 
 ## Requirements
 
@@ -42,7 +42,7 @@ gql-schema-config <schema> <output>
 - `schema`: a path to a local `.graphql` schema file, or the URL of a live GraphQL endpoint (introspected over HTTP `POST`).
 - `output`: where to write the generated JSON. Pass a directory to write `schemaConfig.json` inside it, or a full file path.
 
-### Examples
+#### From a local schema file
 
 :::code-group
 
@@ -64,11 +64,27 @@ bunx gql-schema-config path/to/schema.graphql dist/schemaConfig.json
 
 :::
 
-**From a live endpoint:**
+#### From a live endpoint
 
-```bash
+:::code-group
+
+```bash [npm]
 npx gql-schema-config https://api.example.com/graphql dist/schemaConfig.json
 ```
+
+```bash [pnpm]
+pnpm dlx gql-schema-config https://api.example.com/graphql dist/schemaConfig.json
+```
+
+```bash [yarn]
+yarn dlx gql-schema-config https://api.example.com/graphql dist/schemaConfig.json
+```
+
+```bash [bun]
+bunx gql-schema-config https://api.example.com/graphql dist/schemaConfig.json
+```
+
+:::
 
 Re-run this command whenever your schema's interfaces or the types implementing them change.
 
