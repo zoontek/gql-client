@@ -9,6 +9,10 @@ export default defineConfig({
   srcDir: "docs",
   outDir: "docs/dist",
   accentColor: "light-dark(#c026d3, #e879f9)",
+  logoUrl: {
+    dark: "/gql-client/logo-dark.svg",
+    light: "/gql-client/logo-light.svg",
+  },
   socials: [{ icon: "github", link: "https://github.com/zoontek/gql-client" }],
   editLink: {
     link: "https://github.com/zoontek/gql-client/edit/main/docs/:path",
