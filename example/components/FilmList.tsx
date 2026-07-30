@@ -43,17 +43,9 @@ export const FilmList = ({
   return (
     <>
       {connection.edges.map((edge) => {
-        if (edge == null) {
-          return null;
-        }
+        const node = edge?.node;
 
-        const node = edge.node;
-
-        if (node == null) {
-          return null;
-        }
-
-        return (
+        return node == null ? null : (
           <Film
             film={node}
             key={node.id}

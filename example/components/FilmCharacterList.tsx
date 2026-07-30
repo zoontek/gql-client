@@ -39,17 +39,8 @@ export const FilmCharacterList = ({
     <>
       <ul>
         {connection.edges.map((edge) => {
-          if (edge == null) {
-            return null;
-          }
-
-          const node = edge.node;
-
-          if (node == null) {
-            return null;
-          }
-
-          return <li key={node.id}>{node.name}</li>;
+          const node = edge?.node;
+          return node == null ? null : <li key={node.id}>{node.name}</li>;
         })}
       </ul>
 
