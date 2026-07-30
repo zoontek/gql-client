@@ -1,7 +1,7 @@
 import { defineConfig } from "oxlint";
 
 export default defineConfig({
-  ignorePatterns: ["example/**", "test/**"],
+  ignorePatterns: ["example/**", "tests/**"],
   plugins: ["react", "typescript"],
   categories: {
     correctness: "error",

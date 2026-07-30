@@ -1,9 +1,9 @@
 import { parse } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { describe, expect, test } from "bun:test";
-import { ClientCache, type Schema } from "../src/cache/cache";
-import { transformDocument } from "../src/graphql/transform";
-import type { AnyVariables, JsonValue } from "../src/types";
+import { ClientCache, type Schema } from "../../src/cache/cache";
+import { transformDocument } from "../../src/graphql/transform";
+import type { AnyVariables, JsonValue } from "../../src/types";
 
 // Build a transformed document directly from a query string, decoupled from
 // the gql.tada schema so we can freely exercise read-path branches.

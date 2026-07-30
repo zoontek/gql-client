@@ -1,6 +1,9 @@
 {
   "extends": "./tsconfig.json",
   "include": ["src"],
-  "exclude": ["example", "test"],
-  "compilerOptions": { "rootDir": "src/", "noEmit": false }
+  "exclude": ["example", "tests", "playwright.config.ts"],
+  "compilerOptions": {
+    "rootDir": "src/",
+    "noEmit": false
+  }
 }

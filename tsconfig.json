@@ -1,5 +1,5 @@
 {
-  "include": ["example", "src", "test"],
+  "include": ["example", "src", "tests", "playwright.config.ts"],
   "compilerOptions": {
     "module": "ESNext",
     "target": "ES2019",

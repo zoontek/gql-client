@@ -5,24 +5,37 @@ import type { ClientError } from "../client/errors";
 import type { AnyVariables } from "../types";
 import { useClient } from "./context";
 
+/**
+ * State of the mutation returned by `useMutation`. `status` narrows the
+ * shape: `data` is only present on `"success"`, `error` only on `"error"`.
+ * Reflects only the most recently started call to the mutate function.
+ */
 export type MutationState<Data> =
   | { status: "idle"; fetching: false }
   | { status: "loading"; fetching: true }
   | { status: "success"; fetching: false; data: Data }
   | { status: "error"; fetching: false; error: ClientError };
 
+/** Return type of `useMutation`: a `[state, mutate]` tuple. */
 export type Mutation<
   Data,
   Variables extends AnyVariables = AnyVariables,
-> = readonly [(variables: Variables) => Promise<Data>, MutationState<Data>];
+> = readonly [MutationState<Data>, (variables: Variables) => Promise<Data>];
 
 export type MutationConfig<
   Data,
   Variables extends AnyVariables = AnyVariables,
 > = {
+  /** Cache updates to apply to connections touched by this mutation's result. */
   connectionUpdates?: GetConnectionUpdate<Data, Variables>[] | undefined;
 };
 
+/**
+ * Returns a `mutate` function for `mutation` and its current `MutationState`.
+ * Calling `mutate` sends the request and updates state as it resolves. If
+ * `mutate` is called again before the first call resolves, only the most
+ * recently started call's result is reflected in `state`.
+ */
 export const useMutation = <
   Data,
   Variables extends AnyVariables = AnyVariables,
@@ -73,5 +86,5 @@ export const useMutation = <
     [client, stableMutation],
   );
 
-  return [mutate, state];
+  return [state, mutate];
 };

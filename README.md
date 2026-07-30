@@ -18,5 +18,4 @@ $ npm install --save @bloodyowl/graphql-client
 
 ## Links
 
-- 📘 [**Documentation**](https://bloodyowl.github.io/graphql-client)
 - ⚖️ [**License**](./LICENSE)

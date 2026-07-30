@@ -9,10 +9,15 @@ import { isRecord, serializeVariables } from "../utils";
 import { ClientError } from "./errors";
 
 export type ClientConfig = {
+  /** GraphQL endpoint URL. All requests are sent here as HTTP POST. */
   url: string;
+  /** Passed to `fetch` as `credentials`. Defaults to `"same-origin"`. */
   credentials?: RequestCredentials;
+  /** Extra HTTP headers merged into every request. */
   headers?: Record<string, string>;
+  /** Request timeout in milliseconds. Defaults to `10_000`. Set to `Infinity` to disable. */
   timeout?: number;
+  /** Interface-to-implementing-types map, used by the cache to match fragments on interfaces. Generate it with `generate-schema-config`. */
   schema: Schema;
 };
 
@@ -42,6 +47,12 @@ const remove = <A>(
   return [connection, { remove: ids }];
 };
 
+/**
+ * Given a request's `data` and `variables`, returns how a cached connection
+ * should change (prepend, append, or remove edges), or `undefined` to leave
+ * it untouched. Pass an array of these as `connectionUpdates` to
+ * `Client#request`, `Client#query`, or `useMutation`'s config.
+ */
 export type GetConnectionUpdate<
   Data,
   Variables extends AnyVariables = AnyVariables,
@@ -63,6 +74,11 @@ type RequestOptions<Data, Variables extends AnyVariables = AnyVariables> = {
   connectionUpdates?: GetConnectionUpdate<Data, Variables>[] | undefined;
 };
 
+/**
+ * A typesafe GraphQL client with a built-in normalized cache. Create one
+ * instance per app and pass it to `ClientProvider`; `useQuery`, `useMutation`,
+ * and the pagination hooks read and write through it.
+ */
 export class Client {
   private url: string;
   private credentials: RequestCredentials;
@@ -74,6 +90,7 @@ export class Client {
 
   private inflightRequests: WeakMap<object, Map<string, Promise<unknown>>>;
 
+  /** Creates a client. See `ClientConfig` for the available options. */
   public constructor(config: ClientConfig) {
     this.url = config.url;
     this.credentials = config.credentials ?? "same-origin";
@@ -90,11 +107,17 @@ export class Client {
     this.inflightRequests = new WeakMap();
   }
 
-  // `watched` is a mutable box a subscriber can update (via `readFromCache`'s
-  // `watched` out-param) after every read, without re-subscribing. Omitting it
-  // — as any direct caller outside the provided hooks would — keeps it
-  // unscoped, matching every write, which is the previous global-notify
-  // behavior.
+  /**
+   * Registers `fn` to be called after a write touches cache data `watched`
+   * has read. Returns an unsubscribe function. Intended for internal use by
+   * the provided hooks; most apps won't call this directly.
+   *
+   * `watched` is a mutable box a subscriber can update (via `readFromCache`'s
+   * `watched` out-param) after every read, without re-subscribing. Omitting it
+   * — as any direct caller outside the provided hooks would — keeps it
+   * unscoped, matching every write, which is the previous global-notify
+   * behavior.
+   */
   public subscribe(
     fn: () => void,
     watched: WatchedEntriesBox = { current: undefined },
@@ -117,6 +140,16 @@ export class Client {
     });
   }
 
+  /**
+   * Sends `document` with `variables` to the server, writes the response
+   * into the cache, and returns the response data. Used for mutations and any
+   * one-off request that shouldn't be deduplicated; queries read through
+   * `Client#query` instead.
+   *
+   * @param connectionUpdates - Optional list of `GetConnectionUpdate`
+   * functions applied to the cache after the write, for prepending/appending/
+   * removing edges of a connection touched by this request.
+   */
   public request<Data, Variables extends AnyVariables = AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
@@ -211,10 +244,13 @@ export class Client {
       });
   }
 
-  // Suspense-friendly request: deduplicates concurrent requests for the same
-  // document and variables so a component can safely call this on every render
-  // and `use()` the returned promise. The same promise instance is handed out
-  // until it settles, which is what lets `use()` suspend on it.
+  /**
+   * Suspense-friendly request: deduplicates concurrent requests for the same
+   * document and variables so a component can safely call this on every
+   * render and `use()` the returned promise. The same promise instance is
+   * handed out until it settles, which is what lets `use()` suspend on it.
+   * Used internally by `useQuery`; most apps won't call this directly.
+   */
   public query<Data, Variables extends AnyVariables = AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
@@ -255,6 +291,12 @@ export class Client {
     return promise;
   }
 
+  /**
+   * Reads `document` with `variables` from the cache without hitting the
+   * network. Returns `undefined` on a cache miss (any required field not yet
+   * cached). Pass `watched` to record which cache entries this read touched,
+   * for later use with `subscribe`.
+   */
   public readFromCache<Data, Variables extends AnyVariables = AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
@@ -264,6 +306,11 @@ export class Client {
     return this.cache.readOperation(transformedDocument, variables, watched);
   }
 
+  /**
+   * Looks up a cached connection (as tracked for pagination) by its
+   * internal ref `id`. Used internally by `useForwardPagination` and
+   * `useBackwardPagination`; most apps won't call this directly.
+   */
   public getCachedConnection(id: number): ConnectionInfo | undefined {
     return this.cache.getCachedConnection(id);
   }

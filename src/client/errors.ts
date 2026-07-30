@@ -1,6 +1,14 @@
 import { type ASTNode, GraphQLError } from "@0no-co/graphql.web";
 import type { JsonArray } from "../types";
 
+/**
+ * Why a `ClientError` was thrown:
+ * - `"graphql"`: the response had a top-level `errors` array.
+ * - `"httpStatus"`: the response status was not ok (outside 200-299).
+ * - `"malformedResponse"`: the response body wasn't valid GraphQL JSON.
+ * - `"network"`: the request failed before a response was received.
+ * - `"timeout"`: the request exceeded the client's configured `timeout`.
+ */
 export type ClientErrorReason =
   | "graphql"
   | "httpStatus"
@@ -44,6 +52,12 @@ const parseGraphQLError = (error: unknown): GraphQLError => {
   return new GraphQLError(JSON.stringify(error));
 };
 
+/**
+ * The error thrown by `Client#request`, `Client#query`, `useQuery`, and
+ * `useMutation` for any failed request. Check `reason` to distinguish network
+ * failures, timeouts, HTTP errors, and GraphQL errors; `graphQLErrors` holds
+ * the parsed `errors` array for a `"graphql"` reason.
+ */
 export class ClientError extends Error {
   reason: ClientErrorReason;
   url: string;
@@ -67,6 +81,10 @@ export class ClientError extends Error {
     this.response = options.response;
     this.graphQLErrors = options.graphQLErrors ?? [];
   }
+
+  // The `static` factories below build a `ClientError` for each `reason`.
+  // They're used internally by `Client#request`; construct errors this way
+  // rather than with `new ClientError(...)` directly.
 
   static network(url: string): ClientError {
     return new ClientError(`Request to ${url} failed`, {

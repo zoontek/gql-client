@@ -4,6 +4,11 @@
 # production
 /dist
 
+# playwright testing
+/tests/react/mount/.cache
+/tests/react/report
+/tests/react/results
+
 # misc
 .DS_Store
 .env

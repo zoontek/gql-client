@@ -16,14 +16,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
 
       - run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
       - run: bun prepack
-
-      - name: Build docs
-        run: cd docs && bun install && bun run build
-
-      - name: Deploy
-        if: "contains('refs/heads/main', github.ref)"
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs/build

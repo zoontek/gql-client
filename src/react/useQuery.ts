@@ -6,17 +6,24 @@ import { deepEqual } from "../utils";
 import { useClient } from "./context";
 import { useCacheSubscription } from "./useCacheSubscription";
 
+/**
+ * `fetching` is `true` while a request for the current variables is in
+ * flight. `data` holds the latest result; while `fetching` is `true` it may
+ * still be the previous result, shown until the new one arrives.
+ */
 export type QueryState<Data> = {
   fetching: boolean;
   data: Data;
 };
 
+/** Return type of `useQuery`: a `[state, actions]` tuple. */
 export type Query<
   Data,
   Variables extends AnyVariables = AnyVariables,
 > = readonly [
   QueryState<Data>,
   {
+    /** Patches the query's variables without waiting for new props. */
     setVariables: (variables: Partial<Variables>) => void;
   },
 ];
@@ -54,6 +61,13 @@ type StableVariables<Variables> = {
   effective: Variables;
 };
 
+/**
+ * Runs `query` with `variables` against the `Client` from `ClientProvider`.
+ * Suspends (via `use`) while the first result for a given set of variables is
+ * loading; on later variable changes it keeps showing the previous data with
+ * `fetching: true` instead of suspending again. A request rejection is thrown
+ * during render, to be caught by the nearest `ErrorBoundary`.
+ */
 export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
   query: TypedDocumentNode<Data, Variables>,
   variables: NoInfer<Variables>,

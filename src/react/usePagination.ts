@@ -125,5 +125,17 @@ const createPaginationHook = (direction: "after" | "before") => {
   };
 };
 
+/**
+ * Merges later-fetched pages into `connection` as they land in the cache
+ * (e.g. after a query re-run with an `after` cursor). Pass the connection
+ * from your query's result; returns it unchanged until a next page for the
+ * same connection appears in the cache, then returns the accumulated result
+ * with pages joined end-to-end.
+ */
 export const useForwardPagination = createPaginationHook("after");
+
+/**
+ * Same as `useForwardPagination`, but merges pages fetched with a `before`
+ * cursor, prepending each new page ahead of `connection`'s edges.
+ */
 export const useBackwardPagination = createPaginationHook("before");
