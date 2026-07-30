@@ -12,7 +12,7 @@ const config: CodegenConfig = {
     },
   },
   hooks: {
-    afterAllFileWrite: ["prettier --write"],
+    afterAllFileWrite: ["oxfmt"],
   },
 };
 
