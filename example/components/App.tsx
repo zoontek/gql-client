@@ -1,4 +1,5 @@
 import { Suspense, useState } from "react";
+
 import { useQuery } from "../../src";
 import { graphql } from "../gql";
 import { FilmDetails } from "./FilmDetails";
@@ -37,6 +38,7 @@ export const App = () => {
             />
           )}
         </div>
+
         <div className="Contents">
           {activeFilm === undefined ? (
             <div>No film selected</div>

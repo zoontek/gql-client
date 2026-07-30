@@ -7,6 +7,7 @@ import {
   type ValueNode,
 } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
+
 import type { AnyVariables } from "../types";
 
 // Field name as it appears in the response payload (alias if present).

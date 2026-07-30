@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/experimental-ct-react";
+
 import { PaginationFixture } from "./fixtures/PaginationFixture";
 
 test("useForwardPagination merges a next page into the connection's edges", async ({

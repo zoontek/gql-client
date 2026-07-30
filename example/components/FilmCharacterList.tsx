@@ -42,10 +42,13 @@ export const FilmCharacterList = ({
           if (edge == null) {
             return null;
           }
+
           const node = edge.node;
+
           if (node == null) {
             return null;
           }
+
           return <li key={node.id}>{node.name}</li>;
         })}
       </ul>

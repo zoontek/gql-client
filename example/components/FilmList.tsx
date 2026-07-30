@@ -46,10 +46,13 @@ export const FilmList = ({
         if (edge == null) {
           return null;
         }
+
         const node = edge.node;
+
         if (node == null) {
           return null;
         }
+
         return (
           <Film
             film={node}

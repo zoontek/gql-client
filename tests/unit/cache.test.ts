@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+
 import type { Connection } from "../../src";
 import { ClientCache } from "../../src/cache/cache";
 import { transformDocument } from "../../src/graphql/transform";

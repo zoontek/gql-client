@@ -17,6 +17,7 @@ type Props = {
 
 export const Film = ({ film: data, isActive, onPress }: Props) => {
   const film = useFragment(FilmFragment, data);
+
   return (
     <div
       className="Film"

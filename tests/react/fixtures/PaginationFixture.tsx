@@ -1,10 +1,11 @@
 import { Suspense } from "react";
+
 import { Client } from "../../../src/client/client";
 import { ClientProvider } from "../../../src/react/context";
 import { useForwardPagination } from "../../../src/react/usePagination";
 import { useQuery } from "../../../src/react/useQuery";
 import type { Connection } from "../../../src/types";
-import { typedDoc } from "../typedDoc";
+import { gql } from "../gql";
 
 type FilmNode = { __typename: "Film"; id: string; title: string };
 
@@ -14,7 +15,7 @@ type FilmsData = {
 
 type FilmsVariables = { after?: string };
 
-export const FilmsQuery = typedDoc<FilmsData, FilmsVariables>(`
+const FilmsQuery = gql<FilmsData, FilmsVariables>(`
   query Films($after: String) {
     films(after: $after) {
       __typename
@@ -45,9 +46,11 @@ const PaginationInner = (): React.ReactNode => {
   return (
     <div>
       <pre data-testid="titles">{JSON.stringify(titles)}</pre>
+
       <pre data-testid="has-next-page">
         {JSON.stringify(connection?.pageInfo.hasNextPage ?? null)}
       </pre>
+
       <button
         data-testid="load-next"
         onClick={() => {

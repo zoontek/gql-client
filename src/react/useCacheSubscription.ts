@@ -1,4 +1,5 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
+
 import type { WatchedEntriesBox } from "../cache/watch";
 import type { Client } from "../client/client";
 

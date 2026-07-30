@@ -1,6 +1,7 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { Suspense } from "react";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
+
 import { Client } from "../../../src/client/client";
 import { ClientProvider } from "../../../src/react/context";
 import { useQuery } from "../../../src/react/useQuery";
@@ -19,12 +20,14 @@ const QueryInner = <Data,>({
   return (
     <div>
       <pre data-testid="state">{JSON.stringify(state)}</pre>
+
       <button
         data-testid="set-id-2"
         onClick={() => actions.setVariables({ id: "2" })}
       >
         set id=2
       </button>
+
       <button
         data-testid="set-id-bad"
         onClick={() => actions.setVariables({ id: "bad" })}

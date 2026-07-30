@@ -1,4 +1,5 @@
 import { type ASTNode, GraphQLError } from "@0no-co/graphql.web";
+
 import type { JsonArray } from "../types";
 
 /**

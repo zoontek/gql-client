@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/experimental-ct-react";
+
 import { MutationFixture } from "./fixtures/MutationFixture";
-import { typedDoc } from "./typedDoc";
+import { gql } from "./gql";
 
 type GreetData = { greet: string };
 type GreetVariables = { id: string };
 
-const GreetMutation = typedDoc<GreetData, GreetVariables>(
+const GreetMutation = gql<GreetData, GreetVariables>(
   `mutation Greet($id: ID!) { greet(id: $id) }`,
 );
 
@@ -71,6 +72,8 @@ test("only the most recently started call's result is reflected in state", async
   mount,
   page,
 }) => {
+  // Holds each request open until the test calls release.get(id)(), so we
+  // control the order responses arrive in.
   const release = new Map<string, () => void>();
 
   await page.route("**/graphql", async (route) => {

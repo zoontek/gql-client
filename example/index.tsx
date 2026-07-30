@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { ErrorBoundary } from "react-error-boundary";
+
 import { Client, ClientProvider } from "../src";
 import { App } from "./components/App";
 import schemaConfig from "./schemaConfig.json";

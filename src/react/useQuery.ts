@@ -1,5 +1,6 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { use, useCallback, useEffect, useRef, useState } from "react";
+
 import type { ClientError } from "../client/errors";
 import type { AnyVariables } from "../types";
 import { deepEqual } from "../utils";

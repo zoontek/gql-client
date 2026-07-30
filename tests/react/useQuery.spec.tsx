@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/experimental-ct-react";
+
 import { QueryFixture } from "./fixtures/QueryFixture";
-import { typedDoc } from "./typedDoc";
+import { gql } from "./gql";
 
 type GreetingData = { greeting: string };
 type GreetingVariables = { id: string };
 
-const GreetingQuery = typedDoc<GreetingData, GreetingVariables>(
+const GreetingQuery = gql<GreetingData, GreetingVariables>(
   `query Greeting($id: ID!) { greeting(id: $id) }`,
 );
 
@@ -37,6 +38,8 @@ test("setVariables refetches while keeping previous data visible", async ({
   mount,
   page,
 }) => {
+  // Holds each request open until the test calls release.get(id)(), so we
+  // control the order responses arrive in.
   const release = new Map<string, () => void>();
 
   await page.route("**/graphql", async (route) => {
