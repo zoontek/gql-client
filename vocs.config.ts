@@ -23,14 +23,8 @@ export default defineConfig({
       items: [
         { text: "useQuery", link: "/use-query" },
         { text: "useMutation", link: "/use-mutation" },
-        {
-          text: "useForwardPagination",
-          link: "/pagination#useforwardpaginationconnection",
-        },
-        {
-          text: "useBackwardPagination",
-          link: "/pagination#usebackwardpaginationconnection",
-        },
+        { text: "useForwardPagination", link: "/use-forward-pagination" },
+        { text: "useBackwardPagination", link: "/use-backward-pagination" },
       ],
     },
     {

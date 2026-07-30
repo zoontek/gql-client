@@ -1,8 +1,8 @@
-# Pagination
+# useForwardPagination
 
-Fetching a page of a connection is a normal query, with `first`/`after` (or `last`/`before`) variables. `useQuery`'s `setVariables` fetches the next page in place instead of reloading the whole query, and `useForwardPagination` / `useBackwardPagination` stitch the pages together into one connection.
+## `useForwardPagination(connection)`
 
-## A paginated list
+Takes the connection from a query result and returns it merged with every later page fetched for it with an `after` cursor. Returns the connection unchanged until a next page shows up in the cache.
 
 ```tsx
 import { useQuery, useForwardPagination } from "@zoontek/gql-client";
@@ -55,8 +55,4 @@ const FilmList = () => {
 };
 ```
 
-`setVariables({ after })` alone would only make `data.allFilms` hold the new page. `useForwardPagination` is what keeps the earlier edges around and appends the new ones as they arrive. See [useForwardPagination](/use-forward-pagination) and [useBackwardPagination](/use-backward-pagination) for the full reference.
-
-## Beyond loading more pages
-
-A connection can also change because of a mutation, not just a page load, e.g. a newly created item that should appear in a list. See [useMutation: Updating connections](/use-mutation#updating-connections).
+`setVariables({ after })` alone would only make `data.allFilms` hold the new page. `useForwardPagination` is what keeps the earlier edges around and appends the new ones as they arrive.

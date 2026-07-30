@@ -28,7 +28,7 @@ Most apps only need `ClientProvider`, `useQuery`, and `useMutation`. The methods
 
 Sends `document` to the server, writes the response into the cache, and resolves with the response data. Deduplicates concurrent calls for the same document and variables: a second call made while the first is still in flight gets back the same promise instead of firing a new request. Used internally by `useQuery`.
 
-### `mutate(document, variables, options?)`
+### `mutate(document, variables, config?)`
 
 Same as `query`, but doesn't deduplicate concurrent calls.
 
@@ -36,7 +36,7 @@ Same as `query`, but doesn't deduplicate concurrent calls.
 const data = await client.mutate(mutation, variables);
 ```
 
-- `options.connectionUpdates` (optional): see [useMutation: Handling connections](/use-mutation#handling-connections).
+- `config.connectionUpdates` (optional): see [useMutation: Handling connections](/use-mutation#handling-connections).
 
 ### `readFromCache(document, variables)`
 
