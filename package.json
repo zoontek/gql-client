@@ -1,5 +1,5 @@
 {
-  "name": "@zoontek/gql",
+  "name": "@zoontek/gql-client",
   "version": "0.1.0",
   "description": "A simple, typesafe GraphQL client for React",
   "keywords": [
@@ -9,12 +9,12 @@
     "graphql",
     "react"
   ],
-  "homepage": "https://zoontek.github.io/gql",
+  "homepage": "https://zoontek.github.io/gql-client",
   "license": "MIT",
   "author": "Mathieu Acthernoene <zoontek@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zoontek/gql.git"
+    "url": "https://github.com/zoontek/gql-client.git"
   },
   "bin": {
     "gql-schema-config": "bin/gql-schema-config"
