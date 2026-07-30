@@ -1,0 +1,32 @@
+# Errors
+
+## `ClientError`
+
+`Client#mutate`, `Client#query`, `useQuery`, and `useMutation` all fail the same way: with a `ClientError`, never a raw `fetch` or parsing exception. Its `reason` field tells you what went wrong:
+
+| `reason` | Meaning |
+| --- | --- |
+| `"network"` | the request couldn't reach the server. |
+| `"timeout"` | the request took longer than the client's configured `timeout`. |
+| `"httpStatus"` | the response status was outside the `200`-`299` range. |
+| `"malformedResponse"` | the response body wasn't valid GraphQL JSON. |
+| `"graphql"` | the response came back with a top-level `errors` array. |
+
+```ts
+import { ClientError } from "@zoontek/gql-client";
+
+try {
+  await client.mutate(mutation, variables);
+} catch (error) {
+  if (error instanceof ClientError && error.reason === "graphql") {
+    console.log(error.graphQLErrors);
+  }
+}
+```
+
+### Properties
+
+- `reason` (`ClientErrorReason`): why the request failed, as listed above.
+- `url` (`string`): the request URL.
+- `response` (`Response | undefined`): the raw `fetch` response, when one was received.
+- `graphQLErrors` (`GraphQLError[]`): the parsed `errors` array. Only populated when `reason` is `"graphql"`.

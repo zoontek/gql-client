@@ -56,7 +56,7 @@ const remove = <A>(
  * Given a request's `data` and `variables`, returns how a cached connection
  * should change (prepend, append, or remove edges), or `undefined` to leave
  * it untouched. Pass an array of these as `connectionUpdates` to
- * `Client#request`, `Client#query`, or `useMutation`'s config.
+ * `Client#mutate`, `Client#query`, or `useMutation`'s config.
  */
 export type GetConnectionUpdate<
   Data,
@@ -75,7 +75,12 @@ export type GetConnectionUpdate<
   remove: <A>(connection: Connection<A>, ids: string[]) => ConnectionUpdate<A>;
 }) => ConnectionUpdate<unknown> | undefined;
 
-type RequestOptions<Data, Variables extends AnyVariables = AnyVariables> = {
+/** Config accepted by `Client#mutate` and `useMutation`. */
+export type MutationConfig<
+  Data,
+  Variables extends AnyVariables = AnyVariables,
+> = {
+  /** Cache updates to apply to connections touched by this mutation's result. */
   connectionUpdates?: GetConnectionUpdate<Data, Variables>[] | undefined;
 };
 
@@ -95,7 +100,11 @@ export class Client {
 
   private inflightRequests: WeakMap<object, Map<string, Promise<unknown>>>;
 
-  /** Creates a client. See `ClientConfig` for the available options. */
+  /**
+   * Creates a client.
+   *
+   * @param config - See `ClientConfig` for the available options.
+   */
   public constructor(config: ClientConfig) {
     this.url = config.url;
     this.credentials = config.credentials ?? "same-origin";
@@ -121,6 +130,11 @@ export class Client {
    * `watched` out-param) after every read, without re-subscribing. Omitting
    * it, as any direct caller outside the provided hooks would, keeps it
    * unscoped, matching every write.
+   *
+   * @param fn - Called after a write touches data `watched` has read.
+   * @param watched - Tracks which cache entries this subscriber's reads have
+   * touched. Defaults to an unscoped box, matching every write.
+   * @returns A function that unsubscribes `fn`.
    */
   public subscribe(
     fn: () => void,
@@ -146,18 +160,20 @@ export class Client {
 
   /**
    * Sends `document` with `variables` to the server, writes the response
-   * into the cache, and returns the response data. Used for mutations and any
-   * one-off request that shouldn't be deduplicated; queries read through
-   * `Client#query` instead.
+   * into the cache, and returns the response data. Not deduplicated; queries
+   * read through `Client#query` instead.
    *
-   * @param connectionUpdates - Optional list of `GetConnectionUpdate`
+   * @param document - The document to send.
+   * @param variables - The document's variables.
+   * @param options.connectionUpdates - Optional list of `GetConnectionUpdate`
    * functions applied to the cache after the write, for prepending/appending/
    * removing edges of a connection touched by this request.
+   * @returns The response data.
    */
-  public request<Data, Variables extends AnyVariables = AnyVariables>(
+  private request<Data, Variables extends AnyVariables = AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
-    { connectionUpdates }: RequestOptions<Data, Variables> = {},
+    { connectionUpdates }: MutationConfig<Data, Variables> = {},
   ): Promise<Data> {
     const controller = new AbortController();
     const transformedDocument = transformDocument(document);
@@ -249,16 +265,41 @@ export class Client {
   }
 
   /**
+   * Sends `document` with `variables` to the server, writes the response
+   * into the cache, and returns the response data. Used for mutations and any
+   * one-off request that shouldn't be deduplicated; queries read through
+   * `Client#query` instead.
+   *
+   * @param document - The document to send.
+   * @param variables - The document's variables.
+   * @param options.connectionUpdates - Optional list of `GetConnectionUpdate`
+   * functions applied to the cache after the write, for prepending/appending/
+   * removing edges of a connection touched by this request.
+   * @returns The response data.
+   */
+  public mutate<Data, Variables extends AnyVariables = AnyVariables>(
+    document: TypedDocumentNode<Data, Variables>,
+    variables: NoInfer<Variables>,
+    config: MutationConfig<Data, Variables> = {},
+  ): Promise<Data> {
+    return this.request(document, variables, config);
+  }
+
+  /**
    * Suspense-friendly request: deduplicates concurrent requests for the same
    * document and variables so a component can safely call this on every
    * render and `use()` the returned promise. The same promise instance is
    * handed out until it settles, which is what lets `use()` suspend on it.
    * Used internally by `useQuery`; most apps won't call this directly.
+   *
+   * @param document - The document to send.
+   * @param variables - The document's variables.
+   * @returns The response data. The same promise is returned for concurrent
+   * calls with the same `document` and `variables`.
    */
   public query<Data, Variables extends AnyVariables = AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
-    options: RequestOptions<Data, Variables> = {},
   ): Promise<Data> {
     const key = serializeVariables(variables);
 
@@ -277,7 +318,7 @@ export class Client {
       this.inflightRequests.set(document, documentRequests);
     }
 
-    const promise = this.request(document, variables, options);
+    const promise = this.request(document, variables);
     documentRequests.set(key, promise);
 
     // Clear the in-flight entry once settled so a later cache miss for the same
@@ -297,9 +338,14 @@ export class Client {
 
   /**
    * Reads `document` with `variables` from the cache without hitting the
-   * network. Returns `undefined` on a cache miss (any required field not yet
-   * cached). Pass `watched` to record which cache entries this read touched,
-   * for later use with `subscribe`.
+   * network.
+   *
+   * @param document - The document to read.
+   * @param variables - The document's variables.
+   * @param watched - Optional. Records which cache entries this read
+   * touched, for later use with `subscribe`.
+   * @returns The cached data, or `undefined` on a cache miss (any required
+   * field not yet cached).
    */
   public readFromCache<Data, Variables extends AnyVariables = AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
@@ -312,8 +358,12 @@ export class Client {
 
   /**
    * Looks up a cached connection (as tracked for pagination) by its
-   * internal ref `id`. Used internally by `useForwardPagination` and
+   * internal ref. Used internally by `useForwardPagination` and
    * `useBackwardPagination`; most apps won't call this directly.
+   *
+   * @param id - The connection's internal ref.
+   * @returns The connection's tracked info, or `undefined` if `id` isn't
+   * cached.
    */
   public getCachedConnection(id: number): ConnectionInfo | undefined {
     return this.cache.getCachedConnection(id);

@@ -54,7 +54,7 @@ const parseGraphQLError = (error: unknown): GraphQLError => {
 };
 
 /**
- * The error thrown by `Client#request`, `Client#query`, `useQuery`, and
+ * The error thrown by `Client#mutate`, `Client#query`, `useQuery`, and
  * `useMutation` for any failed request. Check `reason` to distinguish network
  * failures, timeouts, HTTP errors, and GraphQL errors; `graphQLErrors` holds
  * the parsed `errors` array for a `"graphql"` reason.
@@ -84,7 +84,7 @@ export class ClientError extends Error {
   }
 
   // The `static` factories below build a `ClientError` for each `reason`.
-  // They're used internally by `Client#request`; construct errors this way
+  // They're used internally by `Client#mutate`; construct errors this way
   // rather than with `new ClientError(...)` directly.
 
   static network(url: string): ClientError {

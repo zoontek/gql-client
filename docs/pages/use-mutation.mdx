@@ -1,0 +1,116 @@
+# useMutation
+
+## `useMutation(mutation, config?)`
+
+```tsx
+import { useState } from "react";
+import { useMutation } from "@zoontek/gql-client";
+import { graphql } from "./gql";
+
+const RateFilmMutation = graphql(`
+  mutation RateFilm($filmId: ID!, $stars: Int!) {
+    rateFilm(filmId: $filmId, stars: $stars) {
+      film {
+        id
+        averageRating
+      }
+    }
+  }
+`);
+
+const FilmRatingForm = ({ filmId }: { filmId: string }) => {
+  const [state, rateFilm] = useMutation(RateFilmMutation);
+  const [stars, setStars] = useState(5);
+
+  const onSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    rateFilm({ filmId, stars });
+  };
+
+  return (
+    <form onSubmit={onSubmit}>
+      <input
+        type="number"
+        min={1}
+        max={5}
+        value={stars}
+        disabled={state.fetching}
+        onChange={(event) => setStars(Number(event.target.value))}
+      />
+      <button type="submit" disabled={state.fetching}>
+        Submit rating
+      </button>
+    </form>
+  );
+};
+```
+
+### Params
+
+- `mutation`: your mutation document node.
+- `config.connectionUpdates` (optional): see [Updating connections](#updating-connections).
+
+### Returns
+
+A `[state, mutate]` tuple:
+
+- `mutate(variables)`: sends the mutation, and updates `state` as it settles. Returns a promise resolving with the response data. If called again before the previous call resolves, only the latest call's result is reflected in `state`.
+- `state`, narrowed on `status`:
+
+| Status | Shape |
+| --- | --- |
+| `"idle"` | `{ status: "idle", fetching: false }` |
+| `"loading"` | `{ status: "loading", fetching: true }` |
+| `"success"` | `{ status: "success", fetching: false, data }` |
+| `"error"` | `{ status: "error", fetching: false, error }` |
+
+## Updating connections
+
+A mutation only writes the fields it selects; it doesn't know which cached [connections](/pagination) should gain or lose an edge as a result. `connectionUpdates` fills that gap. Say a film has a paginated `reviewsConnection`, and `film` here is the value read from an earlier `useQuery`:
+
+```ts
+const CreateReviewMutation = graphql(`
+  mutation CreateReview($filmId: ID!, $comment: String!) {
+    createReview(filmId: $filmId, comment: $comment) {
+      review {
+        id
+        comment
+      }
+    }
+  }
+`);
+
+useMutation(CreateReviewMutation, {
+  connectionUpdates: [
+    ({ data, append }) =>
+      data.createReview?.review == null
+        ? undefined
+        : append(film.reviewsConnection, [
+            { __typename: "ReviewEdge", node: data.createReview.review },
+          ]),
+  ],
+});
+
+const DeleteReviewMutation = graphql(`
+  mutation DeleteReview($reviewId: ID!) {
+    deleteReview(reviewId: $reviewId) {
+      deletedReviewId
+    }
+  }
+`);
+
+useMutation(DeleteReviewMutation, {
+  connectionUpdates: [
+    ({ data, variables, remove }) =>
+      data.deleteReview == null
+        ? undefined
+        : remove(film.reviewsConnection, [variables.reviewId]),
+  ],
+});
+```
+
+Each entry in `connectionUpdates` is called with the mutation's `data` and `variables`, plus three helpers, and returns their result to describe the change, or `undefined` to leave the connection as-is:
+
+- `prepend(connection, edges)`: adds `edges` before `connection`'s existing ones.
+- `append(connection, edges)`: adds `edges` after `connection`'s existing ones.
+- `remove(connection, ids)`: drops the edges whose node `id` matches one in `ids`.

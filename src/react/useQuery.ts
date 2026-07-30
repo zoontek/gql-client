@@ -68,6 +68,10 @@ type StableVariables<Variables> = {
  * loading; on later variable changes it keeps showing the previous data with
  * `fetching: true` instead of suspending again. A request rejection is thrown
  * during render, to be caught by the nearest `ErrorBoundary`.
+ *
+ * @param query - The query document to run.
+ * @param variables - The query's variables.
+ * @returns A `[state, actions]` tuple; see `Query`.
  */
 export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
   query: TypedDocumentNode<Data, Variables>,

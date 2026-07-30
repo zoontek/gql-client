@@ -1,7 +1,7 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { useCallback, useRef, useState } from "react";
 
-import type { GetConnectionUpdate } from "../client/client";
+import type { MutationConfig } from "../client/client";
 import type { ClientError } from "../client/errors";
 import type { AnyVariables } from "../types";
 import { useClient } from "./context";
@@ -23,19 +23,15 @@ export type Mutation<
   Variables extends AnyVariables = AnyVariables,
 > = readonly [MutationState<Data>, (variables: Variables) => Promise<Data>];
 
-export type MutationConfig<
-  Data,
-  Variables extends AnyVariables = AnyVariables,
-> = {
-  /** Cache updates to apply to connections touched by this mutation's result. */
-  connectionUpdates?: GetConnectionUpdate<Data, Variables>[] | undefined;
-};
-
 /**
  * Returns a `mutate` function for `mutation` and its current `MutationState`.
  * Calling `mutate` sends the request and updates state as it resolves. If
  * `mutate` is called again before the first call resolves, only the most
  * recently started call's result is reflected in `state`.
+ *
+ * @param mutation - The mutation document to run.
+ * @param config - Optional. See `MutationConfig` for the available options.
+ * @returns A `[state, mutate]` tuple; see `Mutation`.
  */
 export const useMutation = <
   Data,
@@ -66,7 +62,7 @@ export const useMutation = <
       setState({ status: "loading", fetching: true });
 
       return client
-        .request(stableMutation, variables, {
+        .mutate(stableMutation, variables, {
           connectionUpdates: connectionUpdatesRef.current,
         })
         .then((data) => {

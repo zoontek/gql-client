@@ -8,11 +8,8 @@ export {
 } from "./react/usePagination";
 export { useQuery } from "./react/useQuery";
 
+export type { MutationConfig } from "./client/client";
 export type { ClientErrorReason } from "./client/errors";
-export type {
-  Mutation,
-  MutationConfig,
-  MutationState,
-} from "./react/useMutation";
+export type { Mutation, MutationState } from "./react/useMutation";
 export type { Query, QueryState } from "./react/useQuery";
 export type { AnyVariables, Connection, Edge } from "./types";

@@ -1,0 +1,43 @@
+# Client
+
+## Configuration
+
+```ts
+import { Client } from "@zoontek/gql-client";
+import schemaConfig from "./dist/schemaConfig.json";
+
+const client = new Client({
+  url: "/graphql",
+  schemaConfig,
+});
+```
+
+### Params
+
+- `url` (required): the GraphQL endpoint. Every request is sent here as an HTTP `POST`.
+- `schemaConfig` (required): the interface-to-types map from [`gql-schema-config`](/#2-generate-the-schema-config).
+- `credentials` (optional): passed to `fetch` as `credentials`. Defaults to `"same-origin"`.
+- `headers` (optional): extra HTTP headers merged into every request.
+- `timeout` (optional): request timeout in milliseconds. Defaults to `10_000`. Set to `Infinity` to disable.
+
+## Methods
+
+Most apps only need `ClientProvider`, `useQuery`, and `useMutation`. The methods below are what those hooks call under the hood; use them directly only for one-off requests outside a component.
+
+### `query(document, variables)`
+
+Sends `document` to the server, writes the response into the cache, and resolves with the response data. Deduplicates concurrent calls for the same document and variables: a second call made while the first is still in flight gets back the same promise instead of firing a new request. Used internally by `useQuery`.
+
+### `mutate(document, variables, options?)`
+
+Same as `query`, but doesn't deduplicate concurrent calls.
+
+```ts
+const data = await client.mutate(mutation, variables);
+```
+
+- `options.connectionUpdates` (optional): see [useMutation: Handling connections](/use-mutation#handling-connections).
+
+### `readFromCache(document, variables)`
+
+Reads `document` with `variables` straight from the cache, without a network call. Returns `undefined` on a cache miss (any requested field not yet cached). See [Caching](/caching).

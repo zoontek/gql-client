@@ -4,7 +4,7 @@ export type JsonArray = JsonValue[] | readonly JsonValue[];
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
 
-/** Variables shape accepted by `useQuery`, `useMutation`, and `Client#request`. */
+/** Variables shape accepted by `useQuery`, `useMutation`, and `Client#mutate`. */
 export type AnyVariables = Record<string, unknown>;
 
 /** A Relay-style connection edge, wrapping a `node` of type `T`. */

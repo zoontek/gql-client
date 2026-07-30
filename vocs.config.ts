@@ -8,16 +8,27 @@ export default defineConfig({
   renderStrategy: "full-static",
   srcDir: "docs",
   outDir: "docs/dist",
+  topNav: [{ text: "GitHub", link: "https://github.com/zoontek/gql-client" }],
   sidebar: [
+    { text: "Getting started", link: "/" },
     {
-      text: "Getting started",
-      link: "/",
+      text: "Guides",
+      items: [{ text: "Caching", link: "/caching" }],
     },
-  ],
-  topNav: [
     {
-      text: "GitHub",
-      link: "https://github.com/zoontek/gql-client",
+      text: "Hooks",
+      items: [
+        { text: "useQuery", link: "/use-query" },
+        { text: "useMutation", link: "/use-mutation" },
+        { text: "Pagination", link: "/pagination" },
+      ],
+    },
+    {
+      text: "Reference",
+      items: [
+        { text: "Client", link: "/client" },
+        { text: "Errors", link: "/errors" },
+      ],
     },
   ],
 });

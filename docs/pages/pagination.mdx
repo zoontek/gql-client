@@ -1,0 +1,70 @@
+# Pagination
+
+Fetching a page of a connection is a normal query, with `first`/`after` (or `last`/`before`) variables. `useQuery`'s `setVariables` fetches the next page in place instead of reloading the whole query, and `useForwardPagination` / `useBackwardPagination` stitch the pages together into one connection.
+
+## A paginated list
+
+```tsx
+import { useQuery, useForwardPagination } from "@zoontek/gql-client";
+import { graphql } from "./gql";
+
+const AllFilmsQuery = graphql(`
+  query AllFilms($first: Int!, $after: String) {
+    allFilms(first: $first, after: $after) {
+      edges {
+        node {
+          id
+          title
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`);
+
+const FilmList = () => {
+  const [{ data, fetching }, { setVariables }] = useQuery(AllFilmsQuery, {
+    first: 3,
+  });
+
+  const connection = useForwardPagination(data.allFilms);
+
+  return (
+    <>
+      <ul>
+        {connection?.edges?.map((edge) =>
+          edge?.node == null ? null : <li key={edge.node.id}>{edge.node.title}</li>,
+        )}
+      </ul>
+
+      {connection?.pageInfo.hasNextPage ? (
+        <button
+          disabled={fetching}
+          onClick={() =>
+            setVariables({ after: connection.pageInfo.endCursor })
+          }
+        >
+          Load more
+        </button>
+      ) : null}
+    </>
+  );
+};
+```
+
+`setVariables({ after })` alone would only make `data.allFilms` hold the new page. `useForwardPagination` is what keeps the earlier edges around and appends the new ones as they arrive.
+
+## `useForwardPagination(connection)`
+
+Takes the connection from a query result and returns it merged with every later page fetched for it with an `after` cursor. Returns the connection unchanged until a next page shows up in the cache.
+
+## `useBackwardPagination(connection)`
+
+Same idea, for pages fetched with a `before` cursor: each new page is prepended ahead of `connection`'s existing edges instead of appended after them.
+
+## Beyond loading more pages
+
+A connection can also change because of a mutation, not just a page load, e.g. a newly created item that should appear in a list. See [useMutation: Updating connections](/use-mutation#updating-connections).

@@ -1,9 +1,71 @@
 # @zoontek/gql-client
 
-A simple, typesafe GraphQL client for React.
+A simple, typesafe GraphQL client for React. It normalizes responses into an in-memory cache, and exposes a small hook-based API: `useQuery`, `useMutation`, and pagination helpers.
 
-## Installation
+## 1. Install
 
 ```bash
 npm install @zoontek/gql-client
 ```
+
+## 2. Generate the schema config
+
+The schema config tells the cache how interfaces map to their implementing types (needed to resolve a fragment spread like `... on Node { id }`). Generate it once, from a local schema file or a live endpoint:
+
+```bash
+npx gql-schema-config path/to/schema.graphql dist/schemaConfig.json
+```
+
+```bash
+# --- or, from a live endpoint ---
+npx gql-schema-config https://api.example.com/graphql dist/schemaConfig.json
+```
+
+## 3. Create your client
+
+Configure a `Client` with your `url` and the generated `schemaConfig`, then make it available to your app with `ClientProvider`.
+
+```tsx
+import { Client, ClientProvider } from "@zoontek/gql-client";
+import { createRoot } from "react-dom/client";
+import { App } from "./App";
+import schemaConfig from "./dist/schemaConfig.json";
+
+const client = new Client({
+  url: "/graphql",
+  schemaConfig,
+});
+
+const Root = () => (
+  <ClientProvider value={client}>
+    <App />
+  </ClientProvider>
+);
+
+const root = document.querySelector("#app");
+
+if (root != null) {
+  createRoot(root).render(<Root />);
+}
+```
+
+## 4. Wrap queries in Suspense
+
+`useQuery` suspends while its first result is loading, and throws request errors during render. Wrap the parts of your tree that call it in `Suspense` and an `ErrorBoundary`:
+
+```tsx
+import { Suspense } from "react";
+import { ErrorBoundary } from "react-error-boundary";
+
+<ErrorBoundary fallback={<h1>An error occurred</h1>}>
+  <Suspense fallback={<h1>Loading…</h1>}>
+    <App />
+  </Suspense>
+</ErrorBoundary>;
+```
+
+## 5. Always query `id` (recommended)
+
+The cache identifies objects by their `id` field (see [Caching](/caching)). Query `id` on every object type that has one, so the cache can normalize and update it correctly.
+
+And you're ready to go!

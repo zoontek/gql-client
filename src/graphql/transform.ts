@@ -53,8 +53,8 @@ const transformDocumentCache = new WeakMap<
  * Simplifies the query for internal processing by inlining all fragments and
  * adds `__typename` to all selection sets in the document.
  *
- * @param document
- * @returns transformedDocument
+ * @param document - The document to transform.
+ * @returns The transformed document.
  */
 export const transformDocument = (
   // oxlint-disable-next-line typescript/no-explicit-any

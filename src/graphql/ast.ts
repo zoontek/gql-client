@@ -109,6 +109,11 @@ export const extractArguments = (
  *
  * { user(id: $id) {id} } with variables `{"id": "2"}`
  * => Symbol(`user({"id":"2"})`)
+ *
+ * @param fieldNode - The field to serialize.
+ * @param variables - The operation's variables, used to resolve any
+ * variable arguments.
+ * @returns The field's symbol.
  */
 // Field symbols are pure over `(fieldNode, variables)` but recomputed per
 // field on every cache read/write (Symbol.for lookup, extractArguments, JSON
@@ -161,6 +166,11 @@ export const getFieldNameWithArguments = (
  *
  * { user { id, firstName, lastName } }
  * => Set{Symbol(`id`), Symbol(`firstName`), Symbol(`lastName`)}
+ *
+ * @param fieldNode - The node whose direct selection set to read.
+ * @param variables - The operation's variables, used to resolve any
+ * variable arguments.
+ * @returns The selected field symbols.
  */
 // Same memoization rationale as `getFieldNameWithArguments`: this runs per
 // field (and per array element) on every read, rebuilding a Set each time. The
