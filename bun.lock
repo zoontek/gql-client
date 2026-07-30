@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@bloodyowl/graphql-client",
+      "name": "@zoontek/gql",
       "dependencies": {
         "@0no-co/graphql.web": "^1.3.3",
         "@graphql-typed-document-node/core": "^3.2.0",

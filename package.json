@@ -9,12 +9,12 @@
     "graphql",
     "react"
   ],
-  "homepage": "https://bloodyowl.github.io/graphql-client",
+  "homepage": "https://zoontek.github.io/gql",
   "license": "MIT",
   "author": "Mathieu Acthernoene <zoontek@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bloodyowl/graphql-client.git"
+    "url": "https://github.com/zoontek/gql.git"
   },
   "bin": {
     "gql-schema-config": "bin/gql-schema-config"
