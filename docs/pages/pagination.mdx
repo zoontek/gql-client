@@ -4,7 +4,7 @@ Fetching a page of a connection is a normal query, with `first`/`after` (or `las
 
 ## A paginated list
 
-```tsx
+```tsx title="src/FilmList.tsx"
 import { useQuery, useForwardPagination } from "@zoontek/gql-client";
 import { graphql } from "./gql";
 
@@ -56,6 +56,31 @@ const FilmList = () => {
 ```
 
 `setVariables({ after })` alone would only make `data.allFilms` hold the new page. `useForwardPagination` is what keeps the earlier edges around and appends the new ones as they arrive. See [useForwardPagination](/use-forward-pagination) and [useBackwardPagination](/use-backward-pagination) for the full reference.
+
+## Connection and Edge types
+
+The pagination hooks work on any object matching these shapes, exported for use in your own type annotations:
+
+```ts
+type Connection<T> =
+  | {
+      edges?: (Edge<T> | null | undefined)[] | null | undefined;
+      pageInfo: {
+        hasPreviousPage?: boolean | null | undefined;
+        hasNextPage?: boolean | null | undefined;
+        endCursor?: string | null | undefined;
+        startCursor?: string | null | undefined;
+      };
+    }
+  | null
+  | undefined;
+
+type Edge<T> = {
+  __typename?: string | null | undefined;
+  cursor?: string | null | undefined;
+  node?: T | null | undefined;
+};
+```
 
 ## Beyond loading more pages
 

@@ -4,7 +4,7 @@
 
 Runs `query` with `variables` against the `Client` from the nearest `ClientProvider`, and keeps the result in sync with the cache.
 
-```tsx
+```tsx title="src/FilmDetails.tsx"
 import { useQuery } from "@zoontek/gql-client";
 import { graphql } from "./gql";
 
@@ -38,20 +38,41 @@ const FilmDetails = ({ filmId }: { filmId: string }) => {
 };
 ```
 
+### Signature
+
+```ts
+function useQuery<Data, Variables extends AnyVariables = AnyVariables>(
+  query: TypedDocumentNode<Data, Variables>,
+  variables: NoInfer<Variables>,
+): Query<Data, Variables>;
+
+type Query<Data, Variables extends AnyVariables = AnyVariables> = readonly [
+  QueryState<Data>,
+  { setVariables: (variables: Partial<Variables>) => void },
+];
+
+type QueryState<Data> = {
+  fetching: boolean;
+  data: Data;
+};
+```
+
 ### Params
 
-- `query`: your query document node.
-- `variables`: your query variables.
+| Param       | Type                                 | Description               |
+| ----------- | ------------------------------------ | ------------------------- |
+| `query`     | `TypedDocumentNode<Data, Variables>` | Your query document node. |
+| `variables` | `NoInfer<Variables>`                 | Your query variables.     |
 
 ### Returns
 
 A `[state, actions]` tuple, like `useState`:
 
-|                                   |                                                                                                                                                                        |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `state.data`                      | the query result.                                                                                                                                                      |
-| `state.fetching`                  | `boolean`, `true` while a request for the current variables is in flight. `data` may still hold the previous result while this is `true`, so a loading UI is optional. |
-| `actions.setVariables(variables)` | patches the variables in place, without a full reload. Used for pagination, see [Pagination](/pagination).                                                             |
+| Field                             | Type                                      | Description                                                                                                                                                 |
+| --------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state.data`                      | `Data`                                    | The query result.                                                                                                                                           |
+| `state.fetching`                  | `boolean`                                 | `true` while a request for the current variables is in flight. `data` may still hold the previous result while this is `true`, so a loading UI is optional. |
+| `actions.setVariables(variables)` | `(variables: Partial<Variables>) => void` | Patches the variables in place, without a full reload. Used for pagination, see [Pagination](/pagination).                                                  |
 
 ### Suspense
 

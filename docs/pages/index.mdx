@@ -2,30 +2,81 @@
 
 A simple, typesafe GraphQL client for React. It normalizes responses into an in-memory cache, and exposes a small hook-based API: `useQuery`, `useMutation`, and pagination helpers.
 
+## Requirements
+
+- React `>=19.2.0` (peer dependency).
+- A `TypedDocumentNode<Data, Variables>` for each operation. Generate these with [GraphQL Code Generator](https://the-guild.dev/graphql/codegen) or [gql.tada](https://gql-tada.0no.co/), so `data` and `variables` are typed without manual annotations.
+
 ## 1. Install
 
-```bash
+:::code-group
+
+```bash [npm]
 npm install @zoontek/gql-client
 ```
 
+```bash [pnpm]
+pnpm add @zoontek/gql-client
+```
+
+```bash [yarn]
+yarn add @zoontek/gql-client
+```
+
+```bash [bun]
+bun add @zoontek/gql-client
+```
+
+:::
+
 ## 2. Generate the schema config
 
-The schema config tells the cache how interfaces map to their implementing types (needed to resolve a fragment spread like `... on Node { id }`). Generate it once, from a local schema file or a live endpoint:
+The schema config tells the cache how interfaces map to their implementing types (needed to resolve a fragment spread like `... on Node { id }`). Generate it once, from a local schema file or a live endpoint, with the `gql-schema-config` CLI the package installs:
+
+### Usage
 
 ```bash
+gql-schema-config <schema> <output>
+```
+
+- `schema`: a path to a local `.graphql` schema file, or the URL of a live GraphQL endpoint (introspected over HTTP `POST`).
+- `output`: where to write the generated JSON. Pass a directory to write `schemaConfig.json` inside it, or a full file path.
+
+### Examples
+
+:::code-group
+
+```bash [npm]
 npx gql-schema-config path/to/schema.graphql dist/schemaConfig.json
 ```
 
+```bash [pnpm]
+pnpm dlx gql-schema-config path/to/schema.graphql dist/schemaConfig.json
+```
+
+```bash [yarn]
+yarn dlx gql-schema-config path/to/schema.graphql dist/schemaConfig.json
+```
+
+```bash [bun]
+bunx gql-schema-config path/to/schema.graphql dist/schemaConfig.json
+```
+
+:::
+
+**From a live endpoint:**
+
 ```bash
-# --- or, from a live endpoint ---
 npx gql-schema-config https://api.example.com/graphql dist/schemaConfig.json
 ```
+
+Re-run this command whenever your schema's interfaces or the types implementing them change.
 
 ## 3. Create your client
 
 Configure a `Client` with your `url` and the generated `schemaConfig`, then make it available to your app with `ClientProvider`.
 
-```tsx
+```tsx title="src/index.tsx"
 import { Client, ClientProvider } from "@zoontek/gql-client";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
@@ -53,7 +104,7 @@ if (root != null) {
 
 `useQuery` suspends while its first result is loading, and throws request errors during render. Wrap the parts of your tree that call it in `Suspense` and an `ErrorBoundary`:
 
-```tsx
+```tsx title="src/App.tsx"
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 

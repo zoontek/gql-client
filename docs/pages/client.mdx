@@ -2,7 +2,7 @@
 
 ## Configuration
 
-```ts
+```ts title="src/client.ts"
 import { Client } from "@zoontek/gql-client";
 import schemaConfig from "./dist/schemaConfig.json";
 
@@ -12,13 +12,33 @@ const client = new Client({
 });
 ```
 
+### Signature
+
+```ts
+new Client(config: ClientConfig): Client
+
+type ClientConfig = {
+  url: string;
+  schemaConfig: SchemaConfig;
+  credentials?: RequestCredentials;
+  headers?: Record<string, string>;
+  timeout?: number;
+};
+
+type SchemaConfig = {
+  interfaceToTypes: Record<string, string[]>;
+};
+```
+
 ### Params
 
-- `url` (required): the GraphQL endpoint. Every request is sent here as an HTTP `POST`.
-- `schemaConfig` (required): the interface-to-types map from [`gql-schema-config`](/#2-generate-the-schema-config).
-- `credentials` (optional): passed to `fetch` as `credentials`. Defaults to `"same-origin"`.
-- `headers` (optional): extra HTTP headers merged into every request.
-- `timeout` (optional): request timeout in milliseconds. Defaults to `10_000`. Set to `Infinity` to disable.
+| Param          | Type                     | Description                                                                                      |
+| -------------- | ------------------------ | ------------------------------------------------------------------------------------------------ |
+| `url`          | `string`                 | Required. The GraphQL endpoint. Every request is sent here as an HTTP `POST`.                    |
+| `schemaConfig` | `SchemaConfig`           | Required. The interface-to-types map from [`gql-schema-config`](/#2-generate-the-schema-config). |
+| `credentials`  | `RequestCredentials`     | Optional. Passed to `fetch` as `credentials`. Defaults to `"same-origin"`.                       |
+| `headers`      | `Record<string, string>` | Optional. Extra HTTP headers merged into every request.                                          |
+| `timeout`      | `number`                 | Optional. Request timeout in milliseconds. Defaults to `10_000`. Set to `Infinity` to disable.   |
 
 ## Methods
 
@@ -28,16 +48,70 @@ Most apps only need `ClientProvider`, `useQuery`, and `useMutation`. The methods
 
 Sends `document` to the server, writes the response into the cache, and resolves with the response data. Deduplicates concurrent calls for the same document and variables: a second call made while the first is still in flight gets back the same promise instead of firing a new request. Used internally by `useQuery`.
 
+#### Signature
+
+```ts
+query<Data, Variables extends AnyVariables = AnyVariables>(
+  document: TypedDocumentNode<Data, Variables>,
+  variables: NoInfer<Variables>,
+): Promise<Data>
+```
+
+| Param       | Type                                 | Description                 |
+| ----------- | ------------------------------------ | --------------------------- |
+| `document`  | `TypedDocumentNode<Data, Variables>` | The query document to send. |
+| `variables` | `NoInfer<Variables>`                 | The document's variables.   |
+
+Returns `Promise<Data>`, resolving with the response data. Throws a [`ClientError`](/errors) on failure.
+
 ### `mutate(document, variables, config?)`
 
 Same as `query`, but doesn't deduplicate concurrent calls.
+
+#### Signature
+
+```ts
+mutate<Data, Variables extends AnyVariables = AnyVariables>(
+  document: TypedDocumentNode<Data, Variables>,
+  variables: NoInfer<Variables>,
+  config?: MutationConfig<Data, Variables>,
+): Promise<Data>
+
+type MutationConfig<Data, Variables extends AnyVariables = AnyVariables> = {
+  connectionUpdates?: GetConnectionUpdate<Data, Variables>[];
+};
+```
+
+#### Usage
 
 ```ts
 const data = await client.mutate(mutation, variables);
 ```
 
-- `config.connectionUpdates` (optional): see [useMutation: Handling connections](/use-mutation#handling-connections).
+| Param                      | Type                                     | Description                                                                            |
+| -------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| `document`                 | `TypedDocumentNode<Data, Variables>`     | The mutation document to send.                                                         |
+| `variables`                | `NoInfer<Variables>`                     | The document's variables.                                                              |
+| `config.connectionUpdates` | `GetConnectionUpdate<Data, Variables>[]` | Optional. See [useMutation: Updating connections](/use-mutation#updating-connections). |
+
+Returns `Promise<Data>`, resolving with the response data. Throws a [`ClientError`](/errors) on failure.
 
 ### `readFromCache(document, variables)`
 
 Reads `document` with `variables` straight from the cache, without a network call. Returns `undefined` on a cache miss (any requested field not yet cached). See [Caching](/caching).
+
+#### Signature
+
+```ts
+readFromCache<Data, Variables extends AnyVariables = AnyVariables>(
+  document: TypedDocumentNode<Data, Variables>,
+  variables: NoInfer<Variables>,
+): JsonValue | undefined
+```
+
+| Param       | Type                                 | Description               |
+| ----------- | ------------------------------------ | ------------------------- |
+| `document`  | `TypedDocumentNode<Data, Variables>` | The document to read.     |
+| `variables` | `NoInfer<Variables>`                 | The document's variables. |
+
+Returns the cached data as `JsonValue`, trusted to match `Data`, or `undefined` on a cache miss.

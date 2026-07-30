@@ -2,7 +2,7 @@
 
 ## `useMutation(mutation, config?)`
 
-```tsx
+```tsx title="src/FilmRatingForm.tsx"
 import { useState } from "react";
 import { useMutation } from "@zoontek/gql-client";
 import { graphql } from "./gql";
@@ -45,17 +45,45 @@ const FilmRatingForm = ({ filmId }: { filmId: string }) => {
 };
 ```
 
+### Signature
+
+```ts
+function useMutation<Data, Variables extends AnyVariables = AnyVariables>(
+  mutation: TypedDocumentNode<Data, Variables>,
+  config?: MutationConfig<Data, Variables>,
+): Mutation<Data, Variables>;
+
+type MutationConfig<Data, Variables extends AnyVariables = AnyVariables> = {
+  connectionUpdates?: GetConnectionUpdate<Data, Variables>[];
+};
+
+type Mutation<Data, Variables extends AnyVariables = AnyVariables> = readonly [
+  MutationState<Data>,
+  (variables: Variables) => Promise<Data>,
+];
+
+type MutationState<Data> =
+  | { status: "idle"; fetching: false }
+  | { status: "loading"; fetching: true }
+  | { status: "success"; fetching: false; data: Data }
+  | { status: "error"; fetching: false; error: ClientError };
+```
+
 ### Params
 
-- `mutation`: your mutation document node.
-- `config.connectionUpdates` (optional): see [Updating connections](#updating-connections).
+| Param                      | Type                                     | Description                                                  |
+| -------------------------- | ---------------------------------------- | ------------------------------------------------------------ |
+| `mutation`                 | `TypedDocumentNode<Data, Variables>`     | Your mutation document node.                                 |
+| `config.connectionUpdates` | `GetConnectionUpdate<Data, Variables>[]` | Optional. See [Updating connections](#updating-connections). |
 
 ### Returns
 
 A `[state, mutate]` tuple:
 
-- `mutate(variables)`: sends the mutation, and updates `state` as it settles. Returns a promise resolving with the response data. If called again before the previous call resolves, only the latest call's result is reflected in `state`.
-- `state`, narrowed on `status`:
+| Field               | Type                                      | Description                                                                                                                                                                                                          |
+| ------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mutate(variables)` | `(variables: Variables) => Promise<Data>` | Sends the mutation, and updates `state` as it settles. Returns a promise resolving with the response data. If called again before the previous call resolves, only the latest call's result is reflected in `state`. |
+| `state`             | `MutationState<Data>`                     | Narrowed on `status`, see the table below.                                                                                                                                                                           |
 
 | Status      | Shape                                          |
 | ----------- | ---------------------------------------------- |
@@ -67,6 +95,8 @@ A `[state, mutate]` tuple:
 ## Updating connections
 
 A mutation only writes the fields it selects; it doesn't know which cached [connections](/pagination) should gain or lose an edge as a result. `connectionUpdates` fills that gap. Say a film has a paginated `reviewsConnection`, and `film` here is the value read from an earlier `useQuery`:
+
+### Usage
 
 ```ts
 const CreateReviewMutation = graphql(`
@@ -111,6 +141,29 @@ useMutation(DeleteReviewMutation, {
 
 Each entry in `connectionUpdates` is called with the mutation's `data` and `variables`, plus three helpers, and returns their result to describe the change, or `undefined` to leave the connection as-is:
 
-- `prepend(connection, edges)`: adds `edges` before `connection`'s existing ones.
-- `append(connection, edges)`: adds `edges` after `connection`'s existing ones.
-- `remove(connection, ids)`: drops the edges whose node `id` matches one in `ids`.
+### Signature
+
+```ts
+type GetConnectionUpdate<
+  Data,
+  Variables extends AnyVariables = AnyVariables,
+> = (config: {
+  data: Data;
+  variables: Variables;
+  prepend: <A>(
+    connection: Connection<A>,
+    edges: Edge<A>[],
+  ) => ConnectionUpdate<A>;
+  append: <A>(
+    connection: Connection<A>,
+    edges: Edge<A>[],
+  ) => ConnectionUpdate<A>;
+  remove: <A>(connection: Connection<A>, ids: string[]) => ConnectionUpdate<A>;
+}) => ConnectionUpdate<unknown> | undefined;
+```
+
+| Helper                       | Type                                                                   | Description                                           |
+| ---------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------- |
+| `prepend(connection, edges)` | `(connection: Connection<A>, edges: Edge<A>[]) => ConnectionUpdate<A>` | Adds `edges` before `connection`'s existing ones.     |
+| `append(connection, edges)`  | `(connection: Connection<A>, edges: Edge<A>[]) => ConnectionUpdate<A>` | Adds `edges` after `connection`'s existing ones.      |
+| `remove(connection, ids)`    | `(connection: Connection<A>, ids: string[]) => ConnectionUpdate<A>`    | Drops the edges whose node `id` matches one in `ids`. |

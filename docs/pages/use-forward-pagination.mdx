@@ -4,7 +4,19 @@
 
 Takes the connection from a query result and returns it merged with every later page fetched for it with an `after` cursor. Returns the connection unchanged until a next page shows up in the cache.
 
-```tsx
+### Signature
+
+```ts
+function useForwardPagination<A, T extends Connection<A>>(connection: T): T;
+```
+
+| Param        | Type                      | Description                              |
+| ------------ | ------------------------- | ---------------------------------------- |
+| `connection` | `T extends Connection<A>` | The connection from your query's result. |
+
+Returns `T`: `connection` unchanged until a next page for it appears in the cache, then the accumulated result with pages joined end-to-end.
+
+```tsx title="src/FilmList.tsx"
 import { useQuery, useForwardPagination } from "@zoontek/gql-client";
 import { graphql } from "./gql";
 

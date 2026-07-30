@@ -8,7 +8,12 @@ export default defineConfig({
   renderStrategy: "full-static",
   srcDir: "docs",
   outDir: "docs/dist",
-  topNav: [{ text: "GitHub", link: "https://github.com/zoontek/gql-client" }],
+  accentColor: "light-dark(#c026d3, #e879f9)",
+  socials: [{ icon: "github", link: "https://github.com/zoontek/gql-client" }],
+  editLink: {
+    link: "https://github.com/zoontek/gql-client/edit/main/docs/:path",
+    text: "Suggest changes to this page",
+  },
   sidebar: [
     { text: "Getting started", link: "/" },
     {
