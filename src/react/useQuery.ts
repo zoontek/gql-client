@@ -155,8 +155,8 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
     }
   }
 
-  // The cache read resolves to `JsonValue`, trusted to match `Data` — the shape
-  // the caller's typed query declares — the same way any GraphQL response is
-  // trusted to match its document's result type.
+  // The cache read resolves to `JsonValue`, trusted to match `Data`, the
+  // shape the caller's typed query declares, the same way any GraphQL
+  // response is trusted to match its document's result type.
   return [{ fetching, data: dataToExpose as Data }, { setVariables }];
 };

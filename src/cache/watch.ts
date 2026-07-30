@@ -1,15 +1,13 @@
 import { TYPENAME_KEY } from "./keys";
 
-// Tracks which (cache entry, field) pairs a read touched, or which a write
-// modified. `object` (not `CacheEntry`) is used as the map key so this module
-// stays decoupled from the cache's internal entry shape — only identity
-// matters here.
+// Tracks which (cache entry, field) pairs a read touched, or a write
+// modified. The key is `object`, not `CacheEntry`, so this module doesn't
+// need to know the cache's internal entry shape, only its identity.
 //
-// `undefined` means "unscoped": matches any write. A subscriber uses this
-// while it has no successful read yet (initial fetch, or refetching variables
-// that aren't cached), so its own eventual write is guaranteed to wake it up,
-// exactly like the previous global-notify behavior. Once a read succeeds, the
-// subscriber switches to the precise field-level set below.
+// `undefined` means "unscoped", matching any write. A subscriber stays
+// unscoped until it has a successful read (first fetch, or refetching
+// variables not yet cached), so its own eventual write still wakes it up.
+// Once a read succeeds, it switches to the precise field-level set below.
 export type WatchedEntries = Map<object, Set<symbol>> | undefined;
 
 // A mutable box so a subscription (registered once) can be updated with a
@@ -22,10 +20,9 @@ export const trackField = (
   field: symbol,
 ): void => {
   // `transformDocument` injects `__typename` into every selection set,
-  // including every operation's root. Tracking it would make every read/write
-  // touching the shared Query/Mutation root entry look dependent on every
-  // other one — it never changes for an existing entry, so there is nothing
-  // meaningful to invalidate on.
+  // including the operation root. Tracking it would make every read/write on
+  // the shared Query/Mutation root look dependent on every other one, since
+  // it never changes for an existing entry there is nothing to invalidate.
   if (field === TYPENAME_KEY) {
     return;
   }

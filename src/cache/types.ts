@@ -18,9 +18,11 @@ export type SchemaConfig = {
 };
 
 export type ConnectionInfo = {
-  // useful for connection updates
+  // The connection's own entry, so updateConnection can edit its edges directly.
   cacheEntry: CacheEntry;
-  // to re-read from cache
+  // The full operation that produced this connection, so it can be re-read
+  // from cache after an update (variables and pathInQuery locate the
+  // connection within that operation's result).
   document: TypedDocumentNode;
   variables: AnyVariables;
   pathInQuery: PropertyKey[];

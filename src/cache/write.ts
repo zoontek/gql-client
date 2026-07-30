@@ -90,13 +90,13 @@ export const createWriteOperation = (
         trackField(touched, parentCache, fieldNameWithArguments);
       }
 
-      // either scalar type with no selection, or a null/undefined value
+      // Scalar with no selection, or a null/undefined value: store as is.
       const subSelectionSet = field.selectionSet;
       if (subSelectionSet === undefined || fieldValue == null) {
         parentCache[fieldNameWithArguments] = fieldValue;
         return;
       }
-      // array with selection
+      // Array with a selection set: cache each item.
       if (Array.isArray(fieldValue)) {
         const existingArray = parentCache[fieldNameWithArguments];
         const arrayCache: (symbol | CacheEntry | null)[] =
@@ -128,7 +128,7 @@ export const createWriteOperation = (
         });
         return;
       }
-      // object with selection
+      // Object with a selection set: cache it.
       if (!isRecord(fieldValue)) {
         return;
       }

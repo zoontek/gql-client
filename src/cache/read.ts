@@ -35,8 +35,9 @@ const STABILITY_CACHE = new WeakMap<
 >();
 
 export type ReadDeps = {
-  // Raw map lookup, defaulting to MISS. Shared with the write/connection-update
-  // paths, so it lives on the class rather than being duplicated here.
+  // Raw map lookup, defaulting to MISS. Shared with the write and
+  // connection-update paths, so it lives on the class instead of being
+  // duplicated here.
   get: (cacheKey: symbol) => CacheEntry | typeof MISS;
   isTypeCompatible: (typename: string, typeCondition: string) => boolean;
 };
@@ -84,12 +85,11 @@ export const createReadOperation = (
     variables: AnyVariables,
     watched?: Map<object, Set<symbol>>,
   ): JsonValue | undefined => {
-    // Builds a clean, string-keyed result directly. `source` is read-only — a
-    // cache entry (whose field values live under argument-qualified symbol
-    // keys) or a previously-resolved plain object (string keys, hit when a
-    // field is shared across selections). Values are written into a fresh
-    // `result`, so the output never carries the internal symbol-keyed metadata
-    // and needs no separate cloning/stripping pass.
+    // Builds a clean, string-keyed result directly. `source` is read-only:
+    // either a cache entry (field values under argument-qualified symbol
+    // keys) or a previously-resolved plain object (string keys, when a field
+    // is shared across selections). Values go into a fresh `result`, so there
+    // is no separate pass to strip the internal symbol keys afterward.
     const applyField = (
       fieldNode: FieldNode,
       source: Record<PropertyKey, unknown>,
@@ -112,17 +112,17 @@ export const createReadOperation = (
       if (!cacheHasKey) {
         // A field excluded by `@include(if: false)` / `@skip(if: true)` is
         // absent from the response, so its absence from the cache is not a
-        // miss — skip it. Any other missing field is a genuine miss.
+        // miss, skip it. Any other missing field is a genuine miss.
         return isExcluded(fieldNode, variables);
       }
 
       if (!alreadyResolved && watched !== undefined) {
-        // Record that this read depends on `source`'s value for this field —
-        // writes storing under the same key (always `fieldNameWithArguments`,
-        // see `write.ts`) must wake up whoever reads this. Skipped when
-        // `alreadyResolved`: that reads from the local `result`, not from a
+        // Record that this read depends on `source`'s value for this field.
+        // A write storing under the same key (always `fieldNameWithArguments`,
+        // see write.ts) must wake up whoever reads this. Skipped when
+        // `alreadyResolved`, since that reads from the local `result`, not a
         // cache entry, so there is nothing to depend on. (`trackField` itself
-        // excludes `__typename`, see `watch.ts`.)
+        // excludes `__typename`, see watch.ts.)
         trackField(watched, source, fieldNameWithArguments);
       }
 
@@ -280,8 +280,8 @@ export const createReadOperation = (
       }
 
       // Carry over the connection reference (a string key, not a queried
-      // field) so consumers — `useForwardPagination`/`useBackwardPagination`
-      // and `updateConnection` — can locate the registered connection.
+      // field) so consumers like `useForwardPagination`/`useBackwardPagination`
+      // and `updateConnection` can locate the registered connection.
       if (hasOwn(source, CONNECTION_REF)) {
         result[CONNECTION_REF] = source[CONNECTION_REF];
       }
@@ -315,13 +315,14 @@ export const createReadOperation = (
 
     // `traverse` builds this from cache entries whose field values are
     // untyped at the storage level, but it only ever writes plain scalars,
-    // plain objects, and plain arrays into `result` — never a raw cache entry
-    // or a symbol key — so the tree is already `JsonValue`-shaped.
+    // plain objects, and plain arrays into `result`, never a raw cache entry
+    // or a symbol key. So the tree is already `JsonValue`-shaped.
     const value = traversed as JsonValue;
 
-    // We use a trick to return stable values, the document holds a WeakMap
-    // that for each key (serialized variables), stores the last returned result.
-    // If the last value deeply equals the previous one, return the previous one
+    // Return a stable reference when possible: per document, a WeakMap keyed
+    // by serialized variables holds the last result returned for that key. If
+    // the new value deeply equals it, hand back the old reference instead so
+    // consumers relying on referential equality (e.g. React) don't re-render.
     const serializedVariables = serializeVariables(variables);
     const documentCache = STABILITY_CACHE.get(document);
     const previous = documentCache?.get(serializedVariables);

@@ -117,10 +117,9 @@ export class Client {
    * the provided hooks; most apps won't call this directly.
    *
    * `watched` is a mutable box a subscriber can update (via `readFromCache`'s
-   * `watched` out-param) after every read, without re-subscribing. Omitting it
-   * — as any direct caller outside the provided hooks would — keeps it
-   * unscoped, matching every write, which is the previous global-notify
-   * behavior.
+   * `watched` out-param) after every read, without re-subscribing. Omitting
+   * it, as any direct caller outside the provided hooks would, keeps it
+   * unscoped, matching every write.
    */
   public subscribe(
     fn: () => void,
@@ -202,9 +201,9 @@ export class Client {
         throw ClientError.malformedResponse(this.url, response);
       })
       .then((json) => {
-        // The server response is trusted to match `Data`, the shape the caller's
-        // `TypedDocumentNode` declares — nothing short of runtime schema
-        // validation could verify that from a parsed JSON payload alone.
+        // The response is trusted to match `Data`, the shape the caller's
+        // `TypedDocumentNode` declares. Nothing short of runtime schema
+        // validation could confirm that from a parsed JSON payload alone.
         const data: Data = json as Data;
         const touched = new Map<object, Set<symbol>>();
 

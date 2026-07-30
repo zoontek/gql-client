@@ -33,10 +33,9 @@ export const deepEqual = (a: any, b: any): boolean => {
     return false;
   }
 
-  // Array fast path: skips the `Object.keys` allocation (which, for an array,
-  // returns one string per index) and the resulting `hasOwn` checks below.
-  // GraphQL results are array-heavy (list fields, connection edges), and this
-  // runs over the full result tree on every cache read, so it matters.
+  // Array fast path, skips the Object.keys allocation and hasOwn checks
+  // below. Worth it: GraphQL results are array-heavy (lists, connection
+  // edges), and this runs on every cache read.
   if (Array.isArray(a) || Array.isArray(b)) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
       return false;
@@ -65,12 +64,11 @@ export const deepEqual = (a: any, b: any): boolean => {
   return true;
 };
 
-// Memoized by object identity: `variables` objects are never mutated in place
-// in this codebase (a change always produces a new object), so caching the
-// serialized form per reference is safe. This turns a hot-path cost (JSON
-// stringify of a sorted key list, run on every cache read and every in-flight
-// request lookup) into a WeakMap hit whenever the same variables reference is
-// reused across renders, which is the common case.
+// Memoized by object identity. Variables objects are never mutated in place
+// here, a change always produces a new object, so caching the serialized
+// form per reference is safe. Turns a JSON.stringify on every cache read and
+// in-flight lookup into a WeakMap hit when the same variables are reused
+// across renders, which is the common case.
 const serializedVariablesCache = new WeakMap<AnyVariables, string>();
 
 export const serializeVariables = (variables: AnyVariables): string => {

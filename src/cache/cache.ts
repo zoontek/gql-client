@@ -92,7 +92,7 @@ export class ClientCache {
   }
 
   // Raw map lookup, defaulting to the MISS sentinel. Shared by the read path
-  // (via `readOperation`'s injected `get`) and `mapEdgesToCacheEntries` below.
+  // (via `readOperation`'s injected `get`) and `mapEdgesToCacheEntries`.
   private get(cacheKey: symbol): CacheEntry | typeof MISS {
     const entry = this.cache.get(cacheKey);
     return entry === undefined ? MISS : entry;
@@ -110,10 +110,11 @@ export class ClientCache {
     return entry;
   }
 
-  // Resolve the cache entry for a nested object (creating it if needed) and the
-  // value to store in the parent: a shared symbol key for identifiable entities
-  // (so they are deduplicated and updated in one place), otherwise the inline
-  // entry. `existing` is the parent's current slot, reused for keyless entries.
+  // Resolves the cache entry for a nested object (creating it if needed), and
+  // the value to store in the parent: a shared symbol key for identifiable
+  // entities (so they get deduplicated and updated in one place), or the
+  // inline entry otherwise. `existing` is the parent's current slot, reused
+  // for keyless entries.
   private linkCacheEntry(
     json: unknown,
     existing: unknown,
@@ -131,7 +132,8 @@ export class ClientCache {
   private mapEdgesToCacheEntries<A>(edges: Edge<A>[]): CachedEdge[] {
     return filterMap(edges, ({ node, __typename, cursor }) => {
       const key = getCacheEntryKey(node);
-      // we can omit the requested fields here because the Connection<A> contrains the fields
+      // No need to check requested fields here: `Connection<A>` already
+      // constrains which fields exist on a node.
       if (key === undefined || this.get(key) === MISS) {
         return undefined;
       }
@@ -207,7 +209,7 @@ export class ClientCache {
 
         // Cache keys are `${typename}<${id}>`. A GraphQL type name never
         // contains `<`, so the first `<` and the trailing `>` bound the id
-        // exactly — even when the id itself contains angle brackets. Anchoring
+        // exactly, even when the id itself contains angle brackets. Anchoring
         // on those (rather than a greedy regex) also avoids `"1"` matching the
         // `"11"` segment of another key.
         const start = description.indexOf("<");

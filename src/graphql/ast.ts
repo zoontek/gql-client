@@ -43,11 +43,10 @@ const extractValue = (
   }
 };
 
-// Two-level memoization keyed on the (stable) AST node and the (stable across
-// re-renders) variables reference. The inner WeakMap is created lazily and
-// `compute` is a module-level function passed by reference, so cache hits — the
-// hot path — allocate nothing. Computed values are treated as read-only by
-// callers, so sharing them is safe.
+// Two-level memoization keyed on the AST node (stable) and the variables
+// reference (stable across re-renders). The inner WeakMap is created lazily,
+// so a cache hit, the hot path, allocates nothing. Computed values are
+// treated as read-only by callers, so sharing them is safe.
 const memoizeByNodeAndVariables = <K extends object, V>(
   cache: WeakMap<K, WeakMap<AnyVariables, V>>,
   node: K,
@@ -109,17 +108,12 @@ export const extractArguments = (
  *
  * { user(id: $id) {id} } with variables `{"id": "2"}`
  * => Symbol(`user({"id":"2"})`)
- *
- * @param fieldNode
- * @param variables The variables of the GraphQL operation
- * @returns symbol
  */
-// Field symbols are pure over `(fieldNode, variables)` but recomputed per field
-// on every cache read/write (Symbol.for lookup + extractArguments + JSON
-// serialization). The AST nodes are stable (documents are transformed once and
-// cached) and the variables reference is stable across re-renders, so memoize
-// on both: a plain symbol for argument-less fields, and a per-variables symbol
-// otherwise.
+// Field symbols are pure over `(fieldNode, variables)` but recomputed per
+// field on every cache read/write (Symbol.for lookup, extractArguments, JSON
+// serialization). Both the AST node and the variables reference are stable
+// across renders, so memoize on both: a plain symbol for argument-less
+// fields, a per-variables symbol otherwise.
 const fieldSymbolCache = new WeakMap<FieldNode, symbol>();
 const fieldSymbolWithVariablesCache = new WeakMap<
   FieldNode,
@@ -161,14 +155,11 @@ export const getFieldNameWithArguments = (
 };
 
 /**
- * Returns a Set<string> with all keys selected within the direct selection sets
- * of a given `FieldNode` or `OperationDefinitionNode`.
+ * Returns the set of field symbols (see `getFieldNameWithArguments`) selected
+ * within the direct selection set of a `FieldNode` or `OperationDefinitionNode`.
  *
  * { user { id, firstName, lastName } }
- * => Set{"id", "firstName", "lastName"}
- *
- * @param fieldNode FieldNode | OperationDefinitionNode
- * @returns selectedKeys Set<string>
+ * => Set{Symbol(`id`), Symbol(`firstName`), Symbol(`lastName`)}
  */
 // Same memoization rationale as `getFieldNameWithArguments`: this runs per
 // field (and per array element) on every read, rebuilding a Set each time. The
@@ -185,8 +176,8 @@ const computeSelectedKeys = (
   const selectedKeys = new Set<symbol>();
 
   const traverse = (selections: SelectionSetNode): void => {
-    // We only need to care about FieldNode & InlineFragment node
-    // as we inline all fragments in the query
+    // Only FieldNode and InlineFragmentNode matter here: fragment spreads are
+    // already inlined by transformDocument by the time this runs.
     selections.selections.forEach((selection) => {
       if (selection.kind === Kind.FIELD) {
         selectedKeys.add(getFieldNameWithArguments(selection, variables));
