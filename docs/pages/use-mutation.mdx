@@ -57,12 +57,12 @@ A `[state, mutate]` tuple:
 - `mutate(variables)`: sends the mutation, and updates `state` as it settles. Returns a promise resolving with the response data. If called again before the previous call resolves, only the latest call's result is reflected in `state`.
 - `state`, narrowed on `status`:
 
-| Status | Shape |
-| --- | --- |
-| `"idle"` | `{ status: "idle", fetching: false }` |
-| `"loading"` | `{ status: "loading", fetching: true }` |
+| Status      | Shape                                          |
+| ----------- | ---------------------------------------------- |
+| `"idle"`    | `{ status: "idle", fetching: false }`          |
+| `"loading"` | `{ status: "loading", fetching: true }`        |
 | `"success"` | `{ status: "success", fetching: false, data }` |
-| `"error"` | `{ status: "error", fetching: false, error }` |
+| `"error"`   | `{ status: "error", fetching: false, error }`  |
 
 ## Updating connections
 

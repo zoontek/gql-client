@@ -51,7 +51,9 @@ const FilmReviews = ({ filmId }: { filmId: string }) => {
 
       <ul>
         {connection?.edges?.map((edge) =>
-          edge?.node == null ? null : <li key={edge.node.id}>{edge.node.comment}</li>,
+          edge?.node == null ? null : (
+            <li key={edge.node.id}>{edge.node.comment}</li>
+          ),
         )}
       </ul>
     </>

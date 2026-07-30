@@ -36,16 +36,16 @@ const FilmList = () => {
     <>
       <ul>
         {connection?.edges?.map((edge) =>
-          edge?.node == null ? null : <li key={edge.node.id}>{edge.node.title}</li>,
+          edge?.node == null ? null : (
+            <li key={edge.node.id}>{edge.node.title}</li>
+          ),
         )}
       </ul>
 
       {connection?.pageInfo.hasNextPage ? (
         <button
           disabled={fetching}
-          onClick={() =>
-            setVariables({ after: connection.pageInfo.endCursor })
-          }
+          onClick={() => setVariables({ after: connection.pageInfo.endCursor })}
         >
           Load more
         </button>

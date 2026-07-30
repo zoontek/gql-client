@@ -47,11 +47,11 @@ const FilmDetails = ({ filmId }: { filmId: string }) => {
 
 A `[state, actions]` tuple, like `useState`:
 
-| | |
-| --- | --- |
-| `state.data` | the query result. |
-| `state.fetching` | `boolean`, `true` while a request for the current variables is in flight. `data` may still hold the previous result while this is `true`, so a loading UI is optional. |
-| `actions.setVariables(variables)` | patches the variables in place, without a full reload. Used for pagination, see [Pagination](/pagination). |
+|                                   |                                                                                                                                                                        |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state.data`                      | the query result.                                                                                                                                                      |
+| `state.fetching`                  | `boolean`, `true` while a request for the current variables is in flight. `data` may still hold the previous result while this is `true`, so a loading UI is optional. |
+| `actions.setVariables(variables)` | patches the variables in place, without a full reload. Used for pagination, see [Pagination](/pagination).                                                             |
 
 ### Suspense
 
