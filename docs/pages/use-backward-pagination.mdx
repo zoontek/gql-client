@@ -1,7 +1,3 @@
----
-description: Merge earlier pages into a connection as they load.
----
-
 # useBackwardPagination [Merge earlier pages into a connection as they load.]
 
 Takes the connection from a query result and returns it merged with every earlier page fetched for it with a `before` cursor, prepending each new page ahead of `connection`'s existing edges. Returns the connection unchanged until a previous page shows up in the cache.

@@ -1,7 +1,3 @@
----
-description: Fetch paginated connections and merge new pages into them.
----
-
 # Pagination [Fetch paginated connections and merge new pages into them.]
 
 Fetching a page of a connection is a normal query, with `first`/`after` (or `last`/`before`) variables. `useQuery`'s `setVariables` fetches the next page in place instead of reloading the whole query, and `useForwardPagination` / `useBackwardPagination` stitch the pages together into one connection.
