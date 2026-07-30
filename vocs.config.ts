@@ -13,14 +13,24 @@ export default defineConfig({
     { text: "Getting started", link: "/" },
     {
       text: "Guides",
-      items: [{ text: "Caching", link: "/caching" }],
+      items: [
+        { text: "Caching", link: "/caching" },
+        { text: "Pagination", link: "/pagination" },
+      ],
     },
     {
       text: "Hooks",
       items: [
         { text: "useQuery", link: "/use-query" },
         { text: "useMutation", link: "/use-mutation" },
-        { text: "Pagination", link: "/pagination" },
+        {
+          text: "useForwardPagination",
+          link: "/pagination#useforwardpaginationconnection",
+        },
+        {
+          text: "useBackwardPagination",
+          link: "/pagination#usebackwardpaginationconnection",
+        },
       ],
     },
     {
