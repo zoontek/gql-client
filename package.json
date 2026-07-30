@@ -1,6 +1,6 @@
 {
-  "name": "@bloodyowl/graphql-client",
-  "version": "0.9.1",
+  "name": "@zoontek/gql",
+  "version": "0.1.0",
   "description": "A simple, typesafe GraphQL client for React",
   "keywords": [
     "cache",
@@ -11,7 +11,7 @@
   ],
   "homepage": "https://bloodyowl.github.io/graphql-client",
   "license": "MIT",
-  "author": "Matthias Le Brun <bloodyowl@icloud.com>",
+  "author": "Mathieu Acthernoene <zoontek@gmail.com>",
   "repository": {
     "type": "git",
     "url": "https://github.com/bloodyowl/graphql-client.git"
