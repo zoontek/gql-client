@@ -35,16 +35,16 @@
     "registry": "https://registry.npmjs.org"
   },
   "scripts": {
-    "lint": "oxlint",
-    "example": "vite",
+    "build": "tsdown",
     "format": "oxfmt",
+    "lint": "oxlint",
+    "typecheck": "tsc",
     "test:unit": "bun test tests/unit/",
     "test:react": "playwright test",
     "test": "bun run test:unit && bun run test:react",
-    "typecheck": "tsc",
-    "build": "tsdown",
-    "prepack": "bun typecheck && bun run test && bun run build",
-    "codegen": "graphql-codegen && bin/gql-schema-config 'https://swapi-graphql.netlify.app/graphql' example/ && oxfmt"
+    "codegen": "graphql-codegen && bin/gql-schema-config 'https://swapi-graphql.netlify.app/graphql' example/ && oxfmt",
+    "example": "bun run codegen && vite",
+    "prepack": "bun typecheck && bun run test && bun run build"
   },
   "dependencies": {
     "@0no-co/graphql.web": "^1.3.3",
