@@ -1,8 +1,11 @@
 import { defineConfig } from "vocs/config";
 
 export default defineConfig({
-  title: "gql-client",
+  title: "@zoontek/gql-client",
   description: "A simple, typesafe GraphQL client for React",
+  basePath: "/gql-client",
+  baseUrl: "https://zoontek.github.io/gql-client",
+  renderStrategy: "full-static",
   srcDir: "docs",
   outDir: "docs/dist",
   sidebar: [
