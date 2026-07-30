@@ -10,9 +10,10 @@
     "url": "https://github.com/bloodyowl/graphql-client.git"
   },
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "keywords": [
     "cache",
     "client",
