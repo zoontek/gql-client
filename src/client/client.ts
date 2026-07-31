@@ -9,7 +9,13 @@ import { entriesOverlap, type WatchedEntriesBox } from "../cache/watch";
 import { getOperationName } from "../graphql/ast";
 import { printDocument } from "../graphql/print";
 import { transformDocument } from "../graphql/transform";
-import type { AnyVariables, Connection, Edge, JsonValue } from "../types";
+import type {
+  AnyVariables,
+  Connection,
+  Edge,
+  JsonValue,
+  RequestCredentials,
+} from "../types";
 import { isRecord, serializeVariables } from "../utils";
 import { ClientError } from "./errors";
 
