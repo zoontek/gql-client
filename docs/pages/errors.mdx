@@ -9,6 +9,7 @@
 | `graphql`   | The response came back with a top-level `errors` array.         |
 | `malformed` | The response body wasn't valid GraphQL JSON.                    |
 | `network`   | The request couldn't reach the server.                          |
+| `options`   | The client's `requestOptions` function threw or rejected.       |
 | `status`    | The response status was outside the `200`-`299` range.          |
 | `timeout`   | The request took longer than the client's configured `timeout`. |
 
@@ -37,7 +38,7 @@ class ClientError extends Error {
 }
 
 type ClientErrorReason =
-  "graphql" | "malformed" | "network" | "status" | "timeout";
+  "graphql" | "malformed" | "network" | "options" | "status" | "timeout";
 ```
 
 ### Properties

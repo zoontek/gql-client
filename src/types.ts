@@ -4,9 +4,6 @@ export type JsonArray = JsonValue[] | readonly JsonValue[];
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
 
-// Copied from TypeScript DOM types for React Native compatibility
-export type RequestCredentials = "include" | "omit" | "same-origin";
-
 /** Variables shape accepted by `useQuery`, `useMutation`, and `Client#mutate`. */
 export type AnyVariables = Record<string, unknown>;
 

@@ -9,27 +9,39 @@ import { entriesOverlap, type WatchedEntriesBox } from "../cache/watch";
 import { getOperationName } from "../graphql/ast";
 import { printDocument } from "../graphql/print";
 import { transformDocument } from "../graphql/transform";
-import type {
-  AnyVariables,
-  Connection,
-  Edge,
-  JsonValue,
-  RequestCredentials,
-} from "../types";
+import type { AnyVariables, Connection, Edge, JsonValue } from "../types";
 import { isRecord, serializeVariables } from "../utils";
 import { ClientError } from "./errors";
+
+export type RequestOptions = {
+  /** Passed to `fetch` as `credentials`. Defaults to `"same-origin"`. */
+  credentials?: RequestInit["credentials"];
+  /** Extra HTTP headers merged into every request. */
+  headers?: Record<string, string>;
+  /** Passed to `fetch` as `integrity`, for subresource integrity checks. */
+  integrity?: RequestInit["integrity"];
+  /** Passed to `fetch` as `keepalive`, to let the request outlive a page unload. */
+  keepalive?: RequestInit["keepalive"];
+  /** Passed to `fetch` as `mode`. Not set by default, so `fetch`'s own default applies. */
+  mode?: RequestInit["mode"];
+  /** Request timeout in milliseconds. Defaults to `10_000`. Set to `Infinity` to disable. */
+  timeout?: number;
+};
 
 export type ClientConfig = {
   /** GraphQL endpoint URL. All requests are sent here as HTTP POST. */
   url: string;
-  /** Passed to `fetch` as `credentials`. Defaults to `"same-origin"`. */
-  credentials?: RequestCredentials;
-  /** Extra HTTP headers merged into every request. */
-  headers?: Record<string, string>;
-  /** Request timeout in milliseconds. Defaults to `10_000`. Set to `Infinity` to disable. */
-  timeout?: number;
   /** Interface-to-implementing-types map, used by the cache to match fragments on interfaces. Generate it with `gql-schema-config`. */
   schemaConfig: SchemaConfig;
+  /**
+   * Options merged into every `fetch` call. Pass a function (sync or async)
+   * to compute them fresh for each request, e.g. to read the latest auth
+   * token. If the function throws or rejects, the request fails with a
+   * `ClientError` whose `reason` is `"options"`.
+   */
+  requestOptions?:
+    | RequestOptions
+    | (() => RequestOptions | Promise<RequestOptions>);
 };
 
 type ConnectionUpdate<Node> = [
@@ -96,15 +108,14 @@ export type MutationConfig<
  * and the pagination hooks read and write through it.
  */
 export class Client {
-  private url: string;
-  private credentials: RequestCredentials;
-  private headers: Record<string, string>;
-  private timeout: number;
-
   private cache: ClientCache;
+  private url: string;
+  private inflightRequests: WeakMap<object, Map<string, Promise<unknown>>>;
   private subscribers: Map<() => void, WatchedEntriesBox>;
 
-  private inflightRequests: WeakMap<object, Map<string, Promise<unknown>>>;
+  private requestOptions:
+    | RequestOptions
+    | (() => RequestOptions | Promise<RequestOptions>);
 
   /**
    * Creates a client.
@@ -112,19 +123,11 @@ export class Client {
    * @param config - See `ClientConfig` for the available options.
    */
   public constructor(config: ClientConfig) {
-    this.url = config.url;
-    this.credentials = config.credentials ?? "same-origin";
-    this.timeout = config.timeout ?? 10_000;
-
-    this.headers = {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...(config.headers ?? {}),
-    };
-
     this.cache = new ClientCache(config.schemaConfig);
-    this.subscribers = new Map();
+    this.url = config.url;
     this.inflightRequests = new WeakMap();
+    this.subscribers = new Map();
+    this.requestOptions = config.requestOptions ?? {};
   }
 
   /**
@@ -176,7 +179,7 @@ export class Client {
    * removing edges of a connection touched by this request.
    * @returns The response data.
    */
-  private request<Data, Variables extends AnyVariables = AnyVariables>(
+  private async request<Data, Variables extends AnyVariables = AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
     { connectionUpdates }: MutationConfig<Data, Variables> = {},
@@ -184,25 +187,49 @@ export class Client {
     const controller = new AbortController();
     const transformedDocument = transformDocument(document);
 
+    const {
+      credentials,
+      headers = {},
+      integrity,
+      keepalive,
+      mode,
+      timeout = 10_000,
+    } = await Promise.resolve()
+      .then(() =>
+        typeof this.requestOptions === "function"
+          ? this.requestOptions()
+          : this.requestOptions,
+      )
+      .catch(() => {
+        throw ClientError.options(this.url);
+      });
+
     let timer: ReturnType<typeof setTimeout> | undefined;
 
-    if (Number.isFinite(this.timeout) && this.timeout >= 0) {
+    if (Number.isFinite(timeout) && timeout >= 0) {
       timer = setTimeout(() => {
-        controller.abort(ClientError.timeout(this.url, this.timeout));
-      }, this.timeout);
+        controller.abort(ClientError.timeout(this.url, timeout));
+      }, timeout);
     }
 
     return fetch(this.url, {
       cache: "no-store",
-      credentials: this.credentials,
-      headers: this.headers,
       method: "POST",
       signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...headers,
+      },
       body: JSON.stringify({
         operationName: getOperationName(transformedDocument),
         query: printDocument(transformedDocument),
         variables,
       }),
+      ...(mode != null && { mode }),
+      ...(credentials != null && { credentials }),
+      ...(integrity != null && { integrity }),
+      ...(keepalive != null && { keepalive }),
     })
       .then(async (response) => {
         if (!response.ok) {

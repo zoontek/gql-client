@@ -7,6 +7,7 @@ import type { JsonArray } from "../types";
  * - `"graphql"`: the response had a top-level `errors` array.
  * - `"malformed"`: the response body wasn't valid GraphQL JSON.
  * - `"network"`: the request failed before a response was received.
+ * - `"options"`: the client's `requestOptions` function threw or rejected.
  * - `"status"`: the response status was not ok (outside 200-299).
  * - `"timeout"`: the request exceeded the client's configured `timeout`.
  */
@@ -14,6 +15,7 @@ export type ClientErrorReason =
   | "graphql"
   | "malformed"
   | "network"
+  | "options"
   | "status"
   | "timeout";
 
@@ -90,6 +92,13 @@ export class ClientError extends Error {
   static network(url: string): ClientError {
     return new ClientError(`Request to ${url} failed`, {
       reason: "network",
+      url,
+    });
+  }
+
+  static options(url: string): ClientError {
+    return new ClientError(`Failed to build request options for ${url}`, {
+      reason: "options",
       url,
     });
   }

@@ -20,25 +20,45 @@ new Client(config: ClientConfig): Client
 type ClientConfig = {
   url: string;
   schemaConfig: SchemaConfig;
-  credentials?: RequestCredentials;
-  headers?: Record<string, string>;
-  timeout?: number;
+  requestOptions?:
+    | RequestOptions
+    | (() => RequestOptions | Promise<RequestOptions>);
 };
 
 type SchemaConfig = {
   interfaceToTypes: Record<string, string[]>;
 };
+
+type RequestOptions = {
+  credentials?: RequestCredentials;
+  headers?: Record<string, string>;
+  mode?: RequestMode;
+  integrity?: string;
+  keepalive?: boolean;
+  timeout?: number;
+};
 ```
 
 ### Params
 
-| Param          | Type                     | Description                                                                                      |
-| -------------- | ------------------------ | ------------------------------------------------------------------------------------------------ |
-| `url`          | `string`                 | Required. The GraphQL endpoint. Every request is sent here as an HTTP `POST`.                    |
-| `schemaConfig` | `SchemaConfig`           | Required. The interface-to-types map from [`gql-schema-config`](/#2-generate-the-schema-config). |
-| `credentials`  | `RequestCredentials`     | Optional. Passed to `fetch` as `credentials`. Defaults to `"same-origin"`.                       |
-| `headers`      | `Record<string, string>` | Optional. Extra HTTP headers merged into every request.                                          |
-| `timeout`      | `number`                 | Optional. Request timeout in milliseconds. Defaults to `10_000`. Set to `Infinity` to disable.   |
+| Param            | Type                                                                  | Description                                                                                                                                                                        |
+| ---------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`            | `string`                                                              | Required. The GraphQL endpoint. Every request is sent here as an HTTP `POST`.                                                                                                      |
+| `schemaConfig`   | `SchemaConfig`                                                        | Required. The interface-to-types map from [`gql-schema-config`](/#2-generate-the-schema-config).                                                                                   |
+| `requestOptions` | `RequestOptions \| (() => RequestOptions \| Promise<RequestOptions>)` | Optional. Options merged into every request. Pass a function (sync or async) to compute them fresh for each request, e.g. to read the latest auth token. See below for its fields. |
+
+### `RequestOptions` fields
+
+| Field         | Type                     | Description                                                                                    |
+| ------------- | ------------------------ | ---------------------------------------------------------------------------------------------- |
+| `headers`     | `Record<string, string>` | Optional. Extra HTTP headers merged into every request.                                        |
+| `timeout`     | `number`                 | Optional. Request timeout in milliseconds. Defaults to `10_000`. Set to `Infinity` to disable. |
+| `mode`        | `RequestMode`            | Optional. Passed to `fetch` as `mode`.                                                         |
+| `credentials` | `RequestCredentials`     | Optional. Passed to `fetch` as `credentials`.                                                  |
+| `integrity`   | `string`                 | Optional. Passed to `fetch` as `integrity`.                                                    |
+| `keepalive`   | `boolean`                | Optional. Passed to `fetch` as `keepalive`.                                                    |
+
+If the `requestOptions` function throws or rejects, the request fails with a [`ClientError`](/errors) whose `reason` is `"options"`.
 
 ## Methods
 
