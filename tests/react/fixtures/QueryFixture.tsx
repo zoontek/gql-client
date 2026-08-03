@@ -34,6 +34,10 @@ const QueryInner = <Data,>({
       >
         set id=bad
       </button>
+
+      <button data-testid="refetch" onClick={() => actions.refetch()}>
+        refetch
+      </button>
     </div>
   );
 };

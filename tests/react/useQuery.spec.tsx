@@ -79,7 +79,7 @@ test("setVariables refetches while keeping previous data visible", async ({
   );
 });
 
-test("a refetch's GraphQL error is thrown to the nearest ErrorBoundary", async ({
+test("a query error after a variable change is thrown to the nearest ErrorBoundary", async ({
   mount,
   page,
 }) => {
@@ -112,5 +112,78 @@ test("a refetch's GraphQL error is thrown to the nearest ErrorBoundary", async (
   // Queried from `page`, not `component`: react-error-boundary recovers by
   // fully recreating the tree, which can detach Playwright's handle on the
   // originally mounted root.
+  await expect(page.getByTestId("error")).toContainText("Not found");
+});
+
+test("refetch re-sends the request, keeping fetching: true and the previous data visible", async ({
+  mount,
+  page,
+}) => {
+  let requestCount = 0;
+  // One resolver per incoming request, in arrival order, so the test can
+  // release the initial load and the refetch independently even though both
+  // use the same variables.
+  const release: Array<() => void> = [];
+
+  await page.route("**/graphql", async (route) => {
+    const count = ++requestCount;
+    await new Promise<void>((resolve) => release.push(resolve));
+
+    await route.fulfill({
+      json: { data: { greeting: `hello-1-v${count}` } },
+    });
+  });
+
+  const component = await mount(
+    <QueryFixture
+      url="/graphql"
+      query={GreetingQuery}
+      variables={{ id: "1" }}
+    />,
+  );
+
+  await expect.poll(() => release.length).toBe(1);
+  release[0]?.();
+  const state = component.getByTestId("state");
+  await expect(state).toContainText("hello-1-v1");
+
+  await component.getByTestId("refetch").click();
+  await expect(state).toContainText('"fetching":true');
+  await expect(state).toContainText("hello-1-v1");
+
+  await expect.poll(() => release.length).toBe(2);
+  release[1]?.();
+  await expect(state).toContainText(
+    JSON.stringify({ fetching: false, data: { greeting: "hello-1-v2" } }),
+  );
+});
+
+test("a failed refetch is thrown to the nearest ErrorBoundary", async ({
+  mount,
+  page,
+}) => {
+  let requestCount = 0;
+
+  await page.route("**/graphql", async (route) => {
+    requestCount++;
+
+    if (requestCount === 1) {
+      await route.fulfill({ json: { data: { greeting: "hello-1" } } });
+    } else {
+      await route.fulfill({ json: { errors: [{ message: "Not found" }] } });
+    }
+  });
+
+  const component = await mount(
+    <QueryFixture
+      url="/graphql"
+      query={GreetingQuery}
+      variables={{ id: "1" }}
+    />,
+  );
+
+  await expect(component.getByTestId("state")).toContainText("hello-1");
+
+  await component.getByTestId("refetch").click();
   await expect(page.getByTestId("error")).toContainText("Not found");
 });

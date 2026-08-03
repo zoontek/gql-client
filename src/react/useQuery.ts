@@ -1,16 +1,19 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
-import { use, useCallback, useEffect, useRef, useState } from "react";
+import { use, useCallback, useRef, useState } from "react";
 
 import type { ClientError } from "../client/errors";
 import type { AnyVariables } from "../types";
-import { deepEqual } from "../utils";
 import { useClient } from "./context";
 import { useCacheSubscription } from "./useCacheSubscription";
+import { usePreviousData } from "./usePreviousData";
+import { useStableVariables } from "./useStableVariables";
 
 /**
  * `fetching` is `true` while a request for the current variables is in
- * flight. `data` holds the latest result; while `fetching` is `true` it may
- * still be the previous result, shown until the new one arrives.
+ * flight, whether the automatic fetch on mount/variable change or an
+ * explicit `refetch()` call. `data` holds the latest result; while
+ * `fetching` is `true` it may still be the previous result, shown until the
+ * new one arrives.
  */
 export type QueryState<Data> = {
   fetching: boolean;
@@ -26,41 +29,10 @@ export type Query<
   {
     /** Patches the query's variables without waiting for new props. */
     setVariables: (variables: Partial<Variables>) => void;
+    /** Re-sends the request for the current variables. */
+    refetch: () => void;
   },
 ];
-
-const usePreviousData = <T>(
-  value: T | undefined,
-  resetKey: unknown,
-): T | undefined => {
-  const previousRef = useRef(value);
-  const resetKeyRef = useRef(resetKey);
-
-  // When the reset key changes (new variables passed to the query, as opposed
-  // to a `setVariables` call), drop the previous value so the query goes back
-  // to its loading state instead of showing the previous result.
-  if (resetKeyRef.current !== resetKey) {
-    resetKeyRef.current = resetKey;
-    previousRef.current = value;
-  }
-
-  useEffect(() => {
-    if (value !== undefined) {
-      previousRef.current = value;
-    }
-  }, [value]);
-
-  return previousRef.current;
-};
-
-type StableVariables<Variables> = {
-  // The variables last passed by the caller. Used to detect a prop change and
-  // as the reset key for `usePreviousData`.
-  provided: Variables;
-  // The variables we actually fetch and read with. `setVariables` patches this
-  // alone, so a local override survives until the caller passes new variables.
-  effective: Variables;
-};
 
 /**
  * Runs `query` with `variables` against the `Client` from `ClientProvider`.
@@ -82,9 +54,8 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
   // Query should never change
   const [stableQuery] = useState(query);
 
-  const [stableVariables, setStableVariables] = useState<
-    StableVariables<Variables>
-  >({ provided: variables, effective: variables });
+  const { provided, effective, propsChanged, setVariables } =
+    useStableVariables(variables);
 
   // A query rejection captured while stale data was shown (the suspending path
   // throws through `use`). It is re-thrown during render so the nearest
@@ -92,25 +63,28 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
   // retry can run instead of re-throwing a stale error.
   const [error, setError] = useState<ClientError | undefined>(undefined);
 
-  // When the caller passes new (deeply unequal) variables, reset both: the new
-  // prop becomes the effective set and any `setVariables` override is dropped.
-  // Adjusting state during render (rather than in an effect) makes the new
-  // variables take effect on this render; an effect would let one render commit
-  // and fetch with the stale variables first. React discards and re-renders on
-  // the in-render `setState`, so nothing commits with the old variables.
-  const propsChanged = !deepEqual(stableVariables.provided, variables);
+  // True while an explicit `refetch()` call is in flight. The automatic fetch
+  // below is already reflected in `fetching` through cache presence (there's
+  // nothing to read yet), but a `refetch()` fires even though the cache
+  // already has data, so it needs its own flag.
+  const [isRefetching, setIsRefetching] = useState(false);
+
+  // Identifies the most recent `refetch` call, so a stale response can't
+  // clobber `isRefetching`/`error` after the variables have moved on.
+  const latestRefetchIdRef = useRef(0);
 
   if (propsChanged) {
-    setStableVariables({ provided: variables, effective: variables });
+    // Any `refetch()` still in flight belonged to the old variables: let its
+    // eventual response no-op instead of touching state for the new ones.
+    latestRefetchIdRef.current++;
 
     if (error !== undefined) {
       setError(undefined);
     }
+    if (isRefetching) {
+      setIsRefetching(false);
+    }
   }
-
-  const { provided, effective } = propsChanged
-    ? { provided: variables, effective: variables }
-    : stableVariables;
 
   const readSnapshot = useCallback(
     (watched: Map<object, Set<symbol>>) =>
@@ -122,18 +96,12 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
 
   const previousData = usePreviousData(data, provided);
 
-  const fetching = data === undefined;
-  const dataToExpose = fetching ? previousData : data;
-
-  const setVariables = useCallback((variables: Partial<Variables>) => {
-    setStableVariables((prev) => {
-      const effective = { ...prev.effective, ...variables };
-
-      return deepEqual(prev.effective, effective)
-        ? prev
-        : { provided: prev.provided, effective };
-    });
-  }, []);
+  // Whether the cache has nothing yet for the current variables. Drives the
+  // automatic fetch/suspend below; kept separate from `isRefetching` so a
+  // `refetch()` doesn't cause that block to issue a second, redundant request.
+  const needsInitialFetch = data === undefined;
+  const fetching = needsInitialFetch || isRefetching;
+  const dataToExpose = data ?? previousData;
 
   // Surface a captured query rejection to the nearest ErrorBoundary. Ignore an
   // error captured for the previous variables (`propsChanged` already cleared
@@ -142,10 +110,10 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
     throw error;
   }
 
-  // While there's no fresh data for the current variables, (re)issue the
+  // While there's no data at all for the current variables, (re)issue the
   // request. The client deduplicates in-flight requests, so calling this on
   // every render fires at most one network request per set of variables.
-  if (fetching) {
+  if (needsInitialFetch) {
     const promise = client.query(stableQuery, effective);
 
     if (dataToExpose === undefined) {
@@ -160,8 +128,34 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
     }
   }
 
+  // Forces a fresh request even though the cache already has data for the
+  // current variables, exposing `fetching: true` for its duration while
+  // still showing the cached data underneath. A rejection is captured and
+  // thrown on the next render, same as the automatic fetch above.
+  const refetch = useCallback(() => {
+    const callId = ++latestRefetchIdRef.current;
+    setIsRefetching(true);
+
+    client.query(stableQuery, effective).then(
+      () => {
+        if (latestRefetchIdRef.current === callId) {
+          setIsRefetching(false);
+        }
+      },
+      (queryError: ClientError) => {
+        if (latestRefetchIdRef.current === callId) {
+          setIsRefetching(false);
+          setError(queryError);
+        }
+      },
+    );
+  }, [client, stableQuery, effective]);
+
   // The cache read resolves to `JsonValue`, trusted to match `Data`, the
   // shape the caller's typed query declares, the same way any GraphQL
   // response is trusted to match its document's result type.
-  return [{ fetching, data: dataToExpose as Data }, { setVariables }];
+  return [
+    { fetching, data: dataToExpose as Data },
+    { setVariables, refetch },
+  ];
 };
