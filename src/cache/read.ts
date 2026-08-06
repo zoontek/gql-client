@@ -13,8 +13,8 @@ import {
   getSelectedKeys,
   getTypename,
   isExcluded,
-} from "../gql/ast";
-import { transformDocument } from "../gql/transform";
+} from "../graphql/ast";
+import { transformDocument } from "../graphql/transform";
 import type { AnyVariables, JsonValue } from "../types";
 import {
   containsAll,

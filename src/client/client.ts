@@ -2,9 +2,9 @@ import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
 import { ClientCache, type SchemaConfig } from "../cache/cache";
 import { entriesOverlap, type WatchedEntriesBox } from "../cache/watch";
-import { getOperationName } from "../gql/ast";
-import { printDocument } from "../gql/print";
-import { transformDocument } from "../gql/transform";
+import { getOperationName } from "../graphql/ast";
+import { printDocument } from "../graphql/print";
+import { transformDocument } from "../graphql/transform";
 import type { AnyVariables, Connection, Edge, JsonValue } from "../types";
 import { isRecord, serializeVariables } from "../utils";
 import { ClientError } from "./errors";
