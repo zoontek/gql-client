@@ -32,9 +32,9 @@ export class ClientCache {
   private connectionCache: Map<number, ConnectionInfo>;
   private connectionRefCount = -1;
 
-  public readonly readOperation: (
-    document: TypedDocumentNode,
-    variables: AnyVariables,
+  public readonly readOperation: <Data, Variables extends AnyVariables>(
+    document: TypedDocumentNode<Data, Variables>,
+    variables: Variables,
     watched?: Map<object, Set<symbol>>,
   ) => JsonValue | undefined;
 

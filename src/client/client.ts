@@ -1,14 +1,10 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
-import {
-  ClientCache,
-  type ConnectionInfo,
-  type SchemaConfig,
-} from "../cache/cache";
+import { ClientCache, type SchemaConfig } from "../cache/cache";
 import { entriesOverlap, type WatchedEntriesBox } from "../cache/watch";
-import { getOperationName } from "../graphql/ast";
-import { printDocument } from "../graphql/print";
-import { transformDocument } from "../graphql/transform";
+import { getOperationName } from "../gql/ast";
+import { printDocument } from "../gql/print";
+import { transformDocument } from "../gql/transform";
 import type { AnyVariables, Connection, Edge, JsonValue } from "../types";
 import { isRecord, serializeVariables } from "../utils";
 import { ClientError } from "./errors";
@@ -78,7 +74,7 @@ const remove = <A>(
  */
 export type GetConnectionUpdate<
   Data,
-  Variables extends AnyVariables = AnyVariables,
+  Variables extends AnyVariables,
 > = (config: {
   data: Data;
   variables: Variables;
@@ -94,10 +90,7 @@ export type GetConnectionUpdate<
 }) => ConnectionUpdate<unknown> | undefined;
 
 /** Config accepted by `Client#mutate` and `useMutation`. */
-export type MutationConfig<
-  Data,
-  Variables extends AnyVariables = AnyVariables,
-> = {
+export type MutationConfig<Data, Variables extends AnyVariables> = {
   /** Cache updates to apply to connections touched by this mutation's result. */
   connectionUpdates?: GetConnectionUpdate<Data, Variables>[] | undefined;
 };
@@ -108,7 +101,9 @@ export type MutationConfig<
  * and the pagination hooks read and write through it.
  */
 export class Client {
-  private cache: ClientCache;
+  /** @internal */
+  public cache: ClientCache;
+
   private url: string;
   private inflightRequests: WeakMap<object, Map<string, Promise<unknown>>>;
   private subscribers: Map<() => void, WatchedEntriesBox>;
@@ -135,10 +130,10 @@ export class Client {
    * has read. Returns an unsubscribe function. Intended for internal use by
    * the provided hooks; most apps won't call this directly.
    *
-   * `watched` is a mutable box a subscriber can update (via `readFromCache`'s
-   * `watched` out-param) after every read, without re-subscribing. Omitting
-   * it, as any direct caller outside the provided hooks would, keeps it
-   * unscoped, matching every write.
+   * `watched` is a mutable box a subscriber can update (via
+   * `cache.readOperation`'s `watched` out-param) after every read, without
+   * re-subscribing. Omitting it, as any direct caller outside the provided
+   * hooks would, keeps it unscoped, matching every write.
    *
    * @param fn - Called after a write touches data `watched` has read.
    * @param watched - Tracks which cache entries this subscriber's reads have
@@ -179,7 +174,7 @@ export class Client {
    * removing edges of a connection touched by this request.
    * @returns The response data.
    */
-  private async request<Data, Variables extends AnyVariables = AnyVariables>(
+  private async request<Data, Variables extends AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
     { connectionUpdates }: MutationConfig<Data, Variables> = {},
@@ -240,7 +235,7 @@ export class Client {
 
         if (isRecord(json)) {
           if ("errors" in json && Array.isArray(json.errors)) {
-            throw ClientError.graphql(this.url, response, json.errors);
+            throw ClientError.graphQL(this.url, response, json.errors);
           }
 
           if ("data" in json && json.data != null) {
@@ -310,7 +305,7 @@ export class Client {
    * removing edges of a connection touched by this request.
    * @returns The response data.
    */
-  public mutate<Data, Variables extends AnyVariables = AnyVariables>(
+  public mutate<Data, Variables extends AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
     config: MutationConfig<Data, Variables> = {},
@@ -330,7 +325,7 @@ export class Client {
    * @returns The response data. The same promise is returned for concurrent
    * calls with the same `document` and `variables`.
    */
-  public query<Data, Variables extends AnyVariables = AnyVariables>(
+  public query<Data, Variables extends AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
   ): Promise<Data> {
@@ -367,38 +362,5 @@ export class Client {
     promise.then(cleanup, cleanup);
 
     return promise;
-  }
-
-  /**
-   * Reads `document` with `variables` from the cache without hitting the
-   * network.
-   *
-   * @param document - The document to read.
-   * @param variables - The document's variables.
-   * @param watched - Optional. Records which cache entries this read
-   * touched, for later use with `subscribe`.
-   * @returns The cached data, or `undefined` on a cache miss (any required
-   * field not yet cached).
-   */
-  public readFromCache<Data, Variables extends AnyVariables = AnyVariables>(
-    document: TypedDocumentNode<Data, Variables>,
-    variables: NoInfer<Variables>,
-    watched?: Map<object, Set<symbol>>,
-  ): JsonValue | undefined {
-    const transformedDocument = transformDocument(document);
-    return this.cache.readOperation(transformedDocument, variables, watched);
-  }
-
-  /**
-   * Looks up a cached connection (as tracked for pagination) by its
-   * internal ref. Used internally by `useForwardPagination` and
-   * `useBackwardPagination`; most apps won't call this directly.
-   *
-   * @param id - The connection's internal ref.
-   * @returns The connection's tracked info, or `undefined` if `id` isn't
-   * cached.
-   */
-  public getCachedConnection(id: number): ConnectionInfo | undefined {
-    return this.cache.getCachedConnection(id);
   }
 }

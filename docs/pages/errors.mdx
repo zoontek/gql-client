@@ -6,7 +6,7 @@
 
 | `reason`    | Meaning                                                         |
 | ----------- | --------------------------------------------------------------- |
-| `graphql`   | The response came back with a top-level `errors` array.         |
+| `graphQL`   | The response came back with a top-level `errors` array.         |
 | `malformed` | The response body wasn't valid GraphQL JSON.                    |
 | `network`   | The request couldn't reach the server.                          |
 | `options`   | The client's `requestOptions` function threw or rejected.       |
@@ -21,7 +21,7 @@ import { ClientError } from "@zoontek/gql-client";
 try {
   await client.mutate(mutation, variables);
 } catch (error) {
-  if (error instanceof ClientError && error.reason === "graphql") {
+  if (error instanceof ClientError && error.reason === "graphQL") {
     console.log(error.graphQLErrors);
   }
 }
@@ -38,7 +38,7 @@ class ClientError extends Error {
 }
 
 type ClientErrorReason =
-  "graphql" | "malformed" | "network" | "options" | "status" | "timeout";
+  "graphQL" | "malformed" | "network" | "options" | "status" | "timeout";
 ```
 
 ### Properties
@@ -48,6 +48,6 @@ type ClientErrorReason =
 | `reason`        | `ClientErrorReason`     | Why the request failed, as listed above.                                |
 | `url`           | `string`                | The request URL.                                                        |
 | `response`      | `Response \| undefined` | The raw `fetch` response, when one was received.                        |
-| `graphQLErrors` | `GraphQLError[]`        | The parsed `errors` array. Only populated when `reason` is `"graphql"`. |
+| `graphQLErrors` | `GraphQLError[]`        | The parsed `errors` array. Only populated when `reason` is `"graphQL"`. |
 
 `graphQLErrors` holds instances of `GraphQLError` from [`@0no-co/graphql.web`](https://github.com/0no-co/graphql-web), a dependency of this package. Import the type from there if you need to annotate it yourself.

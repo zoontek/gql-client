@@ -4,7 +4,7 @@ import type { JsonArray } from "../types";
 
 /**
  * Why a `ClientError` was thrown:
- * - `"graphql"`: the response had a top-level `errors` array.
+ * - `"graphQL"`: the response had a top-level `errors` array.
  * - `"malformed"`: the response body wasn't valid GraphQL JSON.
  * - `"network"`: the request failed before a response was received.
  * - `"options"`: the client's `requestOptions` function threw or rejected.
@@ -12,7 +12,7 @@ import type { JsonArray } from "../types";
  * - `"timeout"`: the request exceeded the client's configured `timeout`.
  */
 export type ClientErrorReason =
-  | "graphql"
+  | "graphQL"
   | "malformed"
   | "network"
   | "options"
@@ -59,7 +59,7 @@ const parseGraphQLError = (error: unknown): GraphQLError => {
  * The error thrown by `Client#mutate`, `Client#query`, `useQuery`, and
  * `useMutation` for any failed request. Check `reason` to distinguish network
  * failures, timeouts, HTTP errors, and GraphQL errors; `graphQLErrors` holds
- * the parsed `errors` array for a `"graphql"` reason.
+ * the parsed `errors` array for a `"graphQL"` reason.
  */
 export class ClientError extends Error {
   reason: ClientErrorReason;
@@ -127,7 +127,7 @@ export class ClientError extends Error {
     });
   }
 
-  static graphql(
+  static graphQL(
     url: string,
     response: Response,
     errors: JsonArray,
@@ -136,7 +136,7 @@ export class ClientError extends Error {
 
     return new ClientError(
       graphQLErrors[0]?.message ?? "Received a GraphQL error",
-      { reason: "graphql", url, response, graphQLErrors },
+      { reason: "graphQL", url, response, graphQLErrors },
     );
   }
 }

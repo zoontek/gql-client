@@ -17,10 +17,7 @@ export type DeferredQueryState<Data> =
   | { fetching: false; status: "error"; error: ClientError };
 
 /** Return type of `useDeferredQuery`: a `[state, query]` tuple. */
-export type DeferredQuery<
-  Data,
-  Variables extends AnyVariables = AnyVariables,
-> = readonly [
+export type DeferredQuery<Data, Variables extends AnyVariables> = readonly [
   DeferredQueryState<Data>,
   (variables: NoInfer<Variables>) => Promise<Data>,
 ];
@@ -35,10 +32,7 @@ export type DeferredQuery<
  * @param document - The query document to run.
  * @returns A `[state, query]` tuple; see `DeferredQuery`.
  */
-export const useDeferredQuery = <
-  Data,
-  Variables extends AnyVariables = AnyVariables,
->(
+export const useDeferredQuery = <Data, Variables extends AnyVariables>(
   document: TypedDocumentNode<Data, Variables>,
 ): DeferredQuery<Data, Variables> => {
   const client = useClient();

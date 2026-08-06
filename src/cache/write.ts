@@ -10,7 +10,7 @@ import {
   getFieldName,
   getFieldNameWithArguments,
   getOperationDefinition,
-} from "../graphql/ast";
+} from "../gql/ast";
 import type { AnyVariables, JsonValue } from "../types";
 import { isRecord } from "../utils";
 import {

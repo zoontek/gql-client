@@ -5,7 +5,7 @@ import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
 import { ClientCache } from "../../src/cache/cache";
 import { entriesOverlap } from "../../src/cache/watch";
-import { transformDocument } from "../../src/graphql/transform";
+import { transformDocument } from "../../src/gql/transform";
 import type { AnyVariables, JsonValue } from "../../src/types";
 
 const doc = (source: string): TypedDocumentNode =>

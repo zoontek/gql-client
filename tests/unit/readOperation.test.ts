@@ -4,7 +4,7 @@ import { parse } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
 import { ClientCache, type SchemaConfig } from "../../src/cache/cache";
-import { transformDocument } from "../../src/graphql/transform";
+import { transformDocument } from "../../src/gql/transform";
 import type { AnyVariables, JsonValue } from "../../src/types";
 
 // Build a transformed document directly from a query string, decoupled from

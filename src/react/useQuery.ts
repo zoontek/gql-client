@@ -21,10 +21,7 @@ export type QueryState<Data> = {
 };
 
 /** Return type of `useQuery`: a `[state, actions]` tuple. */
-export type Query<
-  Data,
-  Variables extends AnyVariables = AnyVariables,
-> = readonly [
+export type Query<Data, Variables extends AnyVariables> = readonly [
   QueryState<Data>,
   {
     /** Patches the query's variables without waiting for new props. */
@@ -45,7 +42,7 @@ export type Query<
  * @param variables - The query's variables.
  * @returns A `[state, actions]` tuple; see `Query`.
  */
-export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
+export const useQuery = <Data, Variables extends AnyVariables>(
   query: TypedDocumentNode<Data, Variables>,
   variables: NoInfer<Variables>,
 ): Query<Data, Variables> => {
@@ -88,7 +85,7 @@ export const useQuery = <Data, Variables extends AnyVariables = AnyVariables>(
 
   const readSnapshot = useCallback(
     (watched: Map<object, Set<symbol>>) =>
-      client.readFromCache(stableQuery, effective, watched),
+      client.cache.readOperation(stableQuery, effective, watched),
     [client, stableQuery, effective],
   );
 

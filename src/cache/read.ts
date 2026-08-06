@@ -13,7 +13,8 @@ import {
   getSelectedKeys,
   getTypename,
   isExcluded,
-} from "../graphql/ast";
+} from "../gql/ast";
+import { transformDocument } from "../gql/transform";
 import type { AnyVariables, JsonValue } from "../types";
 import {
   containsAll,
@@ -43,11 +44,11 @@ export type ReadDeps = {
   isTypeCompatible: (typename: string, typeCondition: string) => boolean;
 };
 
-export const createReadOperation = (
+export const createReadOperation = <Data, Variables extends AnyVariables>(
   deps: ReadDeps,
 ): ((
-  document: TypedDocumentNode,
-  variables: AnyVariables,
+  document: TypedDocumentNode<Data, Variables>,
+  variables: Variables,
   watched?: Map<object, Set<symbol>>,
 ) => JsonValue | undefined) => {
   const getFromCache = (
@@ -81,11 +82,13 @@ export const createReadOperation = (
     return valueOrKey;
   };
 
-  return (
-    document: TypedDocumentNode,
-    variables: AnyVariables,
+  return <Data, Variables extends AnyVariables>(
+    document: TypedDocumentNode<Data, Variables>,
+    variables: Variables,
     watched?: Map<object, Set<symbol>>,
   ): JsonValue | undefined => {
+    const transformedDocument = transformDocument(document);
+
     // Builds a clean, string-keyed result directly. `source` is read-only:
     // either a cache entry (field values under argument-qualified symbol
     // keys) or a previously-resolved plain object (string keys, when a field
@@ -290,7 +293,7 @@ export const createReadOperation = (
       return result;
     };
 
-    const operation = getOperationDefinition(document);
+    const operation = getOperationDefinition(transformedDocument);
 
     if (operation === undefined) {
       return undefined;
@@ -325,7 +328,7 @@ export const createReadOperation = (
     // the new value deeply equals it, hand back the old reference instead so
     // consumers relying on referential equality (e.g. React) don't re-render.
     const serializedVariables = serializeVariables(variables);
-    const documentCache = STABILITY_CACHE.get(document);
+    const documentCache = STABILITY_CACHE.get(transformedDocument);
     const previous = documentCache?.get(serializedVariables);
 
     if (previous !== undefined && deepEqual(value, previous)) {
@@ -334,7 +337,7 @@ export const createReadOperation = (
 
     const nextDocumentCache = documentCache ?? new Map<string, JsonValue>();
     nextDocumentCache.set(serializedVariables, value);
-    STABILITY_CACHE.set(document, nextDocumentCache);
+    STABILITY_CACHE.set(transformedDocument, nextDocumentCache);
     return value;
   };
 };

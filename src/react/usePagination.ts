@@ -34,7 +34,7 @@ const createPaginationHook = (direction: "after" | "before") => {
       const ref = connection[CONNECTION_REF];
 
       if (typeof ref === "number") {
-        const info = client.getCachedConnection(ref);
+        const info = client.cache.getCachedConnection(ref);
 
         // A connection queried without its pagination cursor is a first page.
         // Reset the accumulated references so pages from a previous connection
@@ -51,11 +51,11 @@ const createPaginationHook = (direction: "after" | "before") => {
     const readSnapshot = useCallback(
       (watched: Map<object, Set<symbol>>) => {
         const infos = filterMap(connectionRefs.current, (id) =>
-          client.getCachedConnection(id),
+          client.cache.getCachedConnection(id),
         );
 
         const queries = filterMap(infos, (info) => {
-          const query = client.readFromCache(
+          const query = client.cache.readOperation(
             info.document,
             info.variables,
             watched,

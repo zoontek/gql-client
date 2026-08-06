@@ -18,10 +18,10 @@ export type MutationState<Data> =
   | { fetching: false; status: "error"; error: ClientError };
 
 /** Return type of `useMutation`: a `[state, mutate]` tuple. */
-export type Mutation<
-  Data,
-  Variables extends AnyVariables = AnyVariables,
-> = readonly [MutationState<Data>, (variables: Variables) => Promise<Data>];
+export type Mutation<Data, Variables extends AnyVariables> = readonly [
+  MutationState<Data>,
+  (variables: Variables) => Promise<Data>,
+];
 
 /**
  * Returns a `mutate` function for `mutation` and its current `MutationState`.
@@ -33,10 +33,7 @@ export type Mutation<
  * @param config - Optional. See `MutationConfig` for the available options.
  * @returns A `[state, mutate]` tuple; see `Mutation`.
  */
-export const useMutation = <
-  Data,
-  Variables extends AnyVariables = AnyVariables,
->(
+export const useMutation = <Data, Variables extends AnyVariables>(
   mutation: TypedDocumentNode<Data, Variables>,
   config: MutationConfig<Data, Variables> = {},
 ): Mutation<Data, Variables> => {
