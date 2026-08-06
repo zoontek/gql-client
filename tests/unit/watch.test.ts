@@ -9,7 +9,7 @@ import { transformDocument } from "../../src/graphql/transform";
 import type { AnyVariables, JsonValue } from "../../src/types";
 
 const doc = (source: string): TypedDocumentNode =>
-  transformDocument(parse(source) as unknown as TypedDocumentNode);
+  transformDocument(parse(source));
 
 const write = (
   cache: ClientCache,

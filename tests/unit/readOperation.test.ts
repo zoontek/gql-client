@@ -10,7 +10,7 @@ import type { AnyVariables, JsonValue } from "../../src/types";
 // Build a transformed document directly from a query string, decoupled from
 // the gql.tada schema so we can freely exercise read-path branches.
 const doc = (source: string): TypedDocumentNode =>
-  transformDocument(parse(source) as unknown as TypedDocumentNode);
+  transformDocument(parse(source));
 
 const setup = (
   source: string,
