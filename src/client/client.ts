@@ -40,6 +40,13 @@ export type ClientConfig = {
     | (() => RequestOptions | Promise<RequestOptions>);
 };
 
+// One stored request per (document, serialized variables): joined while in
+// flight, reusable after success (see `Client#query`), dropped on rejection.
+type StoredRequest = {
+  promise: Promise<unknown>;
+  settled: boolean;
+};
+
 type ConnectionUpdate<Node> = [
   Connection<Node>,
   { prepend: Edge<Node>[] } | { append: Edge<Node>[] } | { remove: string[] },
@@ -105,24 +112,48 @@ export class Client {
   public cache: ClientCache;
 
   private url: string;
-  private inflightRequests: WeakMap<object, Map<string, Promise<unknown>>>;
+  private requests: WeakMap<object, Map<string, StoredRequest>>;
   private subscribers: Map<() => void, WatchedEntriesBox>;
+  private version = 0;
 
   private requestOptions:
     | RequestOptions
     | (() => RequestOptions | Promise<RequestOptions>);
 
   /**
-   * Creates a client.
-   *
    * @param config - See `ClientConfig` for the available options.
    */
   public constructor(config: ClientConfig) {
     this.cache = new ClientCache(config.schemaConfig);
     this.url = config.url;
-    this.inflightRequests = new WeakMap();
+    this.requests = new WeakMap();
     this.subscribers = new Map();
     this.requestOptions = config.requestOptions ?? {};
+  }
+
+  /**
+   * Monotonic counter bumped on every cache-affecting event (response write,
+   * connection update, purge). Lets subscribers skip re-reading the cache
+   * when nothing changed since their last read.
+   *
+   * @internal
+   */
+  public getVersion(): number {
+    return this.version;
+  }
+
+  /**
+   * Drops every cache entry, registered connection, and stored query
+   * response, then notifies all subscribers so mounted queries fetch fresh
+   * data. Call it when all cached data must go, e.g. on logout.
+   */
+  public purge(): void {
+    this.cache.purge();
+    this.requests = new WeakMap();
+    this.version++;
+    this.subscribers.forEach((_watched, fn) => {
+      fn();
+    });
   }
 
   /**
@@ -155,6 +186,7 @@ export class Client {
   // query. A subscriber with no successful read yet stays unscoped (see
   // `subscribe`), so its own eventual write still reaches it.
   private notify(touched: Map<object, Set<symbol>>): void {
+    this.version++;
     this.subscribers.forEach((watched, fn) => {
       if (entriesOverlap(watched.current, touched)) {
         fn();
@@ -259,7 +291,7 @@ export class Client {
           touched,
         );
 
-        if (connectionUpdates !== undefined) {
+        if (connectionUpdates != null) {
           connectionUpdates.forEach((getUpdate) => {
             const result = getUpdate({
               data,
@@ -269,7 +301,7 @@ export class Client {
               remove,
             });
 
-            if (result !== undefined) {
+            if (result != null) {
               const [connection, update] = result;
               this.cache.updateConnection(connection, update, touched);
             }
@@ -314,52 +346,69 @@ export class Client {
   }
 
   /**
-   * Suspense-friendly request: deduplicates concurrent requests for the same
-   * document and variables so a component can safely call this on every
-   * render and `use()` the returned promise. The same promise instance is
-   * handed out until it settles, which is what lets `use()` suspend on it.
-   * Used internally by `useQuery`; most apps won't call this directly.
+   * Suspense-friendly request: returns one stable promise per `document` and
+   * `variables` so a component can safely call this on every render and
+   * `use()` the returned promise. The promise stays stored after it resolves:
+   * a cache read that still misses after its response was written re-renders
+   * with the settled promise instead of firing a new request, so a persistent
+   * miss can never loop network requests. Pass `refresh: true` to replace a
+   * settled promise with a fresh request (an in-flight one is always joined).
+   * A rejected promise is dropped, so the next call retries. Used internally
+   * by `useQuery` and `useDeferredQuery`; most apps won't call this directly.
    *
    * @param document - The document to send.
    * @param variables - The document's variables.
-   * @returns The response data. The same promise is returned for concurrent
-   * calls with the same `document` and `variables`.
+   * @param options.refresh - Send a new request even if a settled one is
+   * stored. Defaults to `false`.
+   * @returns The response data. The same promise is returned for calls with
+   * the same `document` and `variables` until it rejects or is refreshed.
    */
   public query<Data, Variables extends AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
+    { refresh = false }: { refresh?: boolean } = {},
   ): Promise<Data> {
     const key = serializeVariables(variables);
 
-    let documentRequests = this.inflightRequests.get(document);
+    let documentRequests = this.requests.get(document);
     const existing = documentRequests?.get(key);
 
-    if (existing !== undefined) {
-      // The in-flight map is shared across every document, so a cached promise
-      // is stored as `Promise<unknown>`; it was created by `request<Data>` below
+    if (existing != null && (!existing.settled || !refresh)) {
+      // The request map is shared across every document, so a stored promise
+      // is typed `Promise<unknown>`; it was created by `request<Data>` below
       // for this exact document, so it does resolve to `Data`.
-      return existing as Promise<Data>;
+      return existing.promise as Promise<Data>;
     }
 
-    if (documentRequests === undefined) {
+    if (documentRequests == null) {
       documentRequests = new Map();
-      this.inflightRequests.set(document, documentRequests);
+      this.requests.set(document, documentRequests);
     }
 
+    const requests = documentRequests;
     const promise = this.request(document, variables);
-    documentRequests.set(key, promise);
+    const stored: StoredRequest = { promise, settled: false };
 
-    // Clear the in-flight entry once settled so a later cache miss for the same
-    // variables (e.g. after an invalidation) triggers a fresh request. Passing
-    // the handler as both fulfilled and rejected reactions also marks the
-    // promise as handled, so dropping it without `use()`-ing it never surfaces
-    // an unhandled rejection. (`.finally()` can't be used here: it re-rejects
-    // through a new promise that nobody handles.)
-    const cleanup = (): void => {
-      documentRequests.delete(key);
-    };
+    requests.set(key, stored);
 
-    promise.then(cleanup, cleanup);
+    // Attaching both reactions also marks the promise as handled, so dropping
+    // it without `use()`-ing it never surfaces an unhandled rejection.
+    // (`.finally()` can't be used here: it re-rejects through a new promise
+    // that nobody handles.)
+    promise.then(
+      () => {
+        stored.settled = true;
+      },
+      () => {
+        stored.settled = true;
+
+        // Drop failed requests so a retry (an ErrorBoundary reset, a
+        // `refetch()`) fires a fresh one instead of replaying the rejection.
+        if (requests.get(key) === stored) {
+          requests.delete(key);
+        }
+      },
+    );
 
     return promise;
   }

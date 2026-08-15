@@ -333,12 +333,10 @@ Set {
 Set {
         Symbol(__typename),
         Symbol(accountMembership),
-        Symbol(message),
       }
 ,
       [Symbol(__typename)]: "BindAccountMembershipSuccessPayload",
       [Symbol(accountMembership)]: Symbol(AccountMembership<account-membership-2>),
-      [Symbol(message)]: undefined,
     },
   },
 }
@@ -358,7 +356,7 @@ Set {
     [Symbol(__typename)]: "Query",
     [Symbol(accountMembership({"id":"1"}))]: Symbol(AccountMembership<account-membership-1>),
     [Symbol(accountMemberships({"first":"2"}))]: {
-      "__connectionRef": 1,
+      "__connectionRef": 0,
       [Symbol(__requestedKeys)]:       
 Set {
         Symbol(__typename),
@@ -538,12 +536,10 @@ Set {
 Set {
         Symbol(__typename),
         Symbol(accountMembership),
-        Symbol(message),
       }
 ,
       [Symbol(__typename)]: "BindAccountMembershipSuccessPayload",
       [Symbol(accountMembership)]: Symbol(AccountMembership<account-membership-2>),
-      [Symbol(message)]: undefined,
     },
   },
 }
@@ -592,31 +588,11 @@ Set {
         Symbol(taxIdentificationNumber),
         Symbol(employmentStatus),
         Symbol(monthlyIncome),
-        Symbol(legalRepresentativePersonalAddress),
-        Symbol(businessActivity),
-        Symbol(businessActivityDescription),
-        Symbol(companyType),
-        Symbol(isRegistered),
-        Symbol(monthlyPaymentVolume),
-        Symbol(name),
-        Symbol(typeOfRepresentation),
-        Symbol(registrationNumber),
-        Symbol(vatNumber),
-        Symbol(individualUltimateBeneficialOwners),
       }
 ,
       [Symbol(__typename)]: "OnboardingIndividualAccountHolderInfo",
-      [Symbol(businessActivity)]: undefined,
-      [Symbol(businessActivityDescription)]: undefined,
-      [Symbol(companyType)]: undefined,
       [Symbol(employmentStatus)]: null,
-      [Symbol(individualUltimateBeneficialOwners)]: undefined,
-      [Symbol(isRegistered)]: undefined,
-      [Symbol(legalRepresentativePersonalAddress)]: undefined,
       [Symbol(monthlyIncome)]: null,
-      [Symbol(monthlyPaymentVolume)]: undefined,
-      [Symbol(name)]: undefined,
-      [Symbol(registrationNumber)]: undefined,
       [Symbol(residencyAddress)]: {
         [Symbol(__requestedKeys)]:         
 Set {
@@ -638,8 +614,6 @@ Set {
         [Symbol(state)]: null,
       },
       [Symbol(taxIdentificationNumber)]: null,
-      [Symbol(typeOfRepresentation)]: undefined,
-      [Symbol(vatNumber)]: undefined,
     },
     [Symbol(language)]: null,
     [Symbol(legalRepresentativeRecommendedIdentificationLevel)]: "PVID",

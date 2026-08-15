@@ -2,13 +2,14 @@ import {
   Kind,
   type DirectiveNode,
   type FieldNode,
+  type InlineFragmentNode,
   type OperationDefinitionNode,
-  type SelectionSetNode,
   type ValueNode,
 } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
 import type { AnyVariables } from "../types";
+import { stableStringify } from "../utils";
 
 // Field name as it appears in the response payload (alias if present).
 export const getFieldName = (fieldNode: FieldNode): string =>
@@ -55,13 +56,13 @@ const memoizeByNodeAndVariables = <K extends object, V>(
   compute: (node: K, variables: AnyVariables) => V,
 ): V => {
   let byVariables = cache.get(node);
-  if (byVariables === undefined) {
+  if (byVariables == null) {
     byVariables = new WeakMap<AnyVariables, V>();
     cache.set(node, byVariables);
   }
 
   let value = byVariables.get(variables);
-  if (value === undefined) {
+  if (value == null) {
     value = compute(node, variables);
     byVariables.set(variables, value);
   }
@@ -132,9 +133,12 @@ const computeFieldSymbol = (
 ): symbol => {
   const fieldName = getFieldName(fieldNode);
   const args = extractArguments(fieldNode, variables);
+  // `stableStringify` sorts keys at every depth, so the same logical
+  // arguments produce the same symbol regardless of the order they were
+  // written in the document or in a variables object.
   return Object.keys(args).length === 0
     ? Symbol.for(fieldName)
-    : Symbol.for(`${fieldName}(${JSON.stringify(args)})`);
+    : Symbol.for(`${fieldName}(${stableStringify(args)})`);
 };
 
 export const getFieldNameWithArguments = (
@@ -145,7 +149,7 @@ export const getFieldNameWithArguments = (
 
   if (fieldArguments == null || fieldArguments.length === 0) {
     let symbol = fieldSymbolCache.get(fieldNode);
-    if (symbol === undefined) {
+    if (symbol == null) {
       symbol = Symbol.for(getFieldName(fieldNode));
       fieldSymbolCache.set(fieldNode, symbol);
     }
@@ -159,62 +163,6 @@ export const getFieldNameWithArguments = (
     computeFieldSymbol,
   );
 };
-
-/**
- * Returns the set of field symbols (see `getFieldNameWithArguments`) selected
- * within the direct selection set of a `FieldNode` or `OperationDefinitionNode`.
- *
- * { user { id, firstName, lastName } }
- * => Set{Symbol(`id`), Symbol(`firstName`), Symbol(`lastName`)}
- *
- * @param fieldNode - The node whose direct selection set to read.
- * @param variables - The operation's variables, used to resolve any
- * variable arguments.
- * @returns The selected field symbols.
- */
-// Same memoization rationale as `getFieldNameWithArguments`: this runs per
-// field (and per array element) on every read, rebuilding a Set each time. The
-// returned Set is treated as read-only by callers, so it is safe to share.
-const selectedKeysCache = new WeakMap<
-  FieldNode | OperationDefinitionNode,
-  WeakMap<AnyVariables, Set<symbol>>
->();
-
-const computeSelectedKeys = (
-  fieldNode: FieldNode | OperationDefinitionNode,
-  variables: AnyVariables,
-): Set<symbol> => {
-  const selectedKeys = new Set<symbol>();
-
-  const traverse = (selections: SelectionSetNode): void => {
-    // Only FieldNode and InlineFragmentNode matter here: fragment spreads are
-    // already inlined by transformDocument by the time this runs.
-    selections.selections.forEach((selection) => {
-      if (selection.kind === Kind.FIELD) {
-        selectedKeys.add(getFieldNameWithArguments(selection, variables));
-      } else if (selection.kind === Kind.INLINE_FRAGMENT) {
-        traverse(selection.selectionSet);
-      }
-    });
-  };
-
-  if (fieldNode.selectionSet != null) {
-    traverse(fieldNode.selectionSet);
-  }
-
-  return selectedKeys;
-};
-
-export const getSelectedKeys = (
-  fieldNode: FieldNode | OperationDefinitionNode,
-  variables: AnyVariables,
-): Set<symbol> =>
-  memoizeByNodeAndVariables(
-    selectedKeysCache,
-    fieldNode,
-    variables,
-    computeSelectedKeys,
-  );
 
 export const getOperationDefinition = (
   document: TypedDocumentNode,
@@ -231,14 +179,14 @@ export const getOperationName = (
 ): string | undefined => getOperationDefinition(document)?.name?.value;
 
 export const isExcluded = (
-  fieldNode: FieldNode,
+  node: FieldNode | InlineFragmentNode,
   variables: AnyVariables,
 ): boolean => {
-  if (!Array.isArray(fieldNode.directives)) {
+  if (!Array.isArray(node.directives)) {
     return false;
   }
 
-  return fieldNode.directives.some((directive: DirectiveNode) => {
+  return node.directives.some((directive: DirectiveNode) => {
     const name = directive.name.value;
 
     // A field is excluded from the response by `@include(if: false)` or

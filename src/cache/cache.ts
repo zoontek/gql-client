@@ -9,6 +9,7 @@ import {
   NODE_KEY,
   TYPENAME_KEY,
   getCacheEntryKey,
+  getIdFromCacheKey,
 } from "./keys";
 import { createReadOperation } from "./read";
 import {
@@ -62,9 +63,19 @@ export class ClientCache {
 
     this.writeOperation = createWriteOperation({
       getOrCreateEntry: (cacheKey) => this.getOrCreateEntry(cacheKey),
+      isTypeCompatible: (typename, typeCondition) =>
+        this.isTypeCompatible(typename, typeCondition),
       linkCacheEntry: (json, existing) => this.linkCacheEntry(json, existing),
       registerConnectionInfo: (info) => this.registerConnectionInfo(info),
     });
+  }
+
+  // Drops every entry and registered connection. Exposed through
+  // `Client#purge`; see the rationale there.
+  public purge(): void {
+    this.cache = new Map();
+    this.connectionCache = new Map();
+    this.connectionRefCount = -1;
   }
 
   public dump(): Map<symbol, CacheEntry> {
@@ -86,7 +97,7 @@ export class ClientCache {
       return true;
     }
     const compatibleTypes = this.interfaceToType[typeCondition];
-    if (compatibleTypes == undefined) {
+    if (compatibleTypes == null) {
       return false;
     }
     return compatibleTypes.has(typename);
@@ -96,7 +107,7 @@ export class ClientCache {
   // (via `readOperation`'s injected `get`) and `mapEdgesToCacheEntries`.
   private get(cacheKey: symbol): CacheEntry | typeof MISS {
     const entry = this.cache.get(cacheKey);
-    return entry === undefined ? MISS : entry;
+    return entry == null ? MISS : entry;
   }
 
   private getOrCreateEntry(cacheKey: symbol): CacheEntry {
@@ -122,7 +133,7 @@ export class ClientCache {
   ): { entry: CacheEntry; stored: symbol | CacheEntry } {
     const cacheKey = getCacheEntryKey(json);
     const entry =
-      cacheKey !== undefined
+      cacheKey != null
         ? this.getOrCreateEntry(cacheKey)
         : isCacheEntry(existing)
           ? existing
@@ -135,7 +146,7 @@ export class ClientCache {
       const key = getCacheEntryKey(node);
       // No need to check requested fields here: `Connection<A>` already
       // constrains which fields exist on a node.
-      if (key === undefined || this.get(key) === MISS) {
+      if (key == null || this.get(key) === MISS) {
         return undefined;
       }
       // Preserve `cursor` alongside the node reference. Without it, a query that
@@ -173,14 +184,15 @@ export class ClientCache {
 
       // `edges` may not be cached at all (e.g. the connection was queried with
       // only `pageInfo`, or its edges haven't resolved yet), so default to an
-      // empty list rather than spreading/filtering `undefined`.
+      // empty list rather than spreading/filtering `undefined`. Items that
+      // aren't cached edges (a `null` edge, a node cached without an id) are
+      // kept in place; only `remove` needs to identify individual edges.
       const cachedEdges = connectionConfig.cacheEntry[EDGES_KEY];
-      const currentEdges =
-        Array.isArray(cachedEdges) && cachedEdges.every(isCachedEdge)
-          ? cachedEdges
-          : [];
+      const currentEdges: unknown[] = Array.isArray(cachedEdges)
+        ? cachedEdges
+        : [];
 
-      if (touched !== undefined) {
+      if (touched != null) {
         trackField(touched, connectionConfig.cacheEntry, EDGES_KEY);
       }
 
@@ -202,20 +214,12 @@ export class ClientCache {
 
       const nodeIds = new Set(config.remove);
       connectionConfig.cacheEntry[EDGES_KEY] = currentEdges.filter((edge) => {
-        const description = edge[NODE_KEY].description;
-
-        if (description === undefined) {
+        if (!isCachedEdge(edge)) {
           return true;
         }
 
-        // Cache keys are `${typename}<${id}>`. A GraphQL type name never
-        // contains `<`, so the first `<` and the trailing `>` bound the id
-        // exactly, even when the id itself contains angle brackets. Anchoring
-        // on those (rather than a greedy regex) also avoids `"1"` matching the
-        // `"11"` segment of another key.
-        const start = description.indexOf("<");
-        const id = start === -1 ? undefined : description.slice(start + 1, -1);
-        return id === undefined || !nodeIds.has(id);
+        const id = getIdFromCacheKey(edge[NODE_KEY]);
+        return id == null || !nodeIds.has(id);
       });
     }
   }

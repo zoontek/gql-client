@@ -10,9 +10,10 @@ import {
   getFieldName,
   getFieldNameWithArguments,
   getOperationDefinition,
+  isExcluded,
 } from "../graphql/ast";
 import type { AnyVariables, JsonValue } from "../types";
-import { isRecord } from "../utils";
+import { hasOwn, isRecord } from "../utils";
 import {
   CONNECTION_REF,
   getCacheKeyFromOperationNode,
@@ -27,6 +28,7 @@ import { trackField } from "./watch";
 
 export type WriteDeps = {
   getOrCreateEntry: (cacheKey: symbol) => CacheEntry;
+  isTypeCompatible: (typename: string, typeCondition: string) => boolean;
   linkCacheEntry: (
     json: unknown,
     existing: unknown,
@@ -73,13 +75,22 @@ export const createWriteOperation = (
       path: PropertyKey[],
     ): void => {
       const originalFieldName = getFieldName(field);
+
+      // Absent from the response (`@include`/`@skip` exclusion, or a field
+      // the server did not return): record nothing. Adding it to
+      // REQUESTED_KEYS or storing `undefined` would make later reads treat
+      // the missing value as cached and silently drop the field.
+      if (!hasOwn(parentJson, originalFieldName)) {
+        return;
+      }
+
       const fieldNameWithArguments = getFieldNameWithArguments(
         field,
         variables,
       );
       const fieldValue = parentJson[originalFieldName];
 
-      if (parentCache[REQUESTED_KEYS] != undefined) {
+      if (parentCache[REQUESTED_KEYS] != null) {
         parentCache[REQUESTED_KEYS].add(fieldNameWithArguments);
       } else {
         console.error(
@@ -87,17 +98,15 @@ export const createWriteOperation = (
         );
       }
 
-      if (touched !== undefined) {
+      if (touched != null) {
         trackField(touched, parentCache, fieldNameWithArguments);
       }
 
-      // Scalar with no selection, or a null/undefined value: store as is.
       const subSelectionSet = field.selectionSet;
-      if (subSelectionSet === undefined || fieldValue == null) {
+      if (subSelectionSet == null || fieldValue == null) {
         parentCache[fieldNameWithArguments] = fieldValue;
         return;
       }
-      // Array with a selection set: cache each item.
       if (Array.isArray(fieldValue)) {
         const existingArray = parentCache[fieldNameWithArguments];
         const arrayCache: (symbol | CacheEntry | null)[] =
@@ -106,7 +115,7 @@ export const createWriteOperation = (
             ? existingArray
             : Array(fieldValue.length);
         arrayCache.length = fieldValue.length;
-        if (parentCache[fieldNameWithArguments] == undefined) {
+        if (parentCache[fieldNameWithArguments] == null) {
           parentCache[fieldNameWithArguments] = arrayCache;
         }
         fieldValue.forEach((item, index) => {
@@ -129,7 +138,6 @@ export const createWriteOperation = (
         });
         return;
       }
-      // Object with a selection set: cache it.
       if (!isRecord(fieldValue)) {
         return;
       }
@@ -166,9 +174,28 @@ export const createWriteOperation = (
     ): void => {
       for (const selection of selectionSet.selections) {
         switch (selection.kind) {
-          case Kind.INLINE_FRAGMENT:
+          case Kind.INLINE_FRAGMENT: {
+            const typeCondition = selection.typeCondition?.name.value;
+            const typename = json.__typename;
+
+            // Skip fragments whose fields the server did not include: a type
+            // condition incompatible with the response object, or an
+            // `@include`/`@skip` exclusion. Recording their fields would
+            // poison the entry's REQUESTED_KEYS.
+            if (
+              typeCondition != null &&
+              typeof typename === "string" &&
+              !deps.isTypeCompatible(typename, typeCondition)
+            ) {
+              continue;
+            }
+            if (isExcluded(selection, variables)) {
+              continue;
+            }
+
             cacheSelectionSet(selection.selectionSet, json, cached, path);
             continue;
+          }
           case Kind.FIELD:
             cacheField(selection, json, cached, path);
             continue;
@@ -180,7 +207,7 @@ export const createWriteOperation = (
 
     const operation = getOperationDefinition(document);
 
-    if (operation === undefined || !isRecord(response)) {
+    if (operation == null || !isRecord(response)) {
       return;
     }
 

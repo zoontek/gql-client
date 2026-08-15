@@ -29,7 +29,7 @@ export const trackField = (
 
   let fields = watched.get(entry);
 
-  if (fields === undefined) {
+  if (fields == null) {
     fields = new Set();
     watched.set(entry, fields);
   }
@@ -41,7 +41,7 @@ export const entriesOverlap = (
   a: WatchedEntries,
   b: WatchedEntries,
 ): boolean => {
-  if (a === undefined || b === undefined) {
+  if (a == null || b == null) {
     return true;
   }
 
@@ -50,7 +50,7 @@ export const entriesOverlap = (
   for (const [entry, fields] of smaller) {
     const otherFields = larger.get(entry);
 
-    if (otherFields === undefined) {
+    if (otherFields == null) {
       continue;
     }
 

@@ -29,6 +29,23 @@ export const getCacheKeyFromOperationNode = (
   }
 };
 
+// Counterpart of the `${typename}<${id}>` format produced by
+// `getCacheEntryKey` below, kept here so the format stays private to this
+// module. A GraphQL type name never contains `<`, so the first `<` and the
+// trailing `>` bound the id exactly, even when the id itself contains angle
+// brackets. Anchoring on those (rather than a greedy regex) also avoids `"1"`
+// matching the `"11"` segment of another key.
+export const getIdFromCacheKey = (cacheKey: symbol): string | undefined => {
+  const description = cacheKey.description;
+
+  if (description == null) {
+    return undefined;
+  }
+
+  const start = description.indexOf("<");
+  return start === -1 ? undefined : description.slice(start + 1, -1);
+};
+
 export const getCacheEntryKey = (json: unknown): symbol | undefined => {
   if (typeof json === "object" && json != null) {
     if ("__typename" in json && typeof json.__typename === "string") {

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 
 import { PaginationFixture } from "./fixtures/PaginationFixture";
+import { PaginationSwitchFixture } from "./fixtures/PaginationSwitchFixture";
 
 test("useForwardPagination merges a next page into the connection's edges", async ({
   mount,
@@ -78,4 +79,56 @@ test("useForwardPagination merges a next page into the connection's edges", asyn
     JSON.stringify(["A New Hope", "Empire Strikes Back", "Return of the Jedi"]),
   );
   await expect(component.getByTestId("has-next-page")).toContainText("false");
+});
+
+test("switching to an already-cached connection shows that connection's pages", async ({
+  mount,
+  page,
+}) => {
+  await page.route("**/graphql", async (route) => {
+    const body = route.request().postDataJSON() as {
+      variables: { era: string };
+    };
+    const era = body.variables.era;
+
+    await route.fulfill({
+      json: {
+        data: {
+          __typename: "Query",
+          films: {
+            __typename: "FilmsConnection",
+            edges: [
+              {
+                __typename: "FilmsEdge",
+                cursor: `${era}-c1`,
+                node: {
+                  __typename: "Film",
+                  id: `${era}-f1`,
+                  title: `${era}-film`,
+                },
+              },
+            ],
+            pageInfo: {
+              hasPreviousPage: false,
+              hasNextPage: true,
+              startCursor: `${era}-c1`,
+              endCursor: `${era}-c1`,
+            },
+          },
+        },
+      },
+    });
+  });
+
+  const component = await mount(<PaginationSwitchFixture url="/graphql" />);
+
+  await expect(component.getByTestId("titles")).toContainText("a-film");
+
+  await component.getByTestId("era-b").click();
+  await expect(component.getByTestId("titles")).toContainText("b-film");
+
+  // Era "a" is served from the cache: no network request, no cache write. The
+  // pagination hook must still switch back to era a's pages.
+  await component.getByTestId("era-a").click();
+  await expect(component.getByTestId("titles")).toContainText("a-film");
 });

@@ -2,7 +2,7 @@ import { useCallback, useRef } from "react";
 
 import { CONNECTION_REF } from "../cache/keys";
 import type { Connection, JsonValue } from "../types";
-import { deepEqual, filterMap, isRecord } from "../utils";
+import { filterMap, isRecord } from "../utils";
 import { useClient } from "./context";
 import { useCacheSubscription } from "./useCacheSubscription";
 
@@ -60,7 +60,7 @@ const createPaginationHook = (direction: "after" | "before") => {
             info.variables,
             watched,
           );
-          return query === undefined
+          return query == null
             ? undefined
             : { query, pathInQuery: info.pathInQuery };
         });
@@ -78,19 +78,35 @@ const createPaginationHook = (direction: "after" | "before") => {
             ) as T[])
           : undefined;
 
-        if (!deepEqual(value, lastReturnedValueRef.current)) {
-          lastReturnedValueRef.current = value;
-          return value;
-        } else {
-          return lastReturnedValueRef.current;
+        const last = lastReturnedValueRef.current;
+
+        // `readOperation` returns referentially stable results, so comparing
+        // the page references is enough; a deep walk of every edge is not.
+        if (
+          value != null &&
+          last != null &&
+          value.length === last.length &&
+          value.every((item, index) => Object.is(item, last[index]))
+        ) {
+          return last;
         }
+
+        lastReturnedValueRef.current = value;
+        return value;
       },
-      [client],
+      // `connection` is not read inside, but the snapshot drills into
+      // `connectionRefs.current`, which is rebuilt from `connection` above.
+      // `useCacheSubscription` only re-runs a read whose identity (or the
+      // cache version) changed, so switching to an already-cached connection
+      // (no write, same version) must change the read's identity or it would
+      // serve the previous connection's snapshot.
+      // oxlint-disable-next-line exhaustive-deps
+      [client, connection],
     );
 
     const data = useCacheSubscription(client, readSnapshot);
 
-    if (data === undefined) {
+    if (data == null) {
       return connection;
     }
 

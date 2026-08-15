@@ -26,9 +26,9 @@ export const deepEqual = (a: any, b: any): boolean => {
 
   if (
     typeof a !== "object" ||
-    a === null ||
+    a == null ||
     typeof b !== "object" ||
-    b === null
+    b == null
   ) {
     return false;
   }
@@ -64,6 +64,21 @@ export const deepEqual = (a: any, b: any): boolean => {
   return true;
 };
 
+// Deterministic serialization: object keys are sorted at every depth, so the
+// same logical value always produces the same string regardless of key
+// order. Sorting goes through a replacer function: a replacer array would
+// whitelist top-level keys at every depth and drop all nested values.
+export const stableStringify = (value: unknown): string =>
+  JSON.stringify(value, (_key, val: unknown) =>
+    isRecord(val)
+      ? Object.fromEntries(
+          Object.keys(val)
+            .sort()
+            .map((key) => [key, val[key]]),
+        )
+      : val,
+  );
+
 // Memoized by object identity. Variables objects are never mutated in place
 // here, a change always produces a new object, so caching the serialized
 // form per reference is safe. Turns a JSON.stringify on every cache read and
@@ -74,13 +89,27 @@ const serializedVariablesCache = new WeakMap<AnyVariables, string>();
 export const serializeVariables = (variables: AnyVariables): string => {
   const cached = serializedVariablesCache.get(variables);
 
-  if (cached !== undefined) {
+  if (cached != null) {
     return cached;
   }
 
-  const serialized = JSON.stringify(variables, Object.keys(variables).sort());
+  const serialized = stableStringify(variables);
   serializedVariablesCache.set(variables, serialized);
   return serialized;
+};
+
+export const deepCopy = <T>(value: T): T => {
+  if (Array.isArray(value)) {
+    return value.map(deepCopy) as T;
+  }
+  if (isRecord(value)) {
+    const copy: Record<PropertyKey, unknown> = {};
+    for (const key of Object.keys(value)) {
+      copy[key] = deepCopy(value[key]);
+    }
+    return copy as T;
+  }
+  return value;
 };
 
 export const filterMap = <A, B>(

@@ -105,7 +105,7 @@ export class ClientError extends Error {
 
   static timeout(url: string, timeout?: number): ClientError {
     return new ClientError(
-      timeout == undefined
+      timeout == null
         ? `Request to ${url} timed out`
         : `Request to ${url} timed out (> ${timeout}ms)`,
       { reason: "timeout", url },

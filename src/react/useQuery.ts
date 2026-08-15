@@ -3,6 +3,7 @@ import { use, useCallback, useRef, useState } from "react";
 
 import type { ClientError } from "../client/errors";
 import type { AnyVariables } from "../types";
+import { serializeVariables } from "../utils";
 import { useClient } from "./context";
 import { useCacheSubscription } from "./useCacheSubscription";
 import { usePreviousData } from "./usePreviousData";
@@ -56,9 +57,13 @@ export const useQuery = <Data, Variables extends AnyVariables>(
 
   // A query rejection captured while stale data was shown (the suspending path
   // throws through `use`). It is re-thrown during render so the nearest
-  // ErrorBoundary catches it, and cleared whenever the variables change so a
-  // retry can run instead of re-throwing a stale error.
-  const [error, setError] = useState<ClientError | undefined>(undefined);
+  // ErrorBoundary catches it. The serialized variables the failed request was
+  // sent with are kept alongside, and the error is only thrown while they
+  // still match: a late rejection from an abandoned request (older props or
+  // an older `setVariables` patch) must not surface for the current ones.
+  const [error, setError] = useState<
+    { key: string; error: ClientError } | undefined
+  >(undefined);
 
   // True while an explicit `refetch()` call is in flight. The automatic fetch
   // below is already reflected in `fetching` through cache presence (there's
@@ -75,7 +80,7 @@ export const useQuery = <Data, Variables extends AnyVariables>(
     // eventual response no-op instead of touching state for the new ones.
     latestRefetchIdRef.current++;
 
-    if (error !== undefined) {
+    if (error != null) {
       setError(undefined);
     }
     if (isRefetching) {
@@ -96,32 +101,40 @@ export const useQuery = <Data, Variables extends AnyVariables>(
   // Whether the cache has nothing yet for the current variables. Drives the
   // automatic fetch/suspend below; kept separate from `isRefetching` so a
   // `refetch()` doesn't cause that block to issue a second, redundant request.
-  const needsInitialFetch = data === undefined;
+  const needsInitialFetch = data == null;
   const fetching = needsInitialFetch || isRefetching;
   const dataToExpose = data ?? previousData;
 
-  // Surface a captured query rejection to the nearest ErrorBoundary. Ignore an
-  // error captured for the previous variables (`propsChanged` already cleared
-  // it from state above) so new variables retry from scratch.
-  if (!propsChanged && error !== undefined) {
-    throw error;
+  const serializedVariables = serializeVariables(effective);
+
+  // Surface a captured query rejection to the nearest ErrorBoundary, but only
+  // when it belongs to the current variables, so newer variables retry from
+  // scratch instead of re-throwing a stale error.
+  if (error != null && error.key === serializedVariables) {
+    throw error.error;
   }
 
-  // While there's no data at all for the current variables, (re)issue the
-  // request. The client deduplicates in-flight requests, so calling this on
-  // every render fires at most one network request per set of variables.
+  // While there's no data at all for the current variables, read through the
+  // client's request store. It hands out one stable promise per (document,
+  // variables), in flight or settled, so calling this on every render fires
+  // at most one network request per set of variables, even when a response
+  // was written but the cache read still misses.
   if (needsInitialFetch) {
     const promise = client.query(stableQuery, effective);
 
-    if (dataToExpose === undefined) {
+    if (dataToExpose == null) {
       // Nothing to show yet: suspend until the first result, and let a
       // rejection throw straight through to the ErrorBoundary.
       use(promise);
     } else {
       // Keep showing the previous data with `fetching: true`. We can't `use`
       // the promise (it would suspend away the stale data), so capture a
-      // rejection into state; the re-render then throws it (above).
-      promise.catch((queryError: ClientError) => setError(queryError));
+      // rejection into state; the re-render then throws it (above). The key
+      // is captured here, so a rejection landing after the variables moved on
+      // is kept but never thrown.
+      promise.catch((queryError: ClientError) => {
+        setError({ key: serializedVariables, error: queryError });
+      });
     }
   }
 
@@ -131,9 +144,10 @@ export const useQuery = <Data, Variables extends AnyVariables>(
   // thrown on the next render, same as the automatic fetch above.
   const refetch = useCallback(() => {
     const callId = ++latestRefetchIdRef.current;
+    const key = serializeVariables(effective);
     setIsRefetching(true);
 
-    client.query(stableQuery, effective).then(
+    client.query(stableQuery, effective, { refresh: true }).then(
       () => {
         if (latestRefetchIdRef.current === callId) {
           setIsRefetching(false);
@@ -142,7 +156,7 @@ export const useQuery = <Data, Variables extends AnyVariables>(
       (queryError: ClientError) => {
         if (latestRefetchIdRef.current === callId) {
           setIsRefetching(false);
-          setError(queryError);
+          setError({ key, error: queryError });
         }
       },
     );

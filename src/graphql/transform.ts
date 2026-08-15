@@ -28,6 +28,12 @@ const createSelectionSet = (
 });
 
 const getNodeKey = (node: MergeableNode): string => {
+  // Directives are part of the key: `user @include(if: $a)` and `user` must
+  // stay separate selections, or the merged node would keep only one node's
+  // directives and apply its condition to both selections.
+  const directives: string =
+    node.directives?.map((directive) => print(directive)).join("") ?? "";
+
   if (node.kind === Kind.FIELD) {
     const alias: string = node.alias?.value ?? "";
     const name: string = node.name.value;
@@ -37,10 +43,10 @@ const getNodeKey = (node: MergeableNode): string => {
         ?.map((_) => `${_.name.value}:${print(_.value)}`)
         .join(",") ?? "";
 
-    return `FIELD:${alias}:${name}:${args}`;
+    return `FIELD:${alias}:${name}:${args}:${directives}`;
   } else {
     const type: string = node.typeCondition?.name.value ?? "";
-    return `INLINE_FRAGMENT:${type}`;
+    return `INLINE_FRAGMENT:${type}:${directives}`;
   }
 };
 
@@ -156,17 +162,20 @@ export const transformDocument = (
     },
 
     [Kind.SELECTION_SET]: (node): SelectionSetNode => {
-      const selections = inline(node.selections);
-
-      const hasTypename = selections.some(
+      // Replace user-written (non-aliased) `__typename` selections with ours,
+      // always in first position: the read path resolves `__typename` before
+      // applying inline fragments (see read.ts), so it must never come after
+      // one. Aliased selections of `__typename` stay untouched.
+      const selections = inline(node.selections).filter(
         (selection) =>
-          selection.kind === Kind.FIELD &&
-          selection.name.value === "__typename",
+          !(
+            selection.kind === Kind.FIELD &&
+            selection.alias == null &&
+            selection.name.value === "__typename"
+          ),
       );
 
-      return createSelectionSet(
-        hasTypename ? selections : [TYPENAME_NODE, ...selections],
-      );
+      return createSelectionSet([TYPENAME_NODE, ...selections]);
     },
   });
 

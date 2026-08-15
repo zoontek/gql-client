@@ -2,6 +2,7 @@ import {
   Kind,
   type FieldNode,
   type InlineFragmentNode,
+  type OperationDefinitionNode,
   type SelectionSetNode,
 } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
@@ -10,7 +11,6 @@ import {
   getFieldName,
   getFieldNameWithArguments,
   getOperationDefinition,
-  getSelectedKeys,
   getTypename,
   isExcluded,
 } from "../graphql/ast";
@@ -18,6 +18,7 @@ import { transformDocument } from "../graphql/transform";
 import type { AnyVariables, JsonValue } from "../types";
 import {
   containsAll,
+  deepCopy,
   deepEqual,
   hasOwn,
   isRecord,
@@ -27,6 +28,7 @@ import {
   CONNECTION_REF,
   getCacheKeyFromOperationNode,
   REQUESTED_KEYS,
+  TYPENAME_KEY,
 } from "./keys";
 import { isCacheEntry, MISS, type CacheEntry } from "./types";
 import { trackField } from "./watch";
@@ -44,43 +46,25 @@ export type ReadDeps = {
   isTypeCompatible: (typename: string, typeCondition: string) => boolean;
 };
 
-export const createReadOperation = <Data, Variables extends AnyVariables>(
+export const createReadOperation = (
   deps: ReadDeps,
-): ((
+): (<Data, Variables extends AnyVariables>(
   document: TypedDocumentNode<Data, Variables>,
   variables: Variables,
   watched?: Map<object, Set<symbol>>,
 ) => JsonValue | undefined) => {
-  const getFromCache = (
-    cacheKey: symbol,
-    requestedKeys: Set<symbol>,
-  ): CacheEntry | typeof MISS => {
-    const entry = deps.get(cacheKey);
-
-    if (entry === MISS) {
-      return MISS;
-    }
-
-    return containsAll(entry[REQUESTED_KEYS], requestedKeys) ? entry : MISS;
-  };
-
-  const getFromCacheOrReturnValue = (
-    valueOrKey: unknown,
-    selectedKeys: Set<symbol>,
-  ): unknown => {
-    if (typeof valueOrKey === "symbol") {
-      const entry = getFromCache(valueOrKey, selectedKeys);
-      return entry === MISS || entry == null ? MISS : entry;
-    }
-    if (isCacheEntry(valueOrKey)) {
-      if (containsAll(valueOrKey[REQUESTED_KEYS], selectedKeys)) {
-        return valueOrKey;
-      } else {
-        return MISS;
-      }
-    }
-    return valueOrKey;
-  };
+  // The field symbols an entry must hold under REQUESTED_KEYS to satisfy
+  // `node`'s selection set, given the entry's concrete typename: fields
+  // excluded by `@include`/`@skip` are not required, and neither are fields
+  // under an inline fragment whose type condition is incompatible with that
+  // typename. The write path skips both (see write.ts), so requiring them
+  // would turn every such entry into a permanent miss. Memoized per
+  // (node, variables, typename); kept in the factory closure because the
+  // type compatibility answer depends on this client's schema config.
+  const requiredKeysCache = new WeakMap<
+    FieldNode | OperationDefinitionNode,
+    WeakMap<AnyVariables, Map<string | undefined, Set<symbol>>>
+  >();
 
   return <Data, Variables extends AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
@@ -89,11 +73,116 @@ export const createReadOperation = <Data, Variables extends AnyVariables>(
   ): JsonValue | undefined => {
     const transformedDocument = transformDocument(document);
 
+    const getRequiredKeys = (
+      node: FieldNode | OperationDefinitionNode,
+      typename: string | undefined,
+    ): Set<symbol> => {
+      let byVariables = requiredKeysCache.get(node);
+      if (byVariables == null) {
+        byVariables = new WeakMap();
+        requiredKeysCache.set(node, byVariables);
+      }
+
+      let byTypename = byVariables.get(variables);
+      if (byTypename == null) {
+        byTypename = new Map();
+        byVariables.set(variables, byTypename);
+      }
+
+      const cached = byTypename.get(typename);
+      if (cached != null) {
+        return cached;
+      }
+
+      const requiredKeys = new Set<symbol>();
+
+      const collect = (selectionSet: SelectionSetNode): void => {
+        for (const selection of selectionSet.selections) {
+          if (selection.kind === Kind.FIELD) {
+            if (!isExcluded(selection, variables)) {
+              const key = getFieldNameWithArguments(selection, variables);
+
+              // `__typename` is never required: the spec guarantees it in
+              // every response, but a nonconforming response omitting it must
+              // not turn the entry into a permanent miss. (Same exclusion as
+              // `trackField`, see watch.ts.)
+              if (key !== TYPENAME_KEY) {
+                requiredKeys.add(key);
+              }
+            }
+          } else if (selection.kind === Kind.INLINE_FRAGMENT) {
+            const typeCondition = selection.typeCondition?.name.value;
+
+            if (
+              !isExcluded(selection, variables) &&
+              (typeCondition == null ||
+                typename == null ||
+                deps.isTypeCompatible(typename, typeCondition))
+            ) {
+              collect(selection.selectionSet);
+            }
+          }
+        }
+      };
+
+      if (node.selectionSet != null) {
+        collect(node.selectionSet);
+      }
+
+      byTypename.set(typename, requiredKeys);
+      return requiredKeys;
+    };
+
+    const getEntryTypename = (entry: CacheEntry): string | undefined => {
+      const typename = entry[TYPENAME_KEY];
+      return typeof typename === "string" ? typename : undefined;
+    };
+
+    const getFromCache = (
+      cacheKey: symbol,
+      node: FieldNode | OperationDefinitionNode,
+    ): CacheEntry | typeof MISS => {
+      const entry = deps.get(cacheKey);
+
+      if (entry === MISS) {
+        return MISS;
+      }
+
+      return containsAll(
+        entry[REQUESTED_KEYS],
+        getRequiredKeys(node, getEntryTypename(entry)),
+      )
+        ? entry
+        : MISS;
+    };
+
+    const getFromCacheOrReturnValue = (
+      valueOrKey: unknown,
+      node: FieldNode | OperationDefinitionNode,
+    ): unknown => {
+      if (typeof valueOrKey === "symbol") {
+        return getFromCache(valueOrKey, node);
+      }
+
+      if (isCacheEntry(valueOrKey)) {
+        return containsAll(
+          valueOrKey[REQUESTED_KEYS],
+          getRequiredKeys(node, getEntryTypename(valueOrKey)),
+        )
+          ? valueOrKey
+          : MISS;
+      }
+
+      return valueOrKey;
+    };
+
     // Builds a clean, string-keyed result directly. `source` is read-only:
-    // either a cache entry (field values under argument-qualified symbol
-    // keys) or a previously-resolved plain object (string keys, when a field
-    // is shared across selections). Values go into a fresh `result`, so there
-    // is no separate pass to strip the internal symbol keys afterward.
+    // a cache entry (field values under argument-qualified symbol keys) or a
+    // cached raw value. Values go into `result`, so there is no separate pass
+    // to strip the internal symbol keys afterward. A field shared across
+    // selections (e.g. between the base selection and an inline fragment) is
+    // re-read from `source` each time, and its sub-selections merge into the
+    // result object the first read created.
     const applyField = (
       fieldNode: FieldNode,
       source: Record<PropertyKey, unknown>,
@@ -105,38 +194,35 @@ export const createReadOperation = <Data, Variables extends AnyVariables>(
         variables,
       );
 
-      // Already resolved by an earlier selection (e.g. a field shared between
-      // the base selection and an inline fragment).
-      const alreadyResolved = originalFieldName in result;
+      if (watched != null) {
+        // Record that this read depends on `source`'s value for this field,
+        // whether it is present or still missing: a write storing under the
+        // same key (always `fieldNameWithArguments`, see write.ts) must wake
+        // up whoever reads this, and a miss is resolved by exactly such a
+        // write. (`trackField` itself excludes `__typename`, see watch.ts.)
+        trackField(watched, source, fieldNameWithArguments);
+      }
+
       const cacheHasKey =
-        alreadyResolved ||
         hasOwn(source, originalFieldName) ||
         hasOwn(source, fieldNameWithArguments);
 
       if (!cacheHasKey) {
         // A field excluded by `@include(if: false)` / `@skip(if: true)` is
         // absent from the response, so its absence from the cache is not a
-        // miss, skip it. Any other missing field is a genuine miss.
-        return isExcluded(fieldNode, variables);
+        // miss, skip it. Same for `__typename` (see `getRequiredKeys`). Any
+        // other missing field is a genuine miss.
+        return (
+          fieldNameWithArguments === TYPENAME_KEY ||
+          isExcluded(fieldNode, variables)
+        );
       }
 
-      if (!alreadyResolved && watched !== undefined) {
-        // Record that this read depends on `source`'s value for this field.
-        // A write storing under the same key (always `fieldNameWithArguments`,
-        // see write.ts) must wake up whoever reads this. Skipped when
-        // `alreadyResolved`, since that reads from the local `result`, not a
-        // cache entry, so there is nothing to depend on. (`trackField` itself
-        // excludes `__typename`, see watch.ts.)
-        trackField(watched, source, fieldNameWithArguments);
-      }
+      const rawValue = hasOwn(source, originalFieldName)
+        ? source[originalFieldName]
+        : source[fieldNameWithArguments];
 
-      const rawValue = alreadyResolved
-        ? result[originalFieldName]
-        : hasOwn(source, originalFieldName)
-          ? source[originalFieldName]
-          : source[fieldNameWithArguments];
-
-      if (rawValue == undefined) {
+      if (rawValue == null) {
         // Preserve a cached `null`; drop `undefined` (matches JSON output).
         if (rawValue === null) {
           result[originalFieldName] = null;
@@ -144,43 +230,60 @@ export const createReadOperation = <Data, Variables extends AnyVariables>(
         return true;
       }
 
-      const selectedKeys = getSelectedKeys(fieldNode, variables);
-
       // Resolve a single cached value or key: pull it from the cache, then
       // recurse into any nested selection set. Returns MISS on a cache miss.
-      const resolve = (valueOrKey: unknown): unknown => {
-        const value = getFromCacheOrReturnValue(valueOrKey, selectedKeys);
+      // `existing` is what an earlier selection already resolved for this
+      // field: sub-selections merge into it instead of replacing it, so the
+      // fields it already holds are preserved.
+      const resolve = (valueOrKey: unknown, existing: unknown): unknown => {
+        const value = getFromCacheOrReturnValue(valueOrKey, fieldNode);
 
         if (value === MISS) {
           return MISS;
         }
 
-        if (isRecord(value) && fieldNode.selectionSet != undefined) {
+        if (isRecord(value) && fieldNode.selectionSet != null) {
           // oxlint-disable-next-line no-use-before-define
-          return traverse(fieldNode.selectionSet, value);
+          return traverse(
+            fieldNode.selectionSet,
+            value,
+            isRecord(existing) ? existing : {},
+          );
         }
 
-        return value;
+        // Leaf values (custom scalar objects and arrays) are stored by
+        // reference at write time; return a copy so a caller mutating the
+        // result can't corrupt the cache.
+        return typeof value === "object" && value != null
+          ? deepCopy(value)
+          : value;
       };
 
+      // Both reads of a shared field use the same `source` key, so on a
+      // second read the array length and item order line up with `existing`.
+      const existingValue = result[originalFieldName];
+
       if (Array.isArray(rawValue)) {
+        const existingItems = Array.isArray(existingValue)
+          ? existingValue
+          : undefined;
         const items: unknown[] = [];
 
-        for (const valueOrKey of rawValue) {
-          const value = resolve(valueOrKey);
+        for (let index = 0; index < rawValue.length; index++) {
+          const value = resolve(rawValue[index], existingItems?.[index]);
 
           if (value === MISS) {
             return false;
           }
 
-          items.push(value === undefined ? null : value);
+          items.push(value == null ? null : value);
         }
 
         result[originalFieldName] = items;
         return true;
       }
 
-      const value = resolve(rawValue);
+      const value = resolve(rawValue, existingValue);
 
       if (value === MISS) {
         return false;
@@ -195,9 +298,17 @@ export const createReadOperation = <Data, Variables extends AnyVariables>(
       source: Record<PropertyKey, unknown>,
       result: Record<PropertyKey, unknown>,
     ): boolean => {
+      // A fragment excluded by `@include(if: false)` / `@skip(if: true)`
+      // contributes nothing to the response, so its fields' absence from the
+      // cache is not a miss.
+      if (isExcluded(inlineFragmentNode, variables)) {
+        return true;
+      }
+
       const typeCondition = inlineFragmentNode.typeCondition?.name.value;
-      // `__typename` is selected first in every selection set, so by the time
-      // we reach an inline fragment it has already been written to `result`.
+      // `__typename` is selected first in every selection set (see
+      // transform.ts), so by the time we reach an inline fragment it has
+      // already been written to `result`.
       const dataTypename = getTypename(result);
 
       if (typeCondition != null && dataTypename != null) {
@@ -252,7 +363,7 @@ export const createReadOperation = <Data, Variables extends AnyVariables>(
       source: Record<PropertyKey, unknown>,
       result: Record<PropertyKey, unknown>,
     ): boolean => {
-      if (source == undefined) {
+      if (source == null) {
         return false;
       }
 
@@ -276,9 +387,8 @@ export const createReadOperation = <Data, Variables extends AnyVariables>(
     const traverse = (
       selections: SelectionSetNode,
       source: Record<PropertyKey, unknown>,
+      result: Record<PropertyKey, unknown> = {},
     ): unknown => {
-      const result: Record<PropertyKey, unknown> = {};
-
       if (!applySelections(selections, source, result)) {
         return MISS;
       }
@@ -295,17 +405,17 @@ export const createReadOperation = <Data, Variables extends AnyVariables>(
 
     const operation = getOperationDefinition(transformedDocument);
 
-    if (operation === undefined) {
+    if (operation == null) {
       return undefined;
     }
 
     const cacheKey = getCacheKeyFromOperationNode(operation);
 
-    if (cacheKey === undefined) {
+    if (cacheKey == null) {
       return undefined;
     }
 
-    const cache = getFromCache(cacheKey, getSelectedKeys(operation, variables));
+    const cache = getFromCache(cacheKey, operation);
 
     if (cache === MISS) {
       return undefined;
@@ -331,7 +441,7 @@ export const createReadOperation = <Data, Variables extends AnyVariables>(
     const documentCache = STABILITY_CACHE.get(transformedDocument);
     const previous = documentCache?.get(serializedVariables);
 
-    if (previous !== undefined && deepEqual(value, previous)) {
+    if (previous != null && deepEqual(value, previous)) {
       return previous;
     }
 
