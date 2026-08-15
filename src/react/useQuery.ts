@@ -1,5 +1,5 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
-import { use, useCallback, useRef, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 
 import type { ClientError } from "../client/errors";
 import type { AnyVariables } from "../types";
@@ -97,6 +97,12 @@ export const useQuery = <Data, Variables extends AnyVariables>(
   const data = useCacheSubscription(client, readSnapshot);
 
   const previousData = usePreviousData(data, provided);
+
+  // Register the mounted query so `Client#refetch` can re-send it.
+  useEffect(
+    () => client.registerQuery(stableQuery, effective),
+    [client, stableQuery, effective],
+  );
 
   // Whether the cache has nothing yet for the current variables. Drives the
   // automatic fetch/suspend below; kept separate from `isRefetching` so a

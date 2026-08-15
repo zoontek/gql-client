@@ -47,6 +47,14 @@ type StoredRequest = {
   settled: boolean;
 };
 
+// A mounted query, registered by `useQuery` for the duration of its mount, so
+// `Client#refetch` knows what to re-send.
+type ActiveQuery = {
+  // oxlint-disable-next-line typescript/no-explicit-any
+  document: TypedDocumentNode<any, any>;
+  variables: AnyVariables;
+};
+
 type ConnectionUpdate<Node> = [
   Connection<Node>,
   { prepend: Edge<Node>[] } | { append: Edge<Node>[] } | { remove: string[] },
@@ -114,6 +122,7 @@ export class Client {
   private url: string;
   private requests: WeakMap<object, Map<string, StoredRequest>>;
   private subscribers: Map<() => void, WatchedEntriesBox>;
+  private activeQueries: Set<ActiveQuery>;
   private version = 0;
 
   private requestOptions:
@@ -128,7 +137,47 @@ export class Client {
     this.url = config.url;
     this.requests = new WeakMap();
     this.subscribers = new Map();
+    this.activeQueries = new Set();
     this.requestOptions = config.requestOptions ?? {};
+  }
+
+  /**
+   * Registers a mounted query so `Client#refetch` can re-send it. Returns an
+   * unregister function. Called by `useQuery` for the duration of its mount;
+   * most apps won't call this directly.
+   *
+   * @internal
+   */
+  public registerQuery<Data, Variables extends AnyVariables>(
+    document: TypedDocumentNode<Data, Variables>,
+    variables: NoInfer<Variables>,
+  ): () => void {
+    const activeQuery: ActiveQuery = { document, variables };
+    this.activeQueries.add(activeQuery);
+    return () => {
+      this.activeQueries.delete(activeQuery);
+    };
+  }
+
+  /**
+   * Re-sends every mounted query (each `useQuery` currently rendered) and
+   * writes the fresh responses into the cache. Components keep showing their
+   * current data until each response lands. Call it when data may have gone
+   * stale, e.g. on the Page Visibility API's `visibilitychange` in the
+   * browser, or on React Native's `AppState` change back to `"active"`.
+   *
+   * Identical queries mounted more than once are sent a single time. A failed
+   * request leaves the affected components on their cached data.
+   *
+   * @returns A promise resolved once every refetch has settled, e.g. to end a
+   * pull-to-refresh indicator.
+   */
+  public async refetch(): Promise<void> {
+    await Promise.allSettled(
+      [...this.activeQueries].map(({ document, variables }) =>
+        this.query(document, variables, { refresh: true }),
+      ),
+    );
   }
 
   /**

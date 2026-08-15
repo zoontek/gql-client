@@ -147,3 +147,39 @@ test("purge clears stored requests and notifies subscribers", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test("refetch re-sends registered queries once, until unregistered", async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+
+  globalThis.fetch = (async () => {
+    fetchCount++;
+    return jsonResponse({ __typename: "Query" });
+  }) as unknown as typeof fetch;
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+    });
+    const variables = { projectId: "p1" };
+
+    // The same query mounted twice must be sent a single time.
+    const unregisterFirst = client.registerQuery(brandingQuery, variables);
+    const unregisterSecond = client.registerQuery(brandingQuery, variables);
+
+    await client.query(brandingQuery, variables);
+    expect(fetchCount).toBe(1);
+
+    await client.refetch();
+    expect(fetchCount).toBe(2);
+
+    unregisterFirst();
+    unregisterSecond();
+
+    await client.refetch();
+    expect(fetchCount).toBe(2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

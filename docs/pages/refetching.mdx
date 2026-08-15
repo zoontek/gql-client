@@ -1,0 +1,85 @@
+# Refetching [Refresh mounted queries when data may be stale.]
+
+`useQuery` returns a `refetch` action for one query. `Client#refetch` goes further: it re-sends every query currently mounted and writes the fresh responses into the cache. Components keep showing their current data until each response arrives, then re-render with the new one.
+
+Call it when the whole screen may be stale: the user returns to your tab, the app comes back to the foreground, or the network reconnects.
+
+A few details:
+
+- The same query mounted in several components is sent once.
+- A failed request leaves the affected components on their cached data.
+- The returned promise resolves once every request has settled, so you can await it to end a loading indicator.
+
+## On the web
+
+Use the [Page Visibility API](https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API) to refetch when the user comes back to your tab.
+
+```ts title="src/client.ts"
+import { Client } from "@zoontek/gql-client";
+import schemaConfig from "./schemaConfig.json";
+
+export const client = new Client({
+  url: "https://my-api.com/graphql",
+  schemaConfig,
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    void client.refetch();
+  }
+});
+```
+
+## On React Native
+
+Use [`AppState`](https://reactnative.dev/docs/appstate) to refetch when the app returns to the foreground.
+
+```ts title="src/client.ts"
+import { Client } from "@zoontek/gql-client";
+import { AppState } from "react-native";
+import schemaConfig from "./schemaConfig.json";
+
+export const client = new Client({
+  url: "https://my-api.com/graphql",
+  schemaConfig,
+});
+
+AppState.addEventListener("change", (status) => {
+  if (status === "active") {
+    void client.refetch();
+  }
+});
+```
+
+## Pull to refresh
+
+`refetch` resolves once every request has settled, which maps directly to a refresh indicator.
+
+```tsx title="src/FilmScreen.tsx"
+import { useClient } from "@zoontek/gql-client";
+import { useCallback, useState } from "react";
+import { RefreshControl, ScrollView } from "react-native";
+
+const FilmScreen = () => {
+  const client = useClient();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+
+    void client.refetch().finally(() => {
+      setRefreshing(false);
+    });
+  }, [client]);
+
+  return (
+    <ScrollView
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
+      {/* ... */}
+    </ScrollView>
+  );
+};
+```

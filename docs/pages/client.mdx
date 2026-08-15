@@ -116,6 +116,28 @@ const data = await client.mutate(mutation, variables);
 
 Returns `Promise<Data>`, resolving with the response data. Throws a [`ClientError`](/errors) on failure.
 
+### `refetch()`
+
+Re-sends every mounted query (each `useQuery` currently rendered) and writes the fresh responses into the cache. Components keep showing their current data until each response lands. Identical queries mounted more than once are sent a single time. See the [Refetching](/refetching) guide.
+
+#### Signature
+
+```ts
+function refetch(): Promise<void>;
+```
+
+Returns a promise resolved once every request has settled. A failed request leaves the affected components on their cached data; the promise never rejects.
+
+### `purge()`
+
+Drops every cache entry, registered connection, and stored query response, then notifies all subscribers so mounted queries fetch fresh data. Call it when all cached data must go, e.g. on logout.
+
+#### Signature
+
+```ts
+function purge(): void;
+```
+
 ### `readFromCache(document, variables)`
 
 Reads `document` with `variables` straight from the cache, without a network call. Returns `undefined` on a cache miss (any requested field not yet cached). See [Caching](/caching).

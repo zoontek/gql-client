@@ -25,6 +25,7 @@ export default defineConfig({
       items: [
         { text: "Caching", link: "/caching" },
         { text: "Pagination", link: "/pagination" },
+        { text: "Refetching", link: "/refetching" },
       ],
     },
     {

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 
 import { QueryFixture } from "./fixtures/QueryFixture";
+import { RefetchFixture } from "./fixtures/RefetchFixture";
 import { gql } from "./gql";
 
 type GreetingData = { greeting: string };
@@ -186,4 +187,22 @@ test("a failed refetch is thrown to the nearest ErrorBoundary", async ({
 
   await component.getByTestId("refetch").click();
   await expect(page.getByTestId("error")).toContainText("Not found");
+});
+
+test("Client#refetch re-sends every mounted query", async ({ mount, page }) => {
+  let requestCount = 0;
+
+  await page.route("**/graphql", async (route) => {
+    requestCount++;
+
+    await route.fulfill({
+      json: { data: { greeting: `hello-${requestCount}` } },
+    });
+  });
+
+  const component = await mount(<RefetchFixture url="/graphql" />);
+  await expect(component.getByTestId("state")).toContainText("hello-1");
+
+  await component.getByTestId("refetch-all").click();
+  await expect(component.getByTestId("state")).toContainText("hello-2");
 });
