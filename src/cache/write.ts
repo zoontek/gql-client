@@ -53,7 +53,7 @@ export const createWriteOperation = (
       pathInQuery: PropertyKey[],
       fieldVariables: AnyVariables,
     ): void => {
-      if (cacheEntry[CONNECTION_REF]) {
+      if (cacheEntry[CONNECTION_REF] != null) {
         return;
       }
       const id = deps.registerConnectionInfo({

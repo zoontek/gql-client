@@ -8,6 +8,9 @@ export default defineConfig({
     perf: "error",
     suspicious: "error",
   },
+  options: {
+    typeAware: true,
+  },
   rules: {
     "no-unused-vars": [
       "error",
@@ -25,6 +28,7 @@ export default defineConfig({
     "react/prefer-function-component": "error",
     "react/react-in-jsx-scope": "off",
 
+    "typescript/consistent-return": "off",
     "typescript/explicit-function-return-type": "error",
     "typescript/explicit-module-boundary-types": "error",
     "typescript/no-dynamic-delete": "error",
@@ -33,6 +37,18 @@ export default defineConfig({
     "typescript/no-import-type-side-effects": "error",
     "typescript/no-invalid-void-type": "error",
     "typescript/no-non-null-assertion": "error",
+    "typescript/no-unnecessary-type-parameters": "off",
+    "typescript/no-unsafe-enum-comparison": "off",
+    "typescript/no-unsafe-type-assertion": "off",
     "typescript/no-wrapper-object-types": "off",
+
+    "typescript/strict-boolean-expressions": [
+      "error",
+      {
+        allowNullableObject: false,
+        allowNumber: false,
+        allowString: false,
+      },
+    ],
   },
 });

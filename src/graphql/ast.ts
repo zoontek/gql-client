@@ -12,7 +12,7 @@ import type { AnyVariables } from "../types";
 
 // Field name as it appears in the response payload (alias if present).
 export const getFieldName = (fieldNode: FieldNode): string =>
-  fieldNode.alias ? fieldNode.alias.value : fieldNode.name.value;
+  fieldNode.alias != null ? fieldNode.alias.value : fieldNode.name.value;
 
 // Resolves a GraphQL AST value node to a plain JS value, inlining variables.
 const extractValue = (
@@ -198,7 +198,7 @@ const computeSelectedKeys = (
     });
   };
 
-  if (fieldNode.selectionSet) {
+  if (fieldNode.selectionSet != null) {
     traverse(fieldNode.selectionSet);
   }
 

@@ -122,7 +122,7 @@ const createPaginationHook = (direction: "after" | "before") => {
           hasNextPage: end.pageInfo.hasNextPage,
         },
       };
-    }) as T;
+    });
   };
 };
 
