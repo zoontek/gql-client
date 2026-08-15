@@ -128,6 +128,32 @@ function refetch(): Promise<void>;
 
 Returns a promise resolved once every request has settled. A failed request leaves the affected components on their cached data; the promise never rejects.
 
+### `extract()`
+
+Serializes the cache to a JSON string with every `<` escaped, safe to embed directly in a `<script>` tag. Use it to transfer server-side fetched data to the browser. See the [Server-side rendering](/server-side-rendering) guide.
+
+#### Signature
+
+```ts
+function extract(): string;
+```
+
+Returns the serialized cache as script-safe JSON text.
+
+### `restore(data)`
+
+Replaces the cache content with data produced by `extract()`, then notifies subscribers. Accepts the JSON string itself, or the `SerializedCache` object it evaluates to when inlined in a `<script>` tag. Call it before rendering, on a client that has not fetched anything yet.
+
+#### Signature
+
+```ts
+function restore(data: SerializedCache | string): void;
+```
+
+| Param  | Type                        | Description                   |
+| ------ | --------------------------- | ----------------------------- |
+| `data` | `SerializedCache \| string` | The serialized cache to load. |
+
 ### `purge()`
 
 Drops every cache entry, registered connection, and stored query response, then notifies all subscribers so mounted queries fetch fresh data. Call it when all cached data must go, e.g. on logout.

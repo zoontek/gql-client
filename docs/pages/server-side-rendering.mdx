@@ -1,0 +1,72 @@
+# Server-side rendering [Prefetch on the server, hydrate in the browser without a refetch.]
+
+The client supports SSR with a cache handoff:
+
+1. On the server, create a `Client` per request and prefetch the queries the page needs with `client.query`.
+2. Render. Mounted queries read from the cache, so the render is synchronous.
+3. Embed `client.extract()` in the HTML. It returns script-safe JSON text.
+4. In the browser, create a fresh `Client`, load the data with `client.restore()`, then render. Queries hydrate from the cache instead of fetching again.
+
+Create one `Client` per request on the server. A shared instance would mix the cached data of different users.
+
+## On the server
+
+```tsx title="server.tsx"
+import { Client } from "@zoontek/gql-client";
+import { renderToString } from "react-dom/server";
+import { App, FilmsQuery } from "./App";
+import schemaConfig from "./schemaConfig.json";
+
+export const handleRequest = async (): Promise<string> => {
+  const client = new Client({
+    url: "https://my-api.com/graphql",
+    schemaConfig,
+  });
+
+  // Prefetch everything the page reads.
+  await client.query(FilmsQuery, { first: 3 });
+
+  const html = renderToString(<App client={client} />);
+
+  return `<!doctype html>
+<html>
+  <body>
+    <div id="app">${html}</div>
+    <script>window.__GQL_CACHE__ = ${client.extract()};</script>
+    <script type="module" src="/index.js"></script>
+  </body>
+</html>`;
+};
+```
+
+## In the browser
+
+```tsx title="src/index.tsx"
+import { Client } from "@zoontek/gql-client";
+import { hydrateRoot } from "react-dom/client";
+import { App } from "./App";
+import schemaConfig from "./schemaConfig.json";
+
+const client = new Client({
+  url: "https://my-api.com/graphql",
+  schemaConfig,
+});
+
+// Load the server-fetched data before rendering.
+client.restore(window.__GQL_CACHE__);
+
+const root = document.querySelector("#app");
+
+if (root != null) {
+  hydrateRoot(root, <App client={client} />);
+}
+```
+
+Queries whose data is in the restored cache render immediately. Queries the server did not prefetch suspend and fetch as usual.
+
+## Details
+
+- `extract()` returns JSON text with every `<` escaped, so it is safe to inline in a `<script>` tag as above, and ready to store anywhere a string fits.
+- `restore()` accepts that string, or the `SerializedCache` object it evaluates to when inlined (as `window.__GQL_CACHE__` above). It replaces the cache content; call it once, before rendering, on a client that has not fetched anything yet.
+- Pagination works across the handoff: pages fetched in the browser merge onto a restored first page.
+- Cached data is shared through structural equality, never by object identity, so concurrent requests on the server stay isolated as long as each uses its own `Client`.

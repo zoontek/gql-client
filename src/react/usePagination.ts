@@ -28,8 +28,14 @@ const createPaginationHook = (direction: "after" | "before") => {
     const connectionRefs = useRef<number[]>([]);
     const lastReturnedValueRef = useRef<T[] | undefined>(undefined);
 
+    // A connection read from a restored cache (see `Client#restore`) has no
+    // connection ref: registration only happens at write time. Keep it as
+    // the base page so pages fetched later still merge onto it.
+    const basePageRef = useRef<T | undefined>(undefined);
+
     if (connection == null) {
       connectionRefs.current = [];
+      basePageRef.current = undefined;
     } else if (CONNECTION_REF in connection) {
       const ref = connection[CONNECTION_REF];
 
@@ -38,13 +44,18 @@ const createPaginationHook = (direction: "after" | "before") => {
 
         // A connection queried without its pagination cursor is a first page.
         // Reset the accumulated references so pages from a previous connection
-        // (e.g. another film's characters) don't bleed into this one.
+        // (e.g. another film's characters) don't bleed into this one, and
+        // drop the base page: the registered chain covers it.
         if (info == null || info.fieldVariables[direction] == null) {
           connectionRefs.current = [ref];
+          basePageRef.current = undefined;
         } else if (!connectionRefs.current.includes(ref)) {
           connectionRefs.current.push(ref);
         }
       }
+    } else {
+      connectionRefs.current = [];
+      basePageRef.current = connection;
     }
 
     // Get fresh data from cache
@@ -110,7 +121,13 @@ const createPaginationHook = (direction: "after" | "before") => {
       return connection;
     }
 
-    const connections = data.filter((query) => query != null);
+    const fetched = data.filter((query) => query != null);
+
+    // Prepend the unregistered base page (restored cache), if any. The reduce
+    // below deduplicates adjacent pages sharing the same cursor, so a base
+    // page that later gets registered isn't counted twice.
+    const connections =
+      basePageRef.current != null ? [basePageRef.current, ...fetched] : fetched;
 
     if (connections.length === 0) {
       return connection;

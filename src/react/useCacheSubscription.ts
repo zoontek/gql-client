@@ -56,5 +56,9 @@ export const useCacheSubscription = <T>(
     [client, watchedEntries],
   );
 
-  return useSyncExternalStore(subscribe, getSnapshot);
+  // `getSnapshot` doubles as the server snapshot: on the server there are no
+  // subscriptions, so a server render is a plain cache read (of data the
+  // caller prefetched into the client). Without a server snapshot, React
+  // throws on any server render.
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 };

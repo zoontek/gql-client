@@ -1,6 +1,7 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
 import { ClientCache, type SchemaConfig } from "../cache/cache";
+import type { SerializedCache } from "../cache/serialize";
 import { entriesOverlap, type WatchedEntriesBox } from "../cache/watch";
 import { getOperationName } from "../graphql/ast";
 import { printDocument } from "../graphql/print";
@@ -189,6 +190,39 @@ export class Client {
    */
   public getVersion(): number {
     return this.version;
+  }
+
+  /**
+   * Serializes the cache to a JSON string, to transfer server-side fetched
+   * data to the browser. Every `<` is escaped as `\u003c`, so the string is
+   * safe to embed directly in a `<script>` tag. On the server, prefetch with
+   * `Client#query`, render, and inline the string in the HTML; in the
+   * browser, pass the resulting value to `Client#restore` before rendering,
+   * so queries hydrate from the cache instead of fetching again.
+   *
+   * @returns The serialized cache as script-safe JSON text.
+   */
+  public extract(): string {
+    return JSON.stringify(this.cache.extract()).replace(/</g, "\\u003c");
+  }
+
+  /**
+   * Replaces the cache content with data produced by `Client#extract`, then
+   * notifies subscribers. Accepts the JSON string itself, or the object it
+   * evaluates to when inlined in a `<script>` tag. Call it before rendering,
+   * on a client that has not fetched anything yet.
+   *
+   * @param data - The serialized cache to load.
+   */
+  public restore(data: SerializedCache | string): void {
+    this.cache.restore(
+      typeof data === "string" ? (JSON.parse(data) as SerializedCache) : data,
+    );
+    this.requests = new WeakMap();
+    this.version++;
+    this.subscribers.forEach((_watched, fn) => {
+      fn();
+    });
   }
 
   /**

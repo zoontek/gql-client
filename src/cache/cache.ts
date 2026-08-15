@@ -12,6 +12,7 @@ import {
   getIdFromCacheKey,
 } from "./keys";
 import { createReadOperation } from "./read";
+import { decodeEntry, encodeEntry, type SerializedCache } from "./serialize";
 import {
   MISS,
   createEmptyCacheEntry,
@@ -74,6 +75,28 @@ export class ClientCache {
   // `Client#purge`; see the rationale there.
   public purge(): void {
     this.cache = new Map();
+    this.connectionCache = new Map();
+    this.connectionRefCount = -1;
+  }
+
+  // Serializes every entry to a JSON-safe structure. Exposed through
+  // `Client#extract`; see the SSR flow there.
+  public extract(): SerializedCache {
+    return {
+      entries: [...this.cache].map(([key, entry]) => [
+        key.description ?? "",
+        encodeEntry(entry),
+      ]),
+    };
+  }
+
+  // Replaces the cache content with a previously extracted structure.
+  // Connection registrations are not restored: they hold live references
+  // (documents, entries) and are rebuilt when a response is written.
+  public restore(data: SerializedCache): void {
+    this.cache = new Map(
+      data.entries.map(([key, entry]) => [Symbol.for(key), decodeEntry(entry)]),
+    );
     this.connectionCache = new Map();
     this.connectionRefCount = -1;
   }

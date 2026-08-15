@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 
 import { PaginationFixture } from "./fixtures/PaginationFixture";
+import { PaginationRestoreFixture } from "./fixtures/PaginationRestoreFixture";
 import { PaginationSwitchFixture } from "./fixtures/PaginationSwitchFixture";
 
 test("useForwardPagination merges a next page into the connection's edges", async ({
@@ -131,4 +132,50 @@ test("switching to an already-cached connection shows that connection's pages", 
   // pagination hook must still switch back to era a's pages.
   await component.getByTestId("era-a").click();
   await expect(component.getByTestId("titles")).toContainText("a-film");
+});
+
+test("pages fetched after a cache restore merge onto the restored first page", async ({
+  mount,
+  page,
+}) => {
+  let requestCount = 0;
+
+  await page.route("**/graphql", async (route) => {
+    requestCount++;
+
+    await route.fulfill({
+      json: {
+        data: {
+          __typename: "Query",
+          films: {
+            __typename: "FilmsConnection",
+            edges: [
+              {
+                __typename: "FilmsEdge",
+                cursor: "c2",
+                node: { __typename: "Film", id: "f2", title: "Second" },
+              },
+            ],
+            pageInfo: {
+              hasPreviousPage: true,
+              hasNextPage: false,
+              startCursor: "c2",
+              endCursor: "c2",
+            },
+          },
+        },
+      },
+    });
+  });
+
+  const component = await mount(<PaginationRestoreFixture url="/graphql" />);
+
+  // The restored first page renders from the cache, without a request.
+  await expect(component.getByTestId("titles")).toContainText('["First"]');
+  expect(requestCount).toBe(0);
+
+  await component.getByTestId("load-next").click();
+  await expect(component.getByTestId("titles")).toContainText(
+    '["First","Second"]',
+  );
 });

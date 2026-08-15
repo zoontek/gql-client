@@ -9,6 +9,7 @@ export {
 } from "./react/usePagination";
 export { useQuery } from "./react/useQuery";
 
+export type { SerializedCache } from "./cache/serialize";
 export type { MutationConfig } from "./client/client";
 export type { ClientErrorReason } from "./client/errors";
 export type {
