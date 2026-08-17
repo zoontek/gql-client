@@ -1,0 +1,40 @@
+# Request transforms [Read or replace the outgoing request.]
+
+The client builds a `POST` request, then hands it to `transformRequest` and sends whatever that returns. See [Authentication](/authentication) for attaching credentials, and [`transformRequest`](/client#transformrequest) for the full contract.
+
+## Reading the body
+
+The request carries the serialized GraphQL payload, so the transform can hash it, log it, or measure it. Here it sets a [`Content-Digest`](https://www.rfc-editor.org/rfc/rfc9530.html) header over the exact bytes being sent:
+
+```ts title="src/client.ts"
+export const client = new Client({
+  url: "https://api.example.com/graphql",
+  schemaConfig,
+  transformRequest: async (request) => {
+    const body = await request.clone().arrayBuffer();
+    const digest = await crypto.subtle.digest("SHA-256", body);
+    const view = new Uint8Array(digest);
+    const contentDigestHeader = `sha-256=:${view.toBase64()}:`;
+
+    request.headers.set("Content-Digest", contentDigestHeader);
+
+    return request;
+  },
+});
+```
+
+:::warning[Always clone before reading the body]
+Reading `request.arrayBuffer()` directly consumes the body, and a request whose body has been consumed can no longer be sent. Such a request fails with a [`ClientError`](/errors) whose `reason` is `"transform"`.
+:::
+
+A digest proves the body arrived intact. It doesn't prove who sent it, since anyone can compute one: [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530.html#section-6.1) states that "integrity fields are not intended to be a general protection against malicious tampering with HTTP messages". Pair it with the auth header from [Authentication](/authentication), and with a signature if the body must be tamper-evident.
+
+Two runtime requirements: `crypto.subtle` only exists in a secure context (HTTPS), and `Uint8Array.prototype.toBase64` needs a recent engine.
+
+## Replacing the request
+
+Returning a different `Request` is allowed, which is how you set options that live on the constructor rather than on the `Headers` object. The [Cookies](/authentication#cookies) example does that to set `credentials`.
+
+:::note
+The abort signal is attached after the transform runs, so a brand new `Request` never loses the client's `timeout`.
+:::

@@ -1,6 +1,6 @@
 # Authentication [Attach credentials to every request.]
 
-The client's `transformRequest` returns the request to send instead of the one it built. Use it to add an auth header or send cookies.
+The client's `transformRequest` returns the request to send instead of the one it built. Use it to add an auth header or send cookies. See [Request transforms](/request-transforms) for reading or replacing the request itself.
 
 ## Static headers
 
@@ -50,49 +50,6 @@ export const client = new Client({
     new Request(request, { credentials: "include" }),
 });
 ```
-
-## Signing the request body
-
-Read the body from `request.clone()` to get the exact bytes the client will send, then pass the signature as a header:
-
-```ts title="src/client.ts"
-const encoder = new TextEncoder();
-
-const key = await crypto.subtle.importKey(
-  "raw",
-  encoder.encode(SIGNING_SECRET),
-  { name: "HMAC", hash: "SHA-256" },
-  false,
-  ["sign"],
-);
-
-export const client = new Client({
-  url: "https://api.example.com/graphql",
-  schemaConfig,
-  transformRequest: async (request) => {
-    const body = await request.clone().text();
-
-    const signature = await crypto.subtle.sign(
-      "HMAC",
-      key,
-      encoder.encode(body),
-    );
-
-    request.headers.set(
-      "X-Signature",
-      [...new Uint8Array(signature)]
-        .map((byte) => byte.toString(16).padStart(2, "0"))
-        .join(""),
-    );
-
-    return request;
-  },
-});
-```
-
-:::warning[Always clone before reading the body]
-Reading `request.text()` directly consumes the body, and a request whose body has been consumed can no longer be sent. Such a request fails with a [`ClientError`](/errors) whose `reason` is `"transform"`.
-:::
 
 ## On logout
 

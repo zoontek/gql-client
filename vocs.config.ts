@@ -28,6 +28,7 @@ export default defineConfig({
         { text: "Caching", link: "/caching" },
         { text: "Pagination", link: "/pagination" },
         { text: "Authentication", link: "/authentication" },
+        { text: "Request transforms", link: "/request-transforms" },
         { text: "Refetching", link: "/refetching" },
         { text: "Server-side rendering", link: "/server-side-rendering" },
       ],
