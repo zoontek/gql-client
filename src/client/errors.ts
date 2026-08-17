@@ -7,17 +7,17 @@ import type { JsonArray } from "../types";
  * - `"graphQL"`: the response had a top-level `errors` array.
  * - `"malformed"`: the response body wasn't valid GraphQL JSON.
  * - `"network"`: the request failed before a response was received.
- * - `"options"`: the client's `requestOptions` function threw or rejected.
  * - `"status"`: the response status was not ok (outside 200-299).
  * - `"timeout"`: the request exceeded the client's configured `timeout`.
+ * - `"transform"`: the client's `transformRequest` function threw or rejected.
  */
 export type ClientErrorReason =
   | "graphQL"
   | "malformed"
   | "network"
-  | "options"
   | "status"
-  | "timeout";
+  | "timeout"
+  | "transform";
 
 const parseGraphQLError = (error: unknown): GraphQLError => {
   if (
@@ -96,11 +96,11 @@ export class ClientError extends Error {
     });
   }
 
-  static options(url: string): ClientError {
-    return new ClientError(`Failed to build request options for ${url}`, {
-      reason: "options",
-      url,
-    });
+  static transform(url: string, message?: string): ClientError {
+    return new ClientError(
+      message ?? `Failed to transform the request to ${url}`,
+      { reason: "transform", url },
+    );
   }
 
   static timeout(url: string, timeout?: number): ClientError {

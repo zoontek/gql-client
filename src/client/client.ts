@@ -7,46 +7,23 @@ import { getOperationName } from "../graphql/ast";
 import { printDocument } from "../graphql/print";
 import { transformDocument } from "../graphql/transform";
 import type { AnyVariables, Connection, Edge, JsonValue } from "../types";
-import { isRecord, serializeVariables } from "../utils";
+import { identity, isRecord, serializeVariables } from "../utils";
 import { ClientError } from "./errors";
-
-export type RequestOptions = {
-  /** Passed to `fetch` as `credentials`. Defaults to `"same-origin"`. */
-  credentials?: RequestInit["credentials"];
-  /** Extra HTTP headers merged into every request. */
-  headers?: Record<string, string>;
-  /** Passed to `fetch` as `integrity`, for subresource integrity checks. */
-  integrity?: RequestInit["integrity"];
-  /** Passed to `fetch` as `keepalive`, to let the request outlive a page unload. */
-  keepalive?: RequestInit["keepalive"];
-  /** Passed to `fetch` as `mode`. Not set by default, so `fetch`'s own default applies. */
-  mode?: RequestInit["mode"];
-  /** Request timeout in milliseconds. Defaults to `10_000`. Set to `Infinity` to disable. */
-  timeout?: number;
-};
-
-/** The GraphQL request payload, before it gets serialized as the `fetch` body. */
-export type RequestPayload = {
-  operationName: string | undefined;
-  query: string;
-  variables: AnyVariables;
-};
 
 export type ClientConfig = {
   /** GraphQL endpoint URL. All requests are sent here as HTTP POST. */
   url: string;
   /** Interface-to-implementing-types map, used by the cache to match fragments on interfaces. Generate it with `gql-schema-config`. */
   schemaConfig: SchemaConfig;
+  /** Request timeout in milliseconds. Defaults to `10_000`. Set to `Infinity` to disable. */
+  timeout?: number;
   /**
-   * Options merged into every `fetch` call. Pass a function (sync or async)
-   * to compute them fresh for each request, e.g. to read the latest auth
-   * token. It receives the request payload, so options can depend on the
-   * operation being sent. If the function throws or rejects, the request
-   * fails with a `ClientError` whose `reason` is `"options"`.
+   * Receives the `Request` about to be sent and returns the one to send
+   * instead, sync or async. Use it to add an auth header, sign the body, or
+   * set any other `fetch` option. If the function throws or rejects, the
+   * request fails with a `ClientError` whose `reason` is `"transform"`.
    */
-  requestOptions?:
-    | RequestOptions
-    | ((payload: RequestPayload) => RequestOptions | Promise<RequestOptions>);
+  transformRequest?: (request: Request) => Request | Promise<Request>;
 };
 
 // One stored request per (document, serialized variables): joined while in
@@ -129,25 +106,26 @@ export class Client {
   public cache: ClientCache;
 
   private url: string;
+  private activeQueries: Set<ActiveQuery>;
   private requests: WeakMap<object, Map<string, StoredRequest>>;
   private subscribers: Map<() => void, WatchedEntriesBox>;
-  private activeQueries: Set<ActiveQuery>;
+  private timeout: number;
   private version = 0;
 
-  private requestOptions:
-    | RequestOptions
-    | ((payload: RequestPayload) => RequestOptions | Promise<RequestOptions>);
+  private transformRequest: (request: Request) => Request | Promise<Request>;
 
   /**
    * @param config - See `ClientConfig` for the available options.
    */
   public constructor(config: ClientConfig) {
-    this.cache = new ClientCache(config.schemaConfig);
     this.url = config.url;
+    this.cache = new ClientCache(config.schemaConfig);
+    this.activeQueries = new Set();
     this.requests = new WeakMap();
     this.subscribers = new Map();
-    this.activeQueries = new Set();
-    this.requestOptions = config.requestOptions ?? {};
+    this.timeout = config.timeout ?? 10_000;
+
+    this.transformRequest = config.transformRequest ?? identity;
   }
 
   /**
@@ -304,29 +282,34 @@ export class Client {
   ): Promise<Data> {
     const controller = new AbortController();
     const transformedDocument = transformDocument(document);
+    const { timeout, transformRequest } = this;
 
-    const payload: RequestPayload = {
-      operationName: getOperationName(transformedDocument),
-      query: printDocument(transformedDocument),
-      variables,
-    };
+    const request = new Request(this.url, {
+      cache: "no-store",
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        operationName: getOperationName(transformedDocument),
+        query: printDocument(transformedDocument),
+        variables,
+      }),
+    });
 
-    const {
-      credentials,
-      headers = {},
-      integrity,
-      keepalive,
-      mode,
-      timeout = 10_000,
-    } = await Promise.resolve()
-      .then(() =>
-        typeof this.requestOptions === "function"
-          ? this.requestOptions(payload)
-          : this.requestOptions,
-      )
+    const requestToSend = await Promise.resolve()
+      .then(() => transformRequest(request))
       .catch(() => {
-        throw ClientError.options(this.url);
+        throw ClientError.transform(this.url);
       });
+
+    if (requestToSend.bodyUsed) {
+      throw ClientError.transform(
+        this.url,
+        "`transformRequest` returned a consumed request. Read its body from `request.clone()`.",
+      );
+    }
 
     let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -336,21 +319,7 @@ export class Client {
       }, timeout);
     }
 
-    return fetch(this.url, {
-      cache: "no-store",
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        ...headers,
-      },
-      body: JSON.stringify(payload),
-      ...(mode != null && { mode }),
-      ...(credentials != null && { credentials }),
-      ...(integrity != null && { integrity }),
-      ...(keepalive != null && { keepalive }),
-    })
+    return fetch(requestToSend, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
           throw ClientError.status(response);

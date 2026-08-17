@@ -1,5 +1,7 @@
 import type { AnyVariables } from "./types";
 
+export const identity = <T>(value: T): T => value;
+
 export const containsAll = <T>(a: Set<T>, b: Set<T>): boolean => {
   for (const key of b) {
     if (!a.has(key)) {

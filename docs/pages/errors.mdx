@@ -7,9 +7,9 @@ Every failed request throws a `ClientError`, never a raw `fetch` or parsing exce
 | `graphQL`   | The response came back with a top-level `errors` array.         |
 | `malformed` | The response body wasn't valid GraphQL JSON.                    |
 | `network`   | The request couldn't reach the server.                          |
-| `options`   | The client's `requestOptions` function threw or rejected.       |
 | `status`    | The response status was outside the `200`-`299` range.          |
 | `timeout`   | The request took longer than the client's configured `timeout`. |
+| `transform` | The client's `transformRequest` function threw or rejected.     |
 
 In `useQuery`, the error is thrown during render, to be caught by an `ErrorBoundary`. In `useDeferredQuery` and `useMutation`, it lands in `state.error` (and rejects the returned promise).
 
@@ -38,7 +38,7 @@ class ClientError extends Error {
 }
 
 type ClientErrorReason =
-  "graphQL" | "malformed" | "network" | "options" | "status" | "timeout";
+  "graphQL" | "malformed" | "network" | "status" | "timeout" | "transform";
 ```
 
 | Property        | Description                                                             |

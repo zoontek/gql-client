@@ -1,6 +1,6 @@
 # Authentication [Attach credentials to every request.]
 
-The client's `requestOptions` are merged into every request. Use them to send an auth header or cookies.
+The client's `transformRequest` returns the request to send instead of the one it built. Use it to add an auth header or send cookies.
 
 ## Static headers
 
@@ -13,44 +13,47 @@ import schemaConfig from "./schemaConfig.json";
 export const client = new Client({
   url: "https://api.example.com/graphql",
   schemaConfig,
-  requestOptions: {
-    headers: { Authorization: `Bearer ${TOKEN}` },
+  transformRequest: (request) => {
+    request.headers.set("Authorization", `Bearer ${TOKEN}`);
+    return request;
   },
 });
 ```
 
 ## Per-request headers
 
-Pass a function to compute options fresh for each request, e.g. to read the latest token. It can be async:
+The function runs for every request, so it can read the latest token. It can be async:
 
 ```ts title="src/client.ts"
 export const client = new Client({
   url: "https://api.example.com/graphql",
   schemaConfig,
-  requestOptions: async () => {
+  transformRequest: async (request) => {
     const token = await getAccessToken();
-    return {
-      headers: { Authorization: `Bearer ${token}` },
-    };
+    request.headers.set("Authorization", `Bearer ${token}`);
+    return request;
   },
 });
 ```
 
-If the function throws or rejects, the request fails with a [`ClientError`](/errors) whose `reason` is `"options"`.
+If the function throws or rejects, the request fails with a [`ClientError`](/errors) whose `reason` is `"transform"`.
 
 ## Cookies
 
-To send cookies to a different origin, set `credentials`:
+To send cookies to a different origin, return a request with `credentials` set:
 
-```ts
-requestOptions: {
-  credentials: "include",
-},
+```ts title="src/client.ts"
+export const client = new Client({
+  url: "https://api.example.com/graphql",
+  schemaConfig,
+  transformRequest: (request) =>
+    new Request(request, { credentials: "include" }),
+});
 ```
 
 ## Signing the request body
 
-The function receives the payload as an object, before the client serializes it. Call `JSON.stringify` on it to get the exact body the client will send, sign that string, and pass the signature as a header:
+Read the body from `request.clone()` to get the exact bytes the client will send, then pass the signature as a header:
 
 ```ts title="src/client.ts"
 const encoder = new TextEncoder();
@@ -66,8 +69,8 @@ const key = await crypto.subtle.importKey(
 export const client = new Client({
   url: "https://api.example.com/graphql",
   schemaConfig,
-  requestOptions: async (payload) => {
-    const body = JSON.stringify(payload);
+  transformRequest: async (request) => {
+    const body = await request.clone().text();
 
     const signature = await crypto.subtle.sign(
       "HMAC",
@@ -75,16 +78,21 @@ export const client = new Client({
       encoder.encode(body),
     );
 
-    return {
-      headers: {
-        "X-Signature": [...new Uint8Array(signature)]
-          .map((byte) => byte.toString(16).padStart(2, "0"))
-          .join(""),
-      },
-    };
+    request.headers.set(
+      "X-Signature",
+      [...new Uint8Array(signature)]
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join(""),
+    );
+
+    return request;
   },
 });
 ```
+
+:::warning[Always clone before reading the body]
+Reading `request.text()` directly consumes the body, and a request whose body has been consumed can no longer be sent. Such a request fails with a [`ClientError`](/errors) whose `reason` is `"transform"`.
+:::
 
 ## On logout
 

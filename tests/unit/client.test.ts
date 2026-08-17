@@ -4,11 +4,11 @@ import { Client } from "../../src/client/client";
 import { ClientError } from "../../src/client/errors";
 import { brandingQuery } from "./data";
 
-test("ClientError has reason 'options' when requestOptions throws synchronously", async () => {
+test("ClientError has reason 'transform' when transformRequest throws synchronously", async () => {
   const client = new Client({
     url: "http://localhost/graphql",
     schemaConfig: { interfaceToTypes: {} },
-    requestOptions: () => {
+    transformRequest: () => {
       throw new Error("boom");
     },
   });
@@ -18,14 +18,14 @@ test("ClientError has reason 'options' when requestOptions throws synchronously"
   });
 
   await expect(result).rejects.toBeInstanceOf(ClientError);
-  await expect(result).rejects.toMatchObject({ reason: "options" });
+  await expect(result).rejects.toMatchObject({ reason: "transform" });
 });
 
-test("ClientError has reason 'options' when requestOptions rejects", async () => {
+test("ClientError has reason 'transform' when transformRequest rejects", async () => {
   const client = new Client({
     url: "http://localhost/graphql",
     schemaConfig: { interfaceToTypes: {} },
-    requestOptions: async () => {
+    transformRequest: async () => {
       throw new Error("boom");
     },
   });
@@ -35,7 +35,7 @@ test("ClientError has reason 'options' when requestOptions rejects", async () =>
   });
 
   await expect(result).rejects.toBeInstanceOf(ClientError);
-  await expect(result).rejects.toMatchObject({ reason: "options" });
+  await expect(result).rejects.toMatchObject({ reason: "transform" });
 });
 
 const jsonResponse = (data: unknown): Response =>
@@ -43,6 +43,48 @@ const jsonResponse = (data: unknown): Response =>
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
+
+test("transformRequest receives the built request and its result is sent", async () => {
+  const originalFetch = globalThis.fetch;
+  let sent: Request | undefined;
+
+  globalThis.fetch = (async (request: Request) => {
+    sent = request;
+    return jsonResponse({ __typename: "Query" });
+  }) as unknown as typeof fetch;
+
+  try {
+    let seenBody: string | undefined;
+
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+      transformRequest: async (request) => {
+        seenBody = await request.clone().text();
+        request.headers.set("Authorization", "Bearer token");
+        return request;
+      },
+    });
+
+    await client.query(brandingQuery, { projectId: "p1" });
+
+    expect(sent?.method).toBe("POST");
+    expect(sent?.url).toBe("http://localhost/graphql");
+    expect(sent?.headers.get("Authorization")).toBe("Bearer token");
+    expect(sent?.headers.get("Content-Type")).toBe("application/json");
+    expect(sent?.signal).toBeDefined();
+
+    // The transform sees the exact body that gets sent.
+    expect(JSON.parse(seenBody ?? "")).toMatchObject({
+      operationName: "getBrandingPage",
+      variables: { projectId: "p1" },
+    });
+
+    expect(await sent?.text()).toBe(seenBody);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("query reuses settled requests and only refreshes on demand", async () => {
   const originalFetch = globalThis.fetch;
