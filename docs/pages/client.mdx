@@ -13,15 +13,21 @@ export const client = new Client({
 ## Configuration
 
 ```ts
-new Client(config: ClientConfig): Client
+type RequestPayload = {
+  operationName: string | undefined;
+  query: string;
+  variables: AnyVariables;
+};
 
 type ClientConfig = {
   url: string;
   schemaConfig: SchemaConfig;
   requestOptions?:
     | RequestOptions
-    | (() => RequestOptions | Promise<RequestOptions>);
+    | ((payload: RequestPayload) => RequestOptions | Promise<RequestOptions>);
 };
+
+new Client(config: ClientConfig): Client;
 ```
 
 | Option           | Description                                                                                                                                                    |

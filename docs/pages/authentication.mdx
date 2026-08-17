@@ -48,6 +48,44 @@ requestOptions: {
 },
 ```
 
+## Signing the request body
+
+The function receives the payload as an object, before the client serializes it. Call `JSON.stringify` on it to get the exact body the client will send, sign that string, and pass the signature as a header:
+
+```ts title="src/client.ts"
+const encoder = new TextEncoder();
+
+const key = await crypto.subtle.importKey(
+  "raw",
+  encoder.encode(SIGNING_SECRET),
+  { name: "HMAC", hash: "SHA-256" },
+  false,
+  ["sign"],
+);
+
+export const client = new Client({
+  url: "https://api.example.com/graphql",
+  schemaConfig,
+  requestOptions: async (payload) => {
+    const body = JSON.stringify(payload);
+
+    const signature = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(body),
+    );
+
+    return {
+      headers: {
+        "X-Signature": [...new Uint8Array(signature)]
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join(""),
+      },
+    };
+  },
+});
+```
+
 ## On logout
 
 Call `client.purge()` to drop every cached response, so the next user doesn't see the previous user's data. Mounted queries fetch fresh data.

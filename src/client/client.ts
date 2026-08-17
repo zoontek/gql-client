@@ -25,6 +25,13 @@ export type RequestOptions = {
   timeout?: number;
 };
 
+/** The GraphQL request payload, before it gets serialized as the `fetch` body. */
+export type RequestPayload = {
+  operationName: string | undefined;
+  query: string;
+  variables: AnyVariables;
+};
+
 export type ClientConfig = {
   /** GraphQL endpoint URL. All requests are sent here as HTTP POST. */
   url: string;
@@ -33,12 +40,13 @@ export type ClientConfig = {
   /**
    * Options merged into every `fetch` call. Pass a function (sync or async)
    * to compute them fresh for each request, e.g. to read the latest auth
-   * token. If the function throws or rejects, the request fails with a
-   * `ClientError` whose `reason` is `"options"`.
+   * token. It receives the request payload, so options can depend on the
+   * operation being sent. If the function throws or rejects, the request
+   * fails with a `ClientError` whose `reason` is `"options"`.
    */
   requestOptions?:
     | RequestOptions
-    | (() => RequestOptions | Promise<RequestOptions>);
+    | ((payload: RequestPayload) => RequestOptions | Promise<RequestOptions>);
 };
 
 // One stored request per (document, serialized variables): joined while in
@@ -128,7 +136,7 @@ export class Client {
 
   private requestOptions:
     | RequestOptions
-    | (() => RequestOptions | Promise<RequestOptions>);
+    | ((payload: RequestPayload) => RequestOptions | Promise<RequestOptions>);
 
   /**
    * @param config - See `ClientConfig` for the available options.
@@ -297,6 +305,12 @@ export class Client {
     const controller = new AbortController();
     const transformedDocument = transformDocument(document);
 
+    const payload: RequestPayload = {
+      operationName: getOperationName(transformedDocument),
+      query: printDocument(transformedDocument),
+      variables,
+    };
+
     const {
       credentials,
       headers = {},
@@ -307,7 +321,7 @@ export class Client {
     } = await Promise.resolve()
       .then(() =>
         typeof this.requestOptions === "function"
-          ? this.requestOptions()
+          ? this.requestOptions(payload)
           : this.requestOptions,
       )
       .catch(() => {
@@ -331,11 +345,7 @@ export class Client {
         "Content-Type": "application/json",
         ...headers,
       },
-      body: JSON.stringify({
-        operationName: getOperationName(transformedDocument),
-        query: printDocument(transformedDocument),
-        variables,
-      }),
+      body: JSON.stringify(payload),
       ...(mode != null && { mode }),
       ...(credentials != null && { credentials }),
       ...(integrity != null && { integrity }),
