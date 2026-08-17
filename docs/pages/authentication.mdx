@@ -1,0 +1,53 @@
+# Authentication [Attach credentials to every request.]
+
+The client's `requestOptions` are merged into every request. Use them to send an auth header or cookies.
+
+## Static headers
+
+For a token known at startup:
+
+```ts title="src/client.ts"
+import { Client } from "@zoontek/gql-client";
+import schemaConfig from "./schemaConfig.json";
+
+export const client = new Client({
+  url: "https://api.example.com/graphql",
+  schemaConfig,
+  requestOptions: {
+    headers: { Authorization: `Bearer ${TOKEN}` },
+  },
+});
+```
+
+## Per-request headers
+
+Pass a function to compute options fresh for each request, e.g. to read the latest token. It can be async:
+
+```ts title="src/client.ts"
+export const client = new Client({
+  url: "https://api.example.com/graphql",
+  schemaConfig,
+  requestOptions: async () => {
+    const token = await getAccessToken();
+    return {
+      headers: { Authorization: `Bearer ${token}` },
+    };
+  },
+});
+```
+
+If the function throws or rejects, the request fails with a [`ClientError`](/errors) whose `reason` is `"options"`.
+
+## Cookies
+
+To send cookies to a different origin, set `credentials`:
+
+```ts
+requestOptions: {
+  credentials: "include",
+},
+```
+
+## On logout
+
+Call `client.purge()` to drop every cached response, so the next user doesn't see the previous user's data. Mounted queries fetch fresh data.

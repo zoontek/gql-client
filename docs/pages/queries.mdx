@@ -1,0 +1,137 @@
+# Queries [Fetch data and keep it in sync with the cache.]
+
+## useQuery
+
+Runs a query against the `Client` from the nearest `ClientProvider`, and keeps the result in sync with the cache.
+
+```tsx title="src/Post.tsx"
+import { useQuery } from "@zoontek/gql-client";
+import { graphql } from "./gql";
+
+const PostQuery = graphql(`
+  query Post($postId: ID!) {
+    post(id: $postId) {
+      id
+      title
+      body
+    }
+  }
+`);
+
+const Post = ({ postId }: { postId: string }) => {
+  const [{ data, fetching }] = useQuery(PostQuery, { postId });
+
+  return data.post == null ? (
+    <div>Post not found</div>
+  ) : (
+    <article style={{ opacity: fetching ? 0.5 : 1 }}>
+      <h1>{data.post.title}</h1>
+      <p>{data.post.body}</p>
+    </article>
+  );
+};
+```
+
+It returns a `[state, actions]` tuple:
+
+- `state.data`: the query result.
+- `state.fetching`: `true` while a request is in flight. `data` keeps the previous result in the meantime, so a loading UI is optional.
+- `actions.setVariables(partial)`: patches the variables in place, without a full reload. Used for [pagination](/pagination).
+- `actions.refetch()`: re-sends the request for the current variables. The cached data stays visible, with `fetching: true`, until the response lands.
+
+```ts
+function useQuery<Data, Variables>(
+  query: TypedDocumentNode<Data, Variables>,
+  variables: Variables,
+): readonly [
+  { data: Data; fetching: boolean },
+  {
+    setVariables: (variables: Partial<Variables>) => void;
+    refetch: () => void;
+  },
+];
+```
+
+### Suspense
+
+`useQuery` suspends the first time it runs for a given set of variables, and resumes once the result arrives. Render it under a `Suspense` boundary, as shown in [Getting started](/#4-add-suspense-and-an-error-boundary).
+
+A `setVariables` call doesn't suspend again: the component keeps its previous data with `fetching: true` until the new result lands. Passing a new `variables` prop (not deeply equal to the previous one) reloads the query from scratch and suspends again.
+
+### Errors
+
+A failed request throws during render, to be caught by the nearest `ErrorBoundary`. Resetting the boundary retries the request. See [Errors](/errors).
+
+## useDeferredQuery
+
+Like `useQuery`, but nothing is sent on render: call the returned function to run the query. It fits data triggered by a user action, such as a search form.
+
+```tsx title="src/PostSearch.tsx"
+import { useState } from "react";
+import { useDeferredQuery } from "@zoontek/gql-client";
+import { graphql } from "./gql";
+
+const SearchPostsQuery = graphql(`
+  query SearchPosts($query: String!) {
+    searchPosts(query: $query) {
+      id
+      title
+    }
+  }
+`);
+
+const PostSearch = () => {
+  const [state, searchPosts] = useDeferredQuery(SearchPostsQuery);
+  const [query, setQuery] = useState("");
+
+  const onSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    searchPosts({ query });
+  };
+
+  return (
+    <div>
+      <form onSubmit={onSubmit}>
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <button type="submit" disabled={state.fetching}>
+          Search
+        </button>
+      </form>
+
+      {state.status === "success" && (
+        <ul>
+          {state.data.searchPosts.map((post) => (
+            <li key={post.id}>{post.title}</li>
+          ))}
+        </ul>
+      )}
+
+      {state.status === "error" && <div>{state.error.message}</div>}
+    </div>
+  );
+};
+```
+
+The state is a discriminated union, narrowed on `status`:
+
+```ts
+type DeferredQueryState<Data> =
+  | { fetching: false; status: "idle" }
+  | { fetching: true; status: "loading" }
+  | { fetching: false; status: "success"; data: Data }
+  | { fetching: false; status: "error"; error: ClientError };
+
+function useDeferredQuery<Data, Variables>(
+  query: TypedDocumentNode<Data, Variables>,
+): readonly [
+  DeferredQueryState<Data>,
+  (variables: Variables) => Promise<Data>,
+];
+```
+
+The query function returns a promise resolving with the response data. If called again before the previous call settles, only the latest call is reflected in `state`.
+
+The response is written into the cache, the same as `useQuery`, so other components reading the same data pick it up too.

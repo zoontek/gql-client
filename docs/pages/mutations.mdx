@@ -1,0 +1,131 @@
+# Mutations [Send mutations and update the cache with their results.]
+
+## useMutation
+
+Returns a `mutate` function and its current state. Nothing is sent until you call it.
+
+```tsx title="src/LikeButton.tsx"
+import { useMutation } from "@zoontek/gql-client";
+import { graphql } from "./gql";
+
+const LikePostMutation = graphql(`
+  mutation LikePost($postId: ID!) {
+    likePost(postId: $postId) {
+      post {
+        id
+        likeCount
+      }
+    }
+  }
+`);
+
+const LikeButton = ({ postId }: { postId: string }) => {
+  const [state, likePost] = useMutation(LikePostMutation);
+
+  return (
+    <button disabled={state.fetching} onClick={() => likePost({ postId })}>
+      Like
+    </button>
+  );
+};
+```
+
+The response is written into the normalized cache. Here, every component rendering this post's `likeCount` re-renders with the new value; no manual cache update needed. That's why a mutation should select the fields it changes, `id` included.
+
+The state is a discriminated union, narrowed on `status`:
+
+```ts
+type MutationState<Data> =
+  | { fetching: false; status: "idle" }
+  | { fetching: true; status: "loading" }
+  | { fetching: false; status: "success"; data: Data }
+  | { fetching: false; status: "error"; error: ClientError };
+
+function useMutation<Data, Variables>(
+  mutation: TypedDocumentNode<Data, Variables>,
+  config?: { connectionUpdates?: GetConnectionUpdate<Data, Variables>[] },
+): readonly [MutationState<Data>, (variables: Variables) => Promise<Data>];
+```
+
+The `mutate` function returns a promise resolving with the response data, so you can also handle the result inline:
+
+```ts
+try {
+  const data = await likePost({ postId });
+} catch (error) {
+  // error is a ClientError
+}
+```
+
+If called again before the previous call settles, only the latest call is reflected in `state`.
+
+## Updating connections
+
+Writing the response is enough to update existing objects. But a mutation doesn't know which cached [connections](/pagination) should gain or lose an edge. `connectionUpdates` fills that gap.
+
+Say a post has a paginated `commentsConnection`, and `post` is the value read from an earlier `useQuery`:
+
+```ts
+const AddCommentMutation = graphql(`
+  mutation AddComment($postId: ID!, $body: String!) {
+    addComment(postId: $postId, body: $body) {
+      comment {
+        id
+        body
+      }
+    }
+  }
+`);
+
+useMutation(AddCommentMutation, {
+  connectionUpdates: [
+    ({ data, append }) =>
+      data.addComment?.comment == null
+        ? undefined
+        : append(post.commentsConnection, [
+            { __typename: "CommentEdge", node: data.addComment.comment },
+          ]),
+  ],
+});
+
+const DeleteCommentMutation = graphql(`
+  mutation DeleteComment($commentId: ID!) {
+    deleteComment(commentId: $commentId) {
+      deletedCommentId
+    }
+  }
+`);
+
+useMutation(DeleteCommentMutation, {
+  connectionUpdates: [
+    ({ data, variables, remove }) =>
+      data.deleteComment == null
+        ? undefined
+        : remove(post.commentsConnection, [variables.commentId]),
+  ],
+});
+```
+
+Each entry is called with the mutation's `data` and `variables`, plus three helpers:
+
+- `prepend(connection, edges)`: adds `edges` before the existing ones.
+- `append(connection, edges)`: adds `edges` after the existing ones.
+- `remove(connection, ids)`: drops the edges whose node `id` is in `ids`.
+
+Return a helper's result to describe the change, or `undefined` to leave the connection as-is.
+
+```ts
+type GetConnectionUpdate<Data, Variables> = (config: {
+  data: Data;
+  variables: Variables;
+  prepend: <A>(
+    connection: Connection<A>,
+    edges: Edge<A>[],
+  ) => ConnectionUpdate<A>;
+  append: <A>(
+    connection: Connection<A>,
+    edges: Edge<A>[],
+  ) => ConnectionUpdate<A>;
+  remove: <A>(connection: Connection<A>, ids: string[]) => ConnectionUpdate<A>;
+}) => ConnectionUpdate<unknown> | undefined;
+```

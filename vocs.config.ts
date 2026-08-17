@@ -23,20 +23,13 @@ export default defineConfig({
     {
       text: "Guides",
       items: [
+        { text: "Queries", link: "/queries" },
+        { text: "Mutations", link: "/mutations" },
         { text: "Caching", link: "/caching" },
         { text: "Pagination", link: "/pagination" },
+        { text: "Authentication", link: "/authentication" },
         { text: "Refetching", link: "/refetching" },
         { text: "Server-side rendering", link: "/server-side-rendering" },
-      ],
-    },
-    {
-      text: "Hooks",
-      items: [
-        { text: "useQuery", link: "/use-query" },
-        { text: "useDeferredQuery", link: "/use-deferred-query" },
-        { text: "useMutation", link: "/use-mutation" },
-        { text: "useForwardPagination", link: "/use-forward-pagination" },
-        { text: "useBackwardPagination", link: "/use-backward-pagination" },
       ],
     },
     {

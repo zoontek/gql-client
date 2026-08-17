@@ -1,19 +1,19 @@
 # Errors [The ClientError thrown by queries and mutations.]
 
-## `ClientError`
+Every failed request throws a `ClientError`, never a raw `fetch` or parsing exception. Its `reason` field tells you what went wrong:
 
-`Client#mutate`, `Client#query`, `useQuery`, and `useMutation` all fail the same way: with a `ClientError`, never a raw `fetch` or parsing exception. Its `reason` field tells you what went wrong:
+| `reason`    | Meaning                                                          |
+| ----------- | ---------------------------------------------------------------- |
+| `graphQL`   | The response came back with a top-level `errors` array.          |
+| `malformed` | The response body wasn't valid GraphQL JSON.                     |
+| `network`   | The request couldn't reach the server.                           |
+| `options`   | The client's `requestOptions` function threw or rejected.        |
+| `status`    | The response status was outside the `200`-`299` range.           |
+| `timeout`   | The request took longer than the client's configured `timeout`.  |
 
-| `reason`    | Meaning                                                         |
-| ----------- | --------------------------------------------------------------- |
-| `graphQL`   | The response came back with a top-level `errors` array.         |
-| `malformed` | The response body wasn't valid GraphQL JSON.                    |
-| `network`   | The request couldn't reach the server.                          |
-| `options`   | The client's `requestOptions` function threw or rejected.       |
-| `status`    | The response status was outside the `200`-`299` range.          |
-| `timeout`   | The request took longer than the client's configured `timeout`. |
+In `useQuery`, the error is thrown during render, to be caught by an `ErrorBoundary`. In `useDeferredQuery` and `useMutation`, it lands in `state.error` (and rejects the returned promise).
 
-### Usage
+## Usage
 
 ```ts
 import { ClientError } from "@zoontek/gql-client";
@@ -27,7 +27,7 @@ try {
 }
 ```
 
-### Shape
+## Shape
 
 ```ts
 class ClientError extends Error {
@@ -38,16 +38,19 @@ class ClientError extends Error {
 }
 
 type ClientErrorReason =
-  "graphQL" | "malformed" | "network" | "options" | "status" | "timeout";
+  | "graphQL"
+  | "malformed"
+  | "network"
+  | "options"
+  | "status"
+  | "timeout";
 ```
 
-### Properties
+| Property        | Description                                                              |
+| --------------- | ------------------------------------------------------------------------ |
+| `reason`        | Why the request failed, as listed above.                                 |
+| `url`           | The request URL.                                                         |
+| `response`      | The raw `fetch` response, when one was received.                         |
+| `graphQLErrors` | The parsed `errors` array. Only populated when `reason` is `"graphQL"`.  |
 
-| Property        | Type                    | Description                                                             |
-| --------------- | ----------------------- | ----------------------------------------------------------------------- |
-| `reason`        | `ClientErrorReason`     | Why the request failed, as listed above.                                |
-| `url`           | `string`                | The request URL.                                                        |
-| `response`      | `Response \| undefined` | The raw `fetch` response, when one was received.                        |
-| `graphQLErrors` | `GraphQLError[]`        | The parsed `errors` array. Only populated when `reason` is `"graphQL"`. |
-
-`graphQLErrors` holds instances of `GraphQLError` from [`@0no-co/graphql.web`](https://github.com/0no-co/graphql-web), a dependency of this package. Import the type from there if you need to annotate it yourself.
+`graphQLErrors` holds instances of `GraphQLError` from [`@0no-co/graphql.web`](https://github.com/0no-co/graphql-web), a dependency of this package.

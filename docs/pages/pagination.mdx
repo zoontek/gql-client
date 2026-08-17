@@ -1,16 +1,19 @@
-# Pagination [Fetch paginated connections and merge new pages into them.]
+# Pagination [Fetch pages of a connection and merge them into one list.]
 
-Fetching a page of a connection is a normal query, with `first`/`after` (or `last`/`before`) variables. `useQuery`'s `setVariables` fetches the next page in place instead of reloading the whole query, and `useForwardPagination` / `useBackwardPagination` stitch the pages together into one connection.
+Fetching a page of a [Relay-style connection](https://relay.dev/graphql/connections.htm) is a normal query with `first`/`after` (or `last`/`before`) variables. Two pieces make it incremental:
 
-## A paginated list
+- `setVariables` (from [`useQuery`](/queries#usequery)) fetches the next page in place, instead of reloading the whole query.
+- `useForwardPagination` / `useBackwardPagination` stitch the fetched pages into one connection.
 
-```tsx title="src/FilmList.tsx"
+## Forward pagination
+
+```tsx title="src/PostList.tsx"
 import { useQuery, useForwardPagination } from "@zoontek/gql-client";
 import { graphql } from "./gql";
 
-const AllFilmsQuery = graphql(`
-  query AllFilms($first: Int!, $after: String) {
-    allFilms(first: $first, after: $after) {
+const PostsQuery = graphql(`
+  query Posts($first: Int!, $after: String) {
+    posts(first: $first, after: $after) {
       edges {
         node {
           id
@@ -25,12 +28,12 @@ const AllFilmsQuery = graphql(`
   }
 `);
 
-const FilmList = () => {
-  const [{ data, fetching }, { setVariables }] = useQuery(AllFilmsQuery, {
-    first: 3,
+const PostList = () => {
+  const [{ data, fetching }, { setVariables }] = useQuery(PostsQuery, {
+    first: 10,
   });
 
-  const connection = useForwardPagination(data.allFilms);
+  const connection = useForwardPagination(data.posts);
 
   return (
     <>
@@ -55,11 +58,79 @@ const FilmList = () => {
 };
 ```
 
-`setVariables({ after })` alone would only make `data.allFilms` hold the new page. `useForwardPagination` is what keeps the earlier edges around and appends the new ones as they arrive. See [useForwardPagination](/use-forward-pagination) and [useBackwardPagination](/use-backward-pagination) for the full reference.
+`setVariables({ after })` alone would make `data.posts` hold only the new page. `useForwardPagination` keeps the earlier edges around and appends the new ones as they arrive.
 
-## Connection and Edge types
+## Backward pagination
 
-The pagination hooks work on any object matching these shapes, exported for use in your own type annotations:
+Same idea with `last`/`before` variables and `useBackwardPagination`, which prepends each new page instead. Useful for chat-like lists:
+
+```tsx title="src/Comments.tsx"
+import { useQuery, useBackwardPagination } from "@zoontek/gql-client";
+import { graphql } from "./gql";
+
+const CommentsQuery = graphql(`
+  query Comments($postId: ID!, $last: Int!, $before: String) {
+    post(id: $postId) {
+      id
+      commentsConnection(last: $last, before: $before) {
+        edges {
+          node {
+            id
+            body
+          }
+        }
+        pageInfo {
+          hasPreviousPage
+          startCursor
+        }
+      }
+    }
+  }
+`);
+
+const Comments = ({ postId }: { postId: string }) => {
+  const [{ data, fetching }, { setVariables }] = useQuery(CommentsQuery, {
+    postId,
+    last: 10,
+  });
+
+  const connection = useBackwardPagination(data.post?.commentsConnection);
+
+  return (
+    <>
+      {connection?.pageInfo.hasPreviousPage ? (
+        <button
+          disabled={fetching}
+          onClick={() =>
+            setVariables({ before: connection.pageInfo.startCursor })
+          }
+        >
+          Load earlier comments
+        </button>
+      ) : null}
+
+      <ul>
+        {connection?.edges?.map((edge) =>
+          edge?.node == null ? null : (
+            <li key={edge.node.id}>{edge.node.body}</li>
+          ),
+        )}
+      </ul>
+    </>
+  );
+};
+```
+
+## Signature
+
+Both hooks take the connection from a query result and return it unchanged until a new page for it shows up in the cache. Then they return the accumulated result, pages joined end-to-end.
+
+```ts
+function useForwardPagination<A, T extends Connection<A>>(connection: T): T;
+function useBackwardPagination<A, T extends Connection<A>>(connection: T): T;
+```
+
+They work on any object matching these exported types:
 
 ```ts
 type Edge<T> = {
@@ -82,6 +153,6 @@ type Connection<T> =
   | undefined;
 ```
 
-## Beyond loading more pages
+## Beyond loading pages
 
-A connection can also change because of a mutation, not just a page load, e.g. a newly created item that should appear in a list. See [useMutation: Updating connections](/use-mutation#updating-connections).
+A connection can also change because of a mutation, e.g. a newly created item that should appear in a list. See [Mutations: Updating connections](/mutations#updating-connections).
