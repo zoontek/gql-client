@@ -17,6 +17,9 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Generate example code
+        run: bun run codegen
+
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium
 

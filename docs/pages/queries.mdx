@@ -126,10 +126,7 @@ type DeferredQueryState<Data> =
 
 function useDeferredQuery<Data, Variables>(
   query: TypedDocumentNode<Data, Variables>,
-): readonly [
-  DeferredQueryState<Data>,
-  (variables: Variables) => Promise<Data>,
-];
+): readonly [DeferredQueryState<Data>, (variables: Variables) => Promise<Data>];
 ```
 
 The query function returns a promise resolving with the response data. If called again before the previous call settles, only the latest call is reflected in `state`.
