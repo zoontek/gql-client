@@ -1,14 +1,19 @@
-import { type CodegenConfig } from "@graphql-codegen/cli";
+import type { CodegenConfig } from "@graphql-codegen/cli";
 
 const config: CodegenConfig = {
-  schema: "https://swapi-graphql.netlify.app/.netlify/functions/index",
+  schema: "https://swapi-graphql.netlify.app/graphql",
   documents: ["example/components/**/*.tsx"],
   generates: {
     "./example/gql/": {
       preset: "client",
+      config: {
+        useTypeImports: true,
+      },
     },
   },
-  hooks: { afterAllFileWrite: ["prettier --write"] },
+  hooks: {
+    afterAllFileWrite: ["oxfmt"],
+  },
 };
 
 export default config;

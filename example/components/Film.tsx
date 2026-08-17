@@ -1,4 +1,4 @@
-import { FragmentType, graphql, useFragment } from "../gql";
+import { graphql, useFragment, type FragmentType } from "../gql";
 
 const FilmFragment = graphql(`
   fragment FilmItem on Film {
@@ -17,6 +17,7 @@ type Props = {
 
 export const Film = ({ film: data, isActive, onPress }: Props) => {
   const film = useFragment(FilmFragment, data);
+
   return (
     <div
       className="Film"

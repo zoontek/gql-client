@@ -1,9 +1,9 @@
 {
-  "include": ["example", "src", "test"],
+  "include": ["example", "src", "tests", "playwright.config.ts"],
   "compilerOptions": {
-    "module": "ESNext",
-    "target": "ES2019",
-    "lib": ["DOM", "DOM.Iterable", "ES2019"],
+    "module": "esnext",
+    "target": "es2019",
+    "lib": ["DOM", "ES2019"],
     "jsx": "react-jsx",
     "outDir": "dist/",
     "types": ["bun"],
@@ -27,6 +27,10 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "resolveJsonModule": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+
+    "moduleResolution": "bundler",
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true
   }
 }

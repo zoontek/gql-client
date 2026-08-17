@@ -1,0 +1,70 @@
+# Server-side rendering [Prefetch on the server, hydrate in the browser without a refetch.]
+
+SSR works with a cache handoff:
+
+1. On the server, create a `Client` per request and prefetch with `client.query`.
+2. Render. Mounted queries read from the cache, so the render is synchronous.
+3. Embed `client.extract()` in the HTML. It returns script-safe JSON text.
+4. In the browser, load it with `client.restore()` before rendering. Queries hydrate from the cache instead of fetching again.
+
+Always create one `Client` per request on the server. A shared instance would mix the cached data of different users.
+
+## On the server
+
+```tsx title="server.tsx"
+import { Client } from "@zoontek/gql-client";
+import { renderToString } from "react-dom/server";
+import { App, PostsQuery } from "./App";
+import schemaConfig from "./schemaConfig.json";
+
+export const handleRequest = async (): Promise<string> => {
+  const client = new Client({
+    url: "https://api.example.com/graphql",
+    schemaConfig,
+  });
+
+  // Prefetch everything the page reads.
+  await client.query(PostsQuery, { first: 10 });
+
+  const html = renderToString(<App client={client} />);
+
+  return `<!doctype html>
+<html>
+  <body>
+    <div id="app">${html}</div>
+    <script>window.__GQL_CACHE__ = ${client.extract()};</script>
+    <script type="module" src="/index.js"></script>
+  </body>
+</html>`;
+};
+```
+
+## In the browser
+
+```tsx title="src/index.tsx"
+import { Client } from "@zoontek/gql-client";
+import { hydrateRoot } from "react-dom/client";
+import { App } from "./App";
+import schemaConfig from "./schemaConfig.json";
+
+const client = new Client({
+  url: "https://api.example.com/graphql",
+  schemaConfig,
+});
+
+// Load the server-fetched data before rendering.
+client.restore(window.__GQL_CACHE__);
+
+const root = document.querySelector("#app");
+
+if (root != null) {
+  hydrateRoot(root, <App client={client} />);
+}
+```
+
+Queries whose data is in the restored cache render immediately. Queries the server did not prefetch suspend and fetch as usual.
+
+## Details
+
+- `extract()` escapes every `<`, so the string is safe to inline in a `<script>` tag.
+- `restore()` accepts the string, or the object it evaluates to when inlined (as `window.__GQL_CACHE__` above). Call it once, before rendering, on a client that hasn't fetched anything yet.

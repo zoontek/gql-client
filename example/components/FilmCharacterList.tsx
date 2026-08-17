@@ -1,5 +1,5 @@
 import { useForwardPagination } from "../../src";
-import { FragmentType, graphql, useFragment } from "../gql";
+import { graphql, useFragment, type FragmentType } from "../gql";
 
 const FilmCharactersConnectionFragment = graphql(`
   fragment FilmCharactersConnection on FilmCharactersConnection {
@@ -19,13 +19,13 @@ const FilmCharactersConnectionFragment = graphql(`
 type Props = {
   characters: FragmentType<typeof FilmCharactersConnectionFragment>;
   onNextPage: (cursor: string | null) => void;
-  isLoadingMore: boolean;
+  fetchingMore: boolean;
 };
 
 export const FilmCharacterList = ({
   characters,
   onNextPage,
-  isLoadingMore,
+  fetchingMore,
 }: Props) => {
   const connection = useForwardPagination(
     useFragment(FilmCharactersConnectionFragment, characters),
@@ -39,23 +39,17 @@ export const FilmCharacterList = ({
     <>
       <ul>
         {connection.edges.map((edge) => {
-          if (edge == null) {
-            return null;
-          }
-          const node = edge.node;
-          if (node == null) {
-            return null;
-          }
-          return <li key={node.id}>{node.name}</li>;
+          const node = edge?.node;
+          return node == null ? null : <li key={node.id}>{node.name}</li>;
         })}
       </ul>
 
-      {isLoadingMore ? <div>Loading more</div> : null}
+      {fetchingMore ? <div>Fetching more</div> : null}
 
       {connection.pageInfo.hasNextPage ? (
         <button
           onClick={() => onNextPage(connection.pageInfo.endCursor ?? null)}
-          disabled={isLoadingMore}
+          disabled={fetchingMore}
         >
           Load more
         </button>

@@ -1,0 +1,120 @@
+# Getting started [A simple, typesafe GraphQL client for React.]
+
+`@zoontek/gql-client` sends queries over HTTP and normalizes responses into an in-memory cache. Components read from that cache through a small set of hooks: [`useQuery`](/queries), [`useDeferredQuery`](/queries#usedeferredquery), [`useMutation`](/mutations), and [pagination helpers](/pagination). It works with React DOM and React Native.
+
+## Requirements
+
+- React `>=19.2.0`.
+- A `TypedDocumentNode<Data, Variables>` for each operation. Generate these with [GraphQL Code Generator](https://the-guild.dev/graphql/codegen) or [gql.tada](https://gql-tada.0no.co/), so `data` and `variables` are typed for free.
+
+## 1. Install
+
+:::code-group
+
+```bash [npm]
+npm install @zoontek/gql-client
+```
+
+```bash [pnpm]
+pnpm add @zoontek/gql-client
+```
+
+```bash [yarn]
+yarn add @zoontek/gql-client
+```
+
+```bash [bun]
+bun add @zoontek/gql-client
+```
+
+:::
+
+## 2. Generate the schema config
+
+The cache needs to know which concrete types implement each interface, to resolve fragment spreads like `... on Node { id }`. Generate that mapping once with the `gql-schema-config` CLI the package installs:
+
+```bash
+gql-schema-config <schema> <output>
+```
+
+- `schema`: a path to a local `.graphql` schema file, or the URL of a live GraphQL endpoint.
+- `output`: a file path, or a directory (writes `schemaConfig.json` inside it).
+
+```bash
+npx gql-schema-config https://api.example.com/graphql src/schemaConfig.json
+```
+
+Re-run it whenever your schema's interfaces change.
+
+## 3. Create the client
+
+Configure a `Client` and make it available to your app with `ClientProvider`:
+
+```tsx title="src/index.tsx"
+import { Client, ClientProvider } from "@zoontek/gql-client";
+import { createRoot } from "react-dom/client";
+import { App } from "./App";
+import schemaConfig from "./schemaConfig.json";
+
+const client = new Client({
+  url: "https://api.example.com/graphql",
+  schemaConfig,
+});
+
+const root = document.querySelector("#app");
+
+if (root != null) {
+  createRoot(root).render(
+    <ClientProvider value={client}>
+      <App />
+    </ClientProvider>,
+  );
+}
+```
+
+## 4. Add Suspense and an error boundary
+
+`useQuery` suspends while its first result loads, and throws request errors during render:
+
+```tsx title="src/App.tsx"
+import { Suspense } from "react";
+import { ErrorBoundary } from "react-error-boundary";
+
+<ErrorBoundary fallback={<h1>An error occurred</h1>}>
+  <Suspense fallback={<h1>Loading…</h1>}>
+    <App />
+  </Suspense>
+</ErrorBoundary>;
+```
+
+## 5. Write your first query
+
+```tsx title="src/Post.tsx"
+import { useQuery } from "@zoontek/gql-client";
+import { graphql } from "./gql";
+
+const PostQuery = graphql(`
+  query Post($postId: ID!) {
+    post(id: $postId) {
+      id
+      title
+      body
+    }
+  }
+`);
+
+const Post = ({ postId }: { postId: string }) => {
+  const [{ data }] = useQuery(PostQuery, { postId });
+
+  return data.post == null ? (
+    <div>Post not found</div>
+  ) : (
+    <article>
+      <h1>{data.post.title}</h1>
+      <p>{data.post.body}</p>
+    </article>
+  );
+};
+```
+
+One tip: query `id` on every object type that has one, even if you don't render it. The cache uses it to identify objects. See [Caching](/caching).

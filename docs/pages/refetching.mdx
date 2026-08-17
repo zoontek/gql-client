@@ -1,0 +1,82 @@
+# Refetching [Refresh queries when data may be stale.]
+
+Two levels:
+
+- `useQuery`'s `refetch` action re-sends one query. See [Queries](/queries#usequery).
+- `client.refetch()` re-sends every mounted query and writes the fresh responses into the cache.
+
+`client.refetch()` fits the "whole screen may be stale" moments: the user returns to your tab, the app comes back to the foreground, the network reconnects. Components keep showing their current data until each response arrives. The same query mounted several times is sent once. A failed request leaves its components on cached data. The returned promise resolves once every request has settled.
+
+## On the web
+
+Refetch when the user comes back to your tab, with the [Page Visibility API](https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API):
+
+```ts title="src/client.ts"
+import { Client } from "@zoontek/gql-client";
+import schemaConfig from "./schemaConfig.json";
+
+export const client = new Client({
+  url: "https://api.example.com/graphql",
+  schemaConfig,
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    void client.refetch();
+  }
+});
+```
+
+## On React Native
+
+Refetch when the app returns to the foreground, with [`AppState`](https://reactnative.dev/docs/appstate):
+
+```ts title="src/client.ts"
+import { Client } from "@zoontek/gql-client";
+import { AppState } from "react-native";
+import schemaConfig from "./schemaConfig.json";
+
+export const client = new Client({
+  url: "https://api.example.com/graphql",
+  schemaConfig,
+});
+
+AppState.addEventListener("change", (status) => {
+  if (status === "active") {
+    void client.refetch();
+  }
+});
+```
+
+## Pull to refresh
+
+`client.refetch()` resolves once every request has settled, which maps directly to a refresh indicator:
+
+```tsx title="src/PostsScreen.tsx"
+import { useClient } from "@zoontek/gql-client";
+import { useCallback, useState } from "react";
+import { RefreshControl, ScrollView } from "react-native";
+
+const PostsScreen = () => {
+  const client = useClient();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+
+    void client.refetch().finally(() => {
+      setRefreshing(false);
+    });
+  }, [client]);
+
+  return (
+    <ScrollView
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
+      {/* ... */}
+    </ScrollView>
+  );
+};
+```

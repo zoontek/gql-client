@@ -1,5 +1,5 @@
-import { Option } from "@bloodyowl/boxed";
-import { useState } from "react";
+import { Suspense, useState } from "react";
+
 import { useQuery } from "../../src";
 import { graphql } from "../gql";
 import { FilmDetails } from "./FilmDetails";
@@ -14,61 +14,41 @@ const AllFilmsQuery = graphql(`
 `);
 
 export const App = () => {
-  const [optimize, setOptimize] = useState(false);
-  const [activeFilm, setActiveFilm] = useState<Option<string>>(Option.None());
+  const [activeFilm, setActiveFilm] = useState<string | undefined>(undefined);
 
-  const [data, { isLoading, setVariables }] = useQuery(
-    AllFilmsQuery,
-    { first: 3 },
-    { optimize },
-  );
+  const [{ data, fetching }, { setVariables }] = useQuery(AllFilmsQuery, {
+    first: 3,
+  });
+
+  const { allFilms } = data;
 
   return (
     <div className="App">
-      {data.match({
-        NotAsked: () => null,
-        Loading: () => <div>Loading ...</div>,
-        Done: (result) =>
-          result.match({
-            Error: () => <div>An error occured</div>,
-            Ok: ({ allFilms }) => {
-              if (allFilms == null) {
-                return <div>No films</div>;
-              }
-              return (
-                <div className="Main">
-                  <div className="Sidebar">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={optimize}
-                        onChange={() => setOptimize((x) => !x)}
-                      />
-                      Optimize
-                    </label>
-                    <FilmList
-                      films={allFilms}
-                      onNextPage={(after) => setVariables({ after })}
-                      isLoadingMore={isLoading}
-                      activeFilm={activeFilm}
-                      onPressFilm={(filmId: string) =>
-                        setActiveFilm(Option.Some(filmId))
-                      }
-                    />
-                  </div>
-                  <div className="Contents">
-                    {activeFilm.match({
-                      None: () => <div>No film selected</div>,
-                      Some: (filmId) => (
-                        <FilmDetails filmId={filmId} optimize={optimize} />
-                      ),
-                    })}
-                  </div>
-                </div>
-              );
-            },
-          }),
-      })}
+      <div className="Main">
+        <div className="Sidebar">
+          {allFilms == null ? (
+            <div>No films</div>
+          ) : (
+            <FilmList
+              films={allFilms}
+              onNextPage={(after) => setVariables({ after })}
+              fetchingMore={fetching}
+              activeFilm={activeFilm}
+              onPressFilm={(filmId: string) => setActiveFilm(filmId)}
+            />
+          )}
+        </div>
+
+        <div className="Contents">
+          {activeFilm === undefined ? (
+            <div>No film selected</div>
+          ) : (
+            <Suspense fallback={<h1>Fetching…</h1>}>
+              <FilmDetails filmId={activeFilm} />
+            </Suspense>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

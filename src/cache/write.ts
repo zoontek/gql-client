@@ -1,180 +1,221 @@
 import {
   Kind,
-  OperationTypeNode,
-  type DocumentNode,
   type FieldNode,
   type SelectionSetNode,
 } from "@0no-co/graphql.web";
+import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
+
 import {
   extractArguments,
   getFieldName,
   getFieldNameWithArguments,
+  getOperationDefinition,
+  isExcluded,
 } from "../graphql/ast";
-import { getCacheEntryKey } from "../json/cacheEntryKey";
-import { CONNECTION_REF, isRecord, REQUESTED_KEYS } from "../utils";
-import { type ClientCache } from "./cache";
-import { createEmptyCacheEntry, type CacheEntry } from "./entry";
+import type { AnyVariables, JsonValue } from "../types";
+import { hasOwn, isRecord } from "../utils";
+import {
+  CONNECTION_REF,
+  getCacheKeyFromOperationNode,
+  REQUESTED_KEYS,
+} from "./keys";
+import {
+  isCacheEntryArrayItem,
+  type CacheEntry,
+  type ConnectionInfo,
+} from "./types";
+import { trackField } from "./watch";
 
-export const writeOperationToCache = (
-  cache: ClientCache,
-  document: DocumentNode,
-  response: unknown,
-  variables: Record<string, unknown>,
-) => {
-  const registerConnection = (
-    cacheEntry: CacheEntry,
-    pathInQuery: PropertyKey[],
-    fieldVariables: Record<string, unknown>,
-  ) => {
-    if (cacheEntry[CONNECTION_REF]) {
-      return;
-    }
-    const id = cache.registerConnectionInfo({
-      cacheEntry,
-      variables,
-      pathInQuery,
-      fieldVariables,
-      document,
-    });
-    cacheEntry[CONNECTION_REF] = id;
-  };
+export type WriteDeps = {
+  getOrCreateEntry: (cacheKey: symbol) => CacheEntry;
+  isTypeCompatible: (typename: string, typeCondition: string) => boolean;
+  linkCacheEntry: (
+    json: unknown,
+    existing: unknown,
+  ) => { entry: CacheEntry; stored: symbol | CacheEntry };
+  registerConnectionInfo: (info: ConnectionInfo) => number;
+};
 
-  const cacheField = (
-    field: FieldNode,
-    parentJson: Record<PropertyKey, unknown>,
-    parentCache: CacheEntry,
-    path: PropertyKey[],
-  ) => {
-    const originalFieldName = getFieldName(field);
-    const fieldNameWithArguments = getFieldNameWithArguments(field, variables);
-    const fieldValue = parentJson[originalFieldName];
-
-    if (parentCache[REQUESTED_KEYS] != undefined) {
-      parentCache[REQUESTED_KEYS].add(fieldNameWithArguments);
-    } else {
-      console.error(
-        `GraphQL Client cache error: ${path.join(".")} likely didn't query its \`id\` field`,
-      );
-    }
-
-    // either scalar type with no selection, or a null/undefined value
-    const subSelectionSet = field.selectionSet;
-    if (subSelectionSet === undefined || fieldValue == null) {
-      parentCache[fieldNameWithArguments] = fieldValue;
-      return;
-    }
-    // array with selection
-    if (Array.isArray(fieldValue)) {
-      const arrayCache =
-        parentCache[fieldNameWithArguments] ?? Array(fieldValue.length);
-      // @ts-expect-error it's an array
-      arrayCache.length = fieldValue.length;
-      if (parentCache[fieldNameWithArguments] == undefined) {
-        parentCache[fieldNameWithArguments] = arrayCache;
+export const createWriteOperation = (
+  deps: WriteDeps,
+): ((
+  document: TypedDocumentNode,
+  response: JsonValue,
+  variables: AnyVariables,
+  touched?: Map<object, Set<symbol>>,
+) => void) => {
+  return (
+    document: TypedDocumentNode,
+    response: JsonValue,
+    variables: AnyVariables,
+    touched?: Map<object, Set<symbol>>,
+  ): void => {
+    const registerConnection = (
+      cacheEntry: CacheEntry,
+      pathInQuery: PropertyKey[],
+      fieldVariables: AnyVariables,
+    ): void => {
+      if (cacheEntry[CONNECTION_REF] != null) {
+        return;
       }
-      fieldValue.forEach((item, index) => {
-        if (item == null) {
-          // @ts-expect-error It's fine
-          arrayCache[index] = item;
-          return;
-        }
-        const cacheKey = getCacheEntryKey(item);
-        const cacheEntry = cacheKey.map((key) =>
-          cache.getOrCreateEntry(key, createEmptyCacheEntry()),
-        );
-        const cacheObject = cacheEntry.getOr(
-          // @ts-expect-error It's fine
-          arrayCache[index] ?? createEmptyCacheEntry(),
-        ) as CacheEntry;
-
-        // @ts-expect-error It's fine
-        const cacheValueInParent = cacheKey.getOr(cacheObject);
-        // @ts-expect-error It's fine
-        arrayCache[index] = cacheValueInParent;
-
-        cacheSelectionSet(subSelectionSet, item, cacheObject, [
-          ...path,
-          originalFieldName,
-          index,
-        ]);
+      const id = deps.registerConnectionInfo({
+        cacheEntry,
+        variables,
+        pathInQuery,
+        fieldVariables,
+        document,
       });
-      return;
-    }
-    // object with selection
-    const record = fieldValue as Record<PropertyKey, unknown>;
-    const cacheKey = getCacheEntryKey(record);
-    const cacheEntry = cacheKey.map((key) =>
-      cache.getOrCreateEntry(key, createEmptyCacheEntry()),
-    );
-    const cacheObject = cacheEntry.getOr(
-      parentCache[fieldNameWithArguments] ?? createEmptyCacheEntry(),
-    ) as CacheEntry;
+      cacheEntry[CONNECTION_REF] = id;
+    };
 
-    // @ts-expect-error It's fine
-    const cacheValueInParent = cacheKey.getOr(cacheObject);
-    parentCache[fieldNameWithArguments] = cacheValueInParent;
+    const cacheField = (
+      field: FieldNode,
+      parentJson: Record<PropertyKey, unknown>,
+      parentCache: CacheEntry,
+      path: PropertyKey[],
+    ): void => {
+      const originalFieldName = getFieldName(field);
 
-    if (
-      typeof record.__typename === "string" &&
-      record.__typename.endsWith("Connection")
-    ) {
-      registerConnection(
-        cacheObject,
-        [...path, originalFieldName],
-        extractArguments(field, variables),
-      );
-    }
-
-    return cacheSelectionSet(subSelectionSet, record, cacheObject, [
-      ...path,
-      originalFieldName,
-    ]);
-  };
-
-  const cacheSelectionSet = (
-    selectionSet: SelectionSetNode,
-    json: Record<PropertyKey, unknown>,
-    cached: CacheEntry,
-    path: PropertyKey[],
-  ) => {
-    for (const selection of selectionSet.selections) {
-      switch (selection.kind) {
-        case Kind.INLINE_FRAGMENT:
-          cacheSelectionSet(selection.selectionSet, json, cached, path);
-          continue;
-        case Kind.FIELD:
-          cacheField(selection, json, cached, path);
-          continue;
-        default:
-          continue;
-      }
-    }
-  };
-
-  document.definitions.forEach((definition) => {
-    if (definition.kind === Kind.OPERATION_DEFINITION) {
-      // Root __typename can vary, but we can't guess it from the document alone
-      const operationName =
-        definition.operation === OperationTypeNode.QUERY
-          ? "Query"
-          : definition.operation === OperationTypeNode.SUBSCRIPTION
-            ? "Subscription"
-            : "Mutation";
-
-      if (!isRecord(response)) {
+      // Absent from the response (`@include`/`@skip` exclusion, or a field
+      // the server did not return): record nothing. Adding it to
+      // REQUESTED_KEYS or storing `undefined` would make later reads treat
+      // the missing value as cached and silently drop the field.
+      if (!hasOwn(parentJson, originalFieldName)) {
         return;
       }
 
-      const cacheEntry = cache.getOrCreateEntry(
-        Symbol.for(operationName),
-        createEmptyCacheEntry(),
+      const fieldNameWithArguments = getFieldNameWithArguments(
+        field,
+        variables,
       );
-      return cacheSelectionSet(
-        definition.selectionSet,
-        response,
-        cacheEntry as CacheEntry,
-        [],
+      const fieldValue = parentJson[originalFieldName];
+
+      if (parentCache[REQUESTED_KEYS] != null) {
+        parentCache[REQUESTED_KEYS].add(fieldNameWithArguments);
+      } else {
+        console.error(
+          `GraphQL Client cache error: ${path.join(".")} likely didn't query its \`id\` field`,
+        );
+      }
+
+      if (touched != null) {
+        trackField(touched, parentCache, fieldNameWithArguments);
+      }
+
+      const subSelectionSet = field.selectionSet;
+      if (subSelectionSet == null || fieldValue == null) {
+        parentCache[fieldNameWithArguments] = fieldValue;
+        return;
+      }
+      if (Array.isArray(fieldValue)) {
+        const existingArray = parentCache[fieldNameWithArguments];
+        const arrayCache: (symbol | CacheEntry | null)[] =
+          Array.isArray(existingArray) &&
+          existingArray.every(isCacheEntryArrayItem)
+            ? existingArray
+            : Array(fieldValue.length);
+        arrayCache.length = fieldValue.length;
+        if (parentCache[fieldNameWithArguments] == null) {
+          parentCache[fieldNameWithArguments] = arrayCache;
+        }
+        fieldValue.forEach((item, index) => {
+          if (item == null) {
+            arrayCache[index] = item;
+            return;
+          }
+          const { entry: cacheObject, stored } = deps.linkCacheEntry(
+            item,
+            arrayCache[index],
+          );
+          arrayCache[index] = stored;
+
+          // oxlint-disable-next-line no-use-before-define
+          cacheSelectionSet(subSelectionSet, item, cacheObject, [
+            ...path,
+            originalFieldName,
+            index,
+          ]);
+        });
+        return;
+      }
+      if (!isRecord(fieldValue)) {
+        return;
+      }
+      const record = fieldValue;
+      const { entry: cacheObject, stored } = deps.linkCacheEntry(
+        record,
+        parentCache[fieldNameWithArguments],
       );
+      parentCache[fieldNameWithArguments] = stored;
+
+      if (
+        typeof record.__typename === "string" &&
+        record.__typename.endsWith("Connection")
+      ) {
+        registerConnection(
+          cacheObject,
+          [...path, originalFieldName],
+          extractArguments(field, variables),
+        );
+      }
+
+      // oxlint-disable-next-line no-use-before-define
+      return cacheSelectionSet(subSelectionSet, record, cacheObject, [
+        ...path,
+        originalFieldName,
+      ]);
+    };
+
+    const cacheSelectionSet = (
+      selectionSet: SelectionSetNode,
+      json: Record<PropertyKey, unknown>,
+      cached: CacheEntry,
+      path: PropertyKey[],
+    ): void => {
+      for (const selection of selectionSet.selections) {
+        switch (selection.kind) {
+          case Kind.INLINE_FRAGMENT: {
+            const typeCondition = selection.typeCondition?.name.value;
+            const typename = json.__typename;
+
+            // Skip fragments whose fields the server did not include: a type
+            // condition incompatible with the response object, or an
+            // `@include`/`@skip` exclusion. Recording their fields would
+            // poison the entry's REQUESTED_KEYS.
+            if (
+              typeCondition != null &&
+              typeof typename === "string" &&
+              !deps.isTypeCompatible(typename, typeCondition)
+            ) {
+              continue;
+            }
+            if (isExcluded(selection, variables)) {
+              continue;
+            }
+
+            cacheSelectionSet(selection.selectionSet, json, cached, path);
+            continue;
+          }
+          case Kind.FIELD:
+            cacheField(selection, json, cached, path);
+            continue;
+          default:
+            continue;
+        }
+      }
+    };
+
+    const operation = getOperationDefinition(document);
+
+    if (operation == null || !isRecord(response)) {
+      return;
     }
-  });
+
+    // Root __typename can vary, but we can't guess it from the document alone
+    const cacheKey =
+      getCacheKeyFromOperationNode(operation) ?? Symbol.for("Mutation");
+
+    const cacheEntry = deps.getOrCreateEntry(cacheKey);
+    cacheSelectionSet(operation.selectionSet, response, cacheEntry, []);
+  };
 };

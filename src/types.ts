@@ -1,32 +1,23 @@
-import { DocumentNode } from "@0no-co/graphql.web";
+// From type-fest
+export type JsonObject = { [Key in string]: JsonValue };
+export type JsonArray = JsonValue[] | readonly JsonValue[];
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
 
-export interface DocumentTypeDecoration<TResult, TVariables> {
-  /**
-   * This type is used to ensure that the variables you pass in to the query are assignable to Variables
-   * and that the Result is assignable to whatever you pass your result to. The method is never actually
-   * implemented, but the type is valid because we list it as optional
-   */
-  __apiType?: (variables: TVariables) => TResult;
-}
+/** Variables shape accepted by `useQuery`, `useMutation`, and `Client#mutate`. */
+export type AnyVariables = Record<string, unknown>;
 
-export interface TypedDocumentNode<
-  TResult = {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    [key: string]: any;
-  },
-  TVariables = {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    [key: string]: any;
-  },
->
-  extends DocumentNode, DocumentTypeDecoration<TResult, TVariables> {}
-
+/** A Relay-style connection edge, wrapping a `node` of type `T`. */
 export type Edge<T> = {
   __typename?: string | null | undefined;
   cursor?: string | null | undefined;
   node?: T | null | undefined;
 };
 
+/**
+ * A Relay-style connection of `Edge<T>`s with cursor-based `pageInfo`, as
+ * used by `useForwardPagination` and `useBackwardPagination`.
+ */
 export type Connection<T> =
   | {
       edges?: (Edge<T> | null | undefined)[] | null | undefined;

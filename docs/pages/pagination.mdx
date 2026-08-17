@@ -1,0 +1,158 @@
+# Pagination [Fetch pages of a connection and merge them into one list.]
+
+Fetching a page of a [Relay-style connection](https://relay.dev/graphql/connections.htm) is a normal query with `first`/`after` (or `last`/`before`) variables. Two pieces make it incremental:
+
+- `setVariables` (from [`useQuery`](/queries#usequery)) fetches the next page in place, instead of reloading the whole query.
+- `useForwardPagination` / `useBackwardPagination` stitch the fetched pages into one connection.
+
+## Forward pagination
+
+```tsx title="src/PostList.tsx"
+import { useQuery, useForwardPagination } from "@zoontek/gql-client";
+import { graphql } from "./gql";
+
+const PostsQuery = graphql(`
+  query Posts($first: Int!, $after: String) {
+    posts(first: $first, after: $after) {
+      edges {
+        node {
+          id
+          title
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`);
+
+const PostList = () => {
+  const [{ data, fetching }, { setVariables }] = useQuery(PostsQuery, {
+    first: 10,
+  });
+
+  const connection = useForwardPagination(data.posts);
+
+  return (
+    <>
+      <ul>
+        {connection?.edges?.map((edge) =>
+          edge?.node == null ? null : (
+            <li key={edge.node.id}>{edge.node.title}</li>
+          ),
+        )}
+      </ul>
+
+      {connection?.pageInfo.hasNextPage ? (
+        <button
+          disabled={fetching}
+          onClick={() => setVariables({ after: connection.pageInfo.endCursor })}
+        >
+          Load more
+        </button>
+      ) : null}
+    </>
+  );
+};
+```
+
+`setVariables({ after })` alone would make `data.posts` hold only the new page. `useForwardPagination` keeps the earlier edges around and appends the new ones as they arrive.
+
+## Backward pagination
+
+Same idea with `last`/`before` variables and `useBackwardPagination`, which prepends each new page instead. Useful for chat-like lists:
+
+```tsx title="src/Comments.tsx"
+import { useQuery, useBackwardPagination } from "@zoontek/gql-client";
+import { graphql } from "./gql";
+
+const CommentsQuery = graphql(`
+  query Comments($postId: ID!, $last: Int!, $before: String) {
+    post(id: $postId) {
+      id
+      commentsConnection(last: $last, before: $before) {
+        edges {
+          node {
+            id
+            body
+          }
+        }
+        pageInfo {
+          hasPreviousPage
+          startCursor
+        }
+      }
+    }
+  }
+`);
+
+const Comments = ({ postId }: { postId: string }) => {
+  const [{ data, fetching }, { setVariables }] = useQuery(CommentsQuery, {
+    postId,
+    last: 10,
+  });
+
+  const connection = useBackwardPagination(data.post?.commentsConnection);
+
+  return (
+    <>
+      {connection?.pageInfo.hasPreviousPage ? (
+        <button
+          disabled={fetching}
+          onClick={() =>
+            setVariables({ before: connection.pageInfo.startCursor })
+          }
+        >
+          Load earlier comments
+        </button>
+      ) : null}
+
+      <ul>
+        {connection?.edges?.map((edge) =>
+          edge?.node == null ? null : (
+            <li key={edge.node.id}>{edge.node.body}</li>
+          ),
+        )}
+      </ul>
+    </>
+  );
+};
+```
+
+## Signature
+
+Both hooks take the connection from a query result and return it unchanged until a new page for it shows up in the cache. Then they return the accumulated result, pages joined end-to-end.
+
+```ts
+function useForwardPagination<A, T extends Connection<A>>(connection: T): T;
+function useBackwardPagination<A, T extends Connection<A>>(connection: T): T;
+```
+
+They work on any object matching these exported types:
+
+```ts
+type Edge<T> = {
+  __typename?: string | null | undefined;
+  cursor?: string | null | undefined;
+  node?: T | null | undefined;
+};
+
+type Connection<T> =
+  | {
+      edges?: (Edge<T> | null | undefined)[] | null | undefined;
+      pageInfo: {
+        hasPreviousPage?: boolean | null | undefined;
+        hasNextPage?: boolean | null | undefined;
+        endCursor?: string | null | undefined;
+        startCursor?: string | null | undefined;
+      };
+    }
+  | null
+  | undefined;
+```
+
+## Beyond loading pages
+
+A connection can also change because of a mutation, e.g. a newly created item that should appear in a list. See [Mutations: Updating connections](/mutations#updating-connections).

@@ -1,119 +1,50 @@
-import { AsyncData, Deferred, Future, Option, Result } from "@bloodyowl/boxed";
+import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
+import { useCallback, useState } from "react";
+
+import type { AnyVariables } from "../types";
+import { useClient } from "./context";
 import {
-  useCallback,
-  useContext,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
-import { RequestOverrides } from "../client";
-import { ClientError } from "../errors";
-import { TypedDocumentNode } from "../types";
-import { deepEqual } from "../utils";
-import { ClientContext } from "./ClientContext";
+  useAsyncOperation,
+  type AsyncOperationState,
+} from "./useAsyncOperation";
 
-export type DeferredQueryConfig = {
-  optimize?: boolean;
-  normalize?: boolean;
-  debounce?: number;
-};
+/**
+ * State of the query returned by `useDeferredQuery`. `status` narrows the
+ * shape: `data` is only present on `"success"`, `error` only on `"error"`.
+ * Reflects only the most recently started call to the query function.
+ */
+export type DeferredQueryState<Data> = AsyncOperationState<Data>;
 
-export type DeferredQueryExtraConfig = { overrides?: RequestOverrides };
-
-export type DeferredQuery<Data, Variables> = readonly [
-  AsyncData<Result<Data, ClientError>>,
-  {
-    query: (
-      variables: Variables,
-      config?: DeferredQueryExtraConfig,
-    ) => Future<Result<Data, ClientError>>;
-    reset: () => void;
-  },
+/** Return type of `useDeferredQuery`: a `[state, query]` tuple. */
+export type DeferredQuery<Data, Variables extends AnyVariables> = readonly [
+  DeferredQueryState<Data>,
+  (variables: NoInfer<Variables>) => Promise<Data>,
 ];
 
-export const useDeferredQuery = <Data, Variables>(
-  query: TypedDocumentNode<Data, Variables>,
-  { optimize = false, normalize = true, debounce }: DeferredQueryConfig = {},
+/**
+ * Returns a `query` function for `document` and its current
+ * `DeferredQueryState`. Unlike `useQuery`, the request isn't sent
+ * automatically: call `query` to send it. Calling `query` again before the
+ * first call resolves reflects only the most recently started call's result
+ * in `state`.
+ *
+ * @param document - The query document to run.
+ * @returns A `[state, query]` tuple; see `DeferredQuery`.
+ */
+export const useDeferredQuery = <Data, Variables extends AnyVariables>(
+  document: TypedDocumentNode<Data, Variables>,
 ): DeferredQuery<Data, Variables> => {
-  const client = useContext(ClientContext);
+  const client = useClient();
 
-  // Query should never change
-  const [stableQuery] = useState<TypedDocumentNode<Data, Variables>>(query);
+  const [stableDocument] = useState(document);
 
-  // Only break variables reference equality if not deeply equal
-  const [stableVariables, setStableVariables] = useState<Option<Variables>>(
-    Option.None(),
+  const run = useCallback(
+    (variables: Variables) =>
+      // An explicit call means "fetch now": replace a stored settled
+      // response, but still join a request already in flight.
+      client.query(stableDocument, variables, { refresh: true }),
+    [client, stableDocument],
   );
 
-  const timeoutRef = useRef<number | undefined>(undefined);
-
-  // Get data from cache
-  const getSnapshot = useCallback(() => {
-    return stableVariables.flatMap((variables) =>
-      client.readFromCache(stableQuery, variables, { normalize }),
-    );
-  }, [client, stableQuery, stableVariables, normalize]);
-
-  const data = useSyncExternalStore(
-    (func) => client.subscribe(func),
-    getSnapshot,
-  );
-
-  const asyncData = useMemo(() => {
-    return data
-      .map((value) => AsyncData.Done(value as Result<Data, ClientError>))
-      .getOr(AsyncData.NotAsked());
-  }, [data]);
-
-  const runQuery = useCallback(
-    (variables: Variables, { overrides }: DeferredQueryExtraConfig = {}) => {
-      setStableVariables((stableVariables) =>
-        stableVariables.match({
-          None: () => Option.Some(variables),
-          Some: (prevVariables) =>
-            deepEqual(prevVariables, variables)
-              ? stableVariables
-              : Option.Some(variables),
-        }),
-      );
-      return client
-        .request(stableQuery, variables, { optimize, overrides })
-        .tap(() => setIsQuerying(false));
-    },
-    [client, optimize, stableQuery],
-  );
-
-  const [isQuerying, setIsQuerying] = useState(false);
-  const exposedRunQuery = useCallback(
-    (variables: Variables, config?: DeferredQueryExtraConfig) => {
-      if (timeoutRef.current !== undefined) {
-        clearTimeout(timeoutRef.current);
-      }
-      setIsQuerying(true);
-      if (debounce === undefined) {
-        return runQuery(variables, config);
-      } else {
-        const [future, resolve] = Deferred.make<Result<Data, ClientError>>();
-        timeoutRef.current = window.setTimeout(
-          (variables: Variables) => {
-            runQuery(variables, config).tap(resolve);
-          },
-          debounce,
-          variables,
-        );
-        return future;
-      }
-    },
-    [runQuery, debounce],
-  );
-
-  const reset = useCallback(() => {
-    setIsQuerying(false);
-    setStableVariables(Option.None());
-  }, []);
-
-  const asyncDataToExpose = isQuerying ? AsyncData.Loading() : asyncData;
-
-  return [asyncDataToExpose, { query: exposedRunQuery, reset }];
+  return useAsyncOperation(run);
 };

@@ -1,24 +1,25 @@
 import { Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { Client, ClientContext } from "../src";
+import { ErrorBoundary } from "react-error-boundary";
+
+import { Client, ClientProvider } from "../src";
 import { App } from "./components/App";
-import schemaConfig from "./gql-config.json";
+import schemaConfig from "./schemaConfig.json";
 
 const client = new Client({
-  url: "https://swapi-graphql.eskerda.vercel.app",
-  headers: {
-    "Content-Type": "application/json",
-  },
+  url: "https://swapi-graphql.netlify.app/graphql",
   schemaConfig,
 });
 
 const Root = () => {
   return (
-    <ClientContext.Provider value={client}>
-      <Suspense fallback={<h1>Suspense loading</h1>}>
-        <App />
-      </Suspense>
-    </ClientContext.Provider>
+    <ClientProvider value={client}>
+      <ErrorBoundary fallback={<h1>An error occured</h1>}>
+        <Suspense fallback={<h1>Fetching…</h1>}>
+          <App />
+        </Suspense>
+      </ErrorBoundary>
+    </ClientProvider>
   );
 };
 

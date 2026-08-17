@@ -1,0 +1,27 @@
+# Caching [How the normalized cache stores and reads back query results.]
+
+`Client` keeps every response in a single normalized cache, shared by all queries. When another query already fetched the same data, `useQuery` reads it instantly. When a mutation updates an object, every query rendering it picks up the change.
+
+## How objects are identified
+
+The client adds `__typename` to every selection automatically. An object that also has a string `id` field is stored once, under a `Typename<id>` key, and every query reads from that single copy.
+
+An object without an `id` is stored inline instead, scoped to whichever cached parent holds it.
+
+This is why you should query `id` on any object type that has one, even if your component doesn't use it directly.
+
+## How fields are cached
+
+A field is stored under its closest `id`-keyed ancestor, or under the query root if there's none. A field called with arguments, like `commentsConnection(first: 5)`, is cached per set of arguments, so querying it with different arguments doesn't overwrite what's already cached.
+
+## Cache reads are all-or-nothing
+
+Reading a query from the cache only succeeds if every requested field is already cached. There's no partial resolution: a single missing field means a cache miss, and the query goes to the network.
+
+## Interfaces and unions
+
+Spreading a fragment on an interface or union, like `... on Node { id }`, requires knowing which concrete types implement it. That mapping isn't in the query document, which is why `Client` needs a `schemaConfig`, generated from your schema with [`gql-schema-config`](/#2-generate-the-schema-config).
+
+## Clearing the cache
+
+`client.purge()` drops everything and makes mounted queries fetch fresh data. Call it when all cached data must go, e.g. on logout.

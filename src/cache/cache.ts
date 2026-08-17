@@ -1,147 +1,196 @@
-import { DocumentNode } from "@0no-co/graphql.web";
-import { Array, Option, Result } from "@bloodyowl/boxed";
-import { getCacheEntryKey } from "../json/cacheEntryKey";
-import { Connection, Edge } from "../types";
+import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
+
+import type { AnyVariables, Connection, Edge, JsonValue } from "../types";
+import { filterMap } from "../utils";
 import {
   CONNECTION_REF,
+  CURSOR_KEY,
   EDGES_KEY,
   NODE_KEY,
-  REQUESTED_KEYS,
   TYPENAME_KEY,
-  containsAll,
-  isRecord,
-  serializeVariables,
-} from "../utils";
-import type { CacheEntry } from "./entry";
+  getCacheEntryKey,
+  getIdFromCacheKey,
+} from "./keys";
+import { createReadOperation } from "./read";
+import { decodeEntry, encodeEntry, type SerializedCache } from "./serialize";
+import {
+  MISS,
+  createEmptyCacheEntry,
+  isCacheEntry,
+  isCachedEdge,
+  type CacheEntry,
+  type CachedEdge,
+  type ConnectionInfo,
+  type SchemaConfig,
+} from "./types";
+import { trackField } from "./watch";
+import { createWriteOperation } from "./write";
 
-export type SchemaConfig = {
-  interfaceToTypes: Record<string, string[]>;
-};
-
-type ConnectionInfo = {
-  // useful for connection updates
-  cacheEntry: CacheEntry;
-  // to re-read from cache
-  document: DocumentNode;
-  variables: Record<string, unknown>;
-  pathInQuery: PropertyKey[];
-  fieldVariables: Record<string, unknown>;
-};
+export type { ConnectionInfo, SchemaConfig } from "./types";
 
 export class ClientCache {
-  cache = new Map<symbol, CacheEntry>();
-  operationCache = new Map<
-    DocumentNode,
-    Map<string, Option<Result<unknown, unknown>>>
-  >();
+  private cache = new Map<symbol, CacheEntry>();
+  private interfaceToType: Record<string, Set<string>>;
+  private connectionCache: Map<number, ConnectionInfo>;
+  private connectionRefCount = -1;
 
-  interfaceToType: Record<string, Set<string>>;
-  connectionCache: Map<number, ConnectionInfo>;
-  connectionRefCount = -1;
+  public readonly readOperation: <Data, Variables extends AnyVariables>(
+    document: TypedDocumentNode<Data, Variables>,
+    variables: Variables,
+    watched?: Map<object, Set<symbol>>,
+  ) => JsonValue | undefined;
 
-  constructor(schemaConfig: SchemaConfig) {
+  public readonly writeOperation: (
+    document: TypedDocumentNode,
+    response: JsonValue,
+    variables: AnyVariables,
+    touched?: Map<object, Set<symbol>>,
+  ) => void;
+
+  public constructor(schemaConfig: SchemaConfig) {
     this.interfaceToType = Object.fromEntries(
       Object.entries(schemaConfig.interfaceToTypes).map(([key, value]) => [
         key,
-        new Set(value),
+        new Set<string>(value),
       ]),
     );
     this.connectionCache = new Map<number, ConnectionInfo>();
+
+    this.readOperation = createReadOperation({
+      get: (cacheKey) => this.get(cacheKey),
+      isTypeCompatible: (typename, typeCondition) =>
+        this.isTypeCompatible(typename, typeCondition),
+    });
+
+    this.writeOperation = createWriteOperation({
+      getOrCreateEntry: (cacheKey) => this.getOrCreateEntry(cacheKey),
+      isTypeCompatible: (typename, typeCondition) =>
+        this.isTypeCompatible(typename, typeCondition),
+      linkCacheEntry: (json, existing) => this.linkCacheEntry(json, existing),
+      registerConnectionInfo: (info) => this.registerConnectionInfo(info),
+    });
   }
 
-  registerConnectionInfo(info: ConnectionInfo) {
+  // Drops every entry and registered connection. Exposed through
+  // `Client#purge`; see the rationale there.
+  public purge(): void {
+    this.cache = new Map();
+    this.connectionCache = new Map();
+    this.connectionRefCount = -1;
+  }
+
+  // Serializes every entry to a JSON-safe structure. Exposed through
+  // `Client#extract`; see the SSR flow there.
+  public extract(): SerializedCache {
+    return {
+      entries: [...this.cache].map(([key, entry]) => [
+        key.description ?? "",
+        encodeEntry(entry),
+      ]),
+    };
+  }
+
+  // Replaces the cache content with a previously extracted structure.
+  // Connection registrations are not restored: they hold live references
+  // (documents, entries) and are rebuilt when a response is written.
+  public restore(data: SerializedCache): void {
+    this.cache = new Map(
+      data.entries.map(([key, entry]) => [Symbol.for(key), decodeEntry(entry)]),
+    );
+    this.connectionCache = new Map();
+    this.connectionRefCount = -1;
+  }
+
+  public dump(): Map<symbol, CacheEntry> {
+    return this.cache;
+  }
+
+  public getCachedConnection(id: number): ConnectionInfo | undefined {
+    return this.connectionCache.get(id);
+  }
+
+  public registerConnectionInfo(info: ConnectionInfo): number {
     const id = ++this.connectionRefCount;
     this.connectionCache.set(id, info);
     return id;
   }
 
-  isTypeCompatible(typename: string, typeCondition: string) {
+  private isTypeCompatible(typename: string, typeCondition: string): boolean {
     if (typename === typeCondition) {
       return true;
     }
     const compatibleTypes = this.interfaceToType[typeCondition];
-    if (compatibleTypes == undefined) {
+    if (compatibleTypes == null) {
       return false;
     }
     return compatibleTypes.has(typename);
   }
 
-  dump() {
-    return this.cache;
+  // Raw map lookup, defaulting to the MISS sentinel. Shared by the read path
+  // (via `readOperation`'s injected `get`) and `mapEdgesToCacheEntries`.
+  private get(cacheKey: symbol): CacheEntry | typeof MISS {
+    const entry = this.cache.get(cacheKey);
+    return entry == null ? MISS : entry;
   }
 
-  getOperationFromCache(
-    documentNode: DocumentNode,
-    variables: Record<string, unknown>,
-  ) {
-    const serializedVariables = serializeVariables(variables);
-    return Option.fromNullable(this.operationCache.get(documentNode))
-      .flatMap((cache) => Option.fromNullable(cache.get(serializedVariables)))
-      .flatMap((value) => value);
-  }
+  private getOrCreateEntry(cacheKey: symbol): CacheEntry {
+    const cached = this.cache.get(cacheKey);
 
-  setOperationInCache(
-    documentNode: DocumentNode,
-    variables: Record<string, unknown>,
-    data: Result<unknown, unknown>,
-  ) {
-    const serializedVariables = serializeVariables(variables);
-    const documentCache = Option.fromNullable(
-      this.operationCache.get(documentNode),
-    ).getOr(new Map());
-    documentCache.set(serializedVariables, Option.Some(data));
-    this.operationCache.set(documentNode, documentCache);
-  }
-
-  getFromCache(cacheKey: symbol, requestedKeys: Set<symbol>) {
-    return this.get(cacheKey).flatMap((entry) => {
-      if (isRecord(entry)) {
-        if (containsAll(entry[REQUESTED_KEYS] as Set<symbol>, requestedKeys)) {
-          return Option.Some(entry);
-        } else {
-          return Option.None();
-        }
-      } else {
-        return Option.Some(entry);
-      }
-    });
-  }
-
-  getFromCacheWithoutKey(cacheKey: symbol) {
-    return this.get(cacheKey).flatMap((entry) => {
-      return Option.Some(entry);
-    });
-  }
-
-  get(cacheKey: symbol): Option<unknown> {
-    if (this.cache.has(cacheKey)) {
-      return Option.Some(this.cache.get(cacheKey));
-    } else {
-      return Option.None();
+    if (cached != null) {
+      return cached;
     }
-  }
 
-  getOrCreateEntry(cacheKey: symbol, defaultValue: CacheEntry): unknown {
-    if (this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey) as unknown;
-    } else {
-      const entry = defaultValue;
-      this.cache.set(cacheKey, entry);
-      return entry;
-    }
-  }
-
-  set(cacheKey: symbol, entry: CacheEntry) {
+    const entry = createEmptyCacheEntry();
     this.cache.set(cacheKey, entry);
+    return entry;
   }
 
-  updateConnection<A>(
+  // Resolves the cache entry for a nested object (creating it if needed), and
+  // the value to store in the parent: a shared symbol key for identifiable
+  // entities (so they get deduplicated and updated in one place), or the
+  // inline entry otherwise. `existing` is the parent's current slot, reused
+  // for keyless entries.
+  private linkCacheEntry(
+    json: unknown,
+    existing: unknown,
+  ): { entry: CacheEntry; stored: symbol | CacheEntry } {
+    const cacheKey = getCacheEntryKey(json);
+    const entry =
+      cacheKey != null
+        ? this.getOrCreateEntry(cacheKey)
+        : isCacheEntry(existing)
+          ? existing
+          : createEmptyCacheEntry();
+    return { entry, stored: cacheKey ?? entry };
+  }
+
+  private mapEdgesToCacheEntries<A>(edges: Edge<A>[]): CachedEdge[] {
+    return filterMap(edges, ({ node, __typename, cursor }) => {
+      const key = getCacheEntryKey(node);
+      // No need to check requested fields here: `Connection<A>` already
+      // constrains which fields exist on a node.
+      if (key == null || this.get(key) === MISS) {
+        return undefined;
+      }
+      // Preserve `cursor` alongside the node reference. Without it, a query that
+      // selects `edges { cursor ... }` reads the synthesized edge as a miss and
+      // the whole connection read fails.
+      return {
+        [TYPENAME_KEY]: __typename,
+        [NODE_KEY]: key,
+        [CURSOR_KEY]: cursor,
+      };
+    });
+  }
+
+  public updateConnection<A>(
     connection: Connection<A>,
     config:
       | { prepend: Edge<A>[] }
       | { append: Edge<A>[] }
       | { remove: string[] },
-  ) {
+    touched?: Map<object, Set<symbol>>,
+  ): void {
     if (connection == null) {
       return;
     }
@@ -149,55 +198,51 @@ export class ClientCache {
       CONNECTION_REF in connection &&
       typeof connection[CONNECTION_REF] === "number"
     ) {
-      const connectionConfig = this.connectionCache.get(
+      const connectionConfig = this.getCachedConnection(
         connection[CONNECTION_REF],
       );
       if (connectionConfig == null) {
         return;
       }
 
+      // `edges` may not be cached at all (e.g. the connection was queried with
+      // only `pageInfo`, or its edges haven't resolved yet), so default to an
+      // empty list rather than spreading/filtering `undefined`. Items that
+      // aren't cached edges (a `null` edge, a node cached without an id) are
+      // kept in place; only `remove` needs to identify individual edges.
+      const cachedEdges = connectionConfig.cacheEntry[EDGES_KEY];
+      const currentEdges: unknown[] = Array.isArray(cachedEdges)
+        ? cachedEdges
+        : [];
+
+      if (touched != null) {
+        trackField(touched, connectionConfig.cacheEntry, EDGES_KEY);
+      }
+
       if ("prepend" in config) {
-        const edges = config.prepend;
         connectionConfig.cacheEntry[EDGES_KEY] = [
-          ...Array.filterMap(edges, ({ node, __typename }) =>
-            getCacheEntryKey(node).flatMap((key) =>
-              // we can omit the requested fields here because the Connection<A> contrains the fields
-              this.getFromCacheWithoutKey(key).map(() => ({
-                [TYPENAME_KEY]: __typename,
-                [NODE_KEY]: key,
-              })),
-            ),
-          ),
-          ...(connectionConfig.cacheEntry[EDGES_KEY] as unknown[]),
+          ...this.mapEdgesToCacheEntries(config.prepend),
+          ...currentEdges,
         ];
         return;
       }
 
       if ("append" in config) {
-        const edges = config.append;
         connectionConfig.cacheEntry[EDGES_KEY] = [
-          ...(connectionConfig.cacheEntry[EDGES_KEY] as unknown[]),
-          ...Array.filterMap(edges, ({ node, __typename }) =>
-            getCacheEntryKey(node).flatMap((key) =>
-              // we can omit the requested fields here because the Connection<A> contrains the fields
-              this.getFromCacheWithoutKey(key).map(() => ({
-                [TYPENAME_KEY]: __typename,
-                [NODE_KEY]: key,
-              })),
-            ),
-          ),
+          ...currentEdges,
+          ...this.mapEdgesToCacheEntries(config.append),
         ];
         return;
       }
-      const nodeIds = config.remove;
-      connectionConfig.cacheEntry[EDGES_KEY] = (
-        connectionConfig.cacheEntry[EDGES_KEY] as unknown[]
-      ).filter((edge) => {
-        // @ts-expect-error fine
-        const node = edge[NODE_KEY] as symbol;
-        return !nodeIds.some((nodeId) => {
-          return node.description?.includes(`<${nodeId}>`);
-        });
+
+      const nodeIds = new Set(config.remove);
+      connectionConfig.cacheEntry[EDGES_KEY] = currentEdges.filter((edge) => {
+        if (!isCachedEdge(edge)) {
+          return true;
+        }
+
+        const id = getIdFromCacheKey(edge[NODE_KEY]);
+        return id == null || !nodeIds.has(id);
       });
     }
   }
