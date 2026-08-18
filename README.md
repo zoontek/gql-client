@@ -83,6 +83,10 @@ const Post = ({ postId }: { postId: string }) => {
 
 The full setup (schema config generation, Suspense and error boundaries) is in the [getting started guide](https://zoontek.github.io/gql-client).
 
+## Credits
+
+This library is based on [@bloodyowl/graphql-client](https://github.com/bloodyowl/graphql-client).
+
 ## Links
 
 - 📕 [**Documentation**](https://zoontek.github.io/gql-client)
