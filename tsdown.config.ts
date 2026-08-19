@@ -4,7 +4,7 @@ export default defineConfig({
   platform: "browser",
   entry: "./src/**",
   outDir: "./dist",
-  deps: { skipNodeModulesBundle: true },
+  deps: { neverBundle: true },
   minify: false,
   sourcemap: true,
   target: false,
