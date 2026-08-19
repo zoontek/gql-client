@@ -1,7 +1,7 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-  platform: "browser",
+  platform: "neutral",
   entry: "./src/**",
   outDir: "./dist",
   deps: { neverBundle: true },

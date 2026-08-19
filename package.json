@@ -1,6 +1,6 @@
 {
   "name": "@zoontek/gql-client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A simple, typesafe GraphQL client for React",
   "keywords": [
     "cache",
