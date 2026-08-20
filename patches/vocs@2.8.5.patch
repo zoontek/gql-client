@@ -1,6 +1,9 @@
 diff --git a/node_modules/vocs/.bun-tag-411aa0c80b31b46d b/.bun-tag-411aa0c80b31b46d
 new file mode 100644
 index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/vocs/.bun-tag-a73c685c7981603d b/.bun-tag-a73c685c7981603d
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/dist/internal/path.d.ts b/dist/internal/path.d.ts
 index 11724ae17d9e46974bc432c31e4bd5eabeb6673e..c6df2888ed3f683d3c060aae1b4692ba5e66766a 100644
 --- a/dist/internal/path.d.ts
@@ -349,6 +352,21 @@ index c8c56a8c054964fcad68e2029a604bfaa3d72098..e804dce4f1c25c644af3cb896fb113c4
          }
          if (!text)
              return nextWithVary();
+diff --git a/dist/waku/internal/patches/adapters/node.js b/dist/waku/internal/patches/adapters/node.js
+index 3a9dfd395bfb1d33695d11e960c34454ae2ca08a..8897adeb31d492b504116b71b62fbc5b078460a1 100644
+--- a/dist/waku/internal/patches/adapters/node.js
++++ b/dist/waku/internal/patches/adapters/node.js
+@@ -43,7 +43,9 @@ const adapter = createServerEntryAdapter(({ processRequest, processBuild, config
+     for (const middlewareFn of middlewareFns)
+         app.use(middlewareFn({ app }));
+     app.use(middlewareRunner(typedMiddlewareModules, { app }));
+-    app.use(rscMiddleware({ processRequest }));
++    // Scoped to the base path so requests outside it (`/`, `/favicon.ico`) fall
++    // through to `notFound` instead of throwing in Waku's base-path stripping.
++    app.use(`${config.basePath}*`, rscMiddleware({ processRequest }));
+     return {
+         fetch: app.fetch,
+         build: processBuild,
 diff --git a/src/internal/path.ts b/src/internal/path.ts
 index 20e12cf9e60ee8e2dba1dfe594bcc1f8e92bd480..927b0de7138d000f72c6637d634b127335496059 100644
 --- a/src/internal/path.ts
@@ -657,3 +675,18 @@ index 31b6e3001c39b4d2490232d332ad1471859499a6..4dacbb30beeb2e2baf3f5a80a3d5c63a
      }
      if (!text) return nextWithVary()
  
+diff --git a/src/waku/internal/patches/adapters/node.ts b/src/waku/internal/patches/adapters/node.ts
+index c8322507b1d6622d199d14e0f782cbc3454340d6..014e9a0dd56b66b14e2f6f222a1c076cbe4df0b0 100644
+--- a/src/waku/internal/patches/adapters/node.ts
++++ b/src/waku/internal/patches/adapters/node.ts
+@@ -67,7 +67,9 @@ const adapter: typeof import('waku/adapters/node').default = createServerEntryAd
+       app.use(bodyLimit(bodyLimitOptions ?? { maxSize: DEFAULT_BODY_LIMIT_MAX_SIZE }))
+     for (const middlewareFn of middlewareFns) app.use(middlewareFn({ app }))
+     app.use(middlewareRunner(typedMiddlewareModules, { app }))
+-    app.use(rscMiddleware({ processRequest }))
++    // Scoped to the base path so requests outside it (`/`, `/favicon.ico`) fall
++    // through to `notFound` instead of throwing in Waku's base-path stripping.
++    app.use(`${config.basePath}*`, rscMiddleware({ processRequest }))
+ 
+     return {
+       fetch: app.fetch,
