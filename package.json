@@ -79,5 +79,8 @@
   },
   "peerDependencies": {
     "react": ">=19.2.0"
+  },
+  "patchedDependencies": {
+    "vocs@2.8.5": "patches/vocs@2.8.5.patch"
   }
 }

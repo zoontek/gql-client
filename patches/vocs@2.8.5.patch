@@ -1,0 +1,659 @@
+diff --git a/node_modules/vocs/.bun-tag-411aa0c80b31b46d b/.bun-tag-411aa0c80b31b46d
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/dist/internal/path.d.ts b/dist/internal/path.d.ts
+index 11724ae17d9e46974bc432c31e4bd5eabeb6673e..c6df2888ed3f683d3c060aae1b4692ba5e66766a 100644
+--- a/dist/internal/path.d.ts
++++ b/dist/internal/path.d.ts
+@@ -20,5 +20,30 @@ export declare function compile(path: string, caseSensitive?: boolean, end?: boo
+  */
+ export declare function matches(pathname: string, target: string | undefined): false | RegExpMatchArray | null;
+ export declare function isExternal(url: string | undefined): boolean;
++/**
++ * Normalize a base path into a prefix that can be concatenated with a
++ * root-absolute path. The root base path (`/`) yields an empty string.
++ *
++ * @param basePath - The configured base path (e.g. `/docs`, `/docs/`, `/`).
++ * @returns The prefix (e.g. `/docs`), or an empty string when there is none.
++ */
++export declare function basePathPrefix(basePath: string | undefined): string;
++/**
++ * Prefix a root-absolute path with the configured base path.
++ *
++ * @param pathname - The root-absolute path (e.g. `/assets/md/index.md`).
++ * @param basePath - The configured base path (e.g. `/docs`).
++ * @returns The prefixed path (e.g. `/docs/assets/md/index.md`).
++ */
++export declare function withBasePath(pathname: string, basePath: string | undefined): string;
++/**
++ * Remove the configured base path from a pathname, so it can be matched
++ * against base-path-agnostic routes and resolved against on-disk output.
++ *
++ * @param pathname - The incoming pathname (e.g. `/docs/assets/md/index.md`).
++ * @param basePath - The configured base path (e.g. `/docs`).
++ * @returns The pathname without the base path (e.g. `/assets/md/index.md`).
++ */
++export declare function stripBasePath(pathname: string, basePath: string | undefined): string;
+ export {};
+ //# sourceMappingURL=path.d.ts.map
+\ No newline at end of file
+diff --git a/dist/internal/path.js b/dist/internal/path.js
+index cc2ef7cac0f3ef27b28a9db736d527434e6b5691..04c49b99d30d62d527fa08f167cf8240a11689f2 100644
+--- a/dist/internal/path.js
++++ b/dist/internal/path.js
+@@ -53,4 +53,44 @@ export function isExternal(url) {
+         url.startsWith('mailto:') ||
+         url.startsWith('tel:'));
+ }
++/**
++ * Normalize a base path into a prefix that can be concatenated with a
++ * root-absolute path. The root base path (`/`) yields an empty string.
++ *
++ * @param basePath - The configured base path (e.g. `/docs`, `/docs/`, `/`).
++ * @returns The prefix (e.g. `/docs`), or an empty string when there is none.
++ */
++export function basePathPrefix(basePath) {
++    if (!basePath || basePath === '/')
++        return '';
++    return basePath.endsWith('/') ? basePath.slice(0, -1) : basePath;
++}
++/**
++ * Prefix a root-absolute path with the configured base path.
++ *
++ * @param pathname - The root-absolute path (e.g. `/assets/md/index.md`).
++ * @param basePath - The configured base path (e.g. `/docs`).
++ * @returns The prefixed path (e.g. `/docs/assets/md/index.md`).
++ */
++export function withBasePath(pathname, basePath) {
++    return `${basePathPrefix(basePath)}${pathname}`;
++}
++/**
++ * Remove the configured base path from a pathname, so it can be matched
++ * against base-path-agnostic routes and resolved against on-disk output.
++ *
++ * @param pathname - The incoming pathname (e.g. `/docs/assets/md/index.md`).
++ * @param basePath - The configured base path (e.g. `/docs`).
++ * @returns The pathname without the base path (e.g. `/assets/md/index.md`).
++ */
++export function stripBasePath(pathname, basePath) {
++    const prefix = basePathPrefix(basePath);
++    if (!prefix)
++        return pathname;
++    if (pathname === prefix)
++        return '/';
++    if (!pathname.startsWith(`${prefix}/`))
++        return pathname;
++    return pathname.slice(prefix.length);
++}
+ //# sourceMappingURL=path.js.map
+\ No newline at end of file
+diff --git a/dist/internal/vite-plugins.js b/dist/internal/vite-plugins.js
+index ba17f7d688e4c4df6da2abe1b7bf875655a83e79..0e5fc26dbea144a3fa34ab412cf782cf9a78c585 100644
+--- a/dist/internal/vite-plugins.js
++++ b/dist/internal/vite-plugins.js
+@@ -12,6 +12,7 @@ import * as Icons from './icons.js';
+ import * as Langs from './langs.js';
+ import * as Llms from './llms.js';
+ import * as Mdx from './mdx.js';
++import * as Path from './path.js';
+ import * as OpenApiRegistry from './openapi/registry.js';
+ import { schemaModelSource, schemaModels } from './openapi/schema-model.js';
+ import * as Retriever from './retriever.js';
+@@ -199,15 +200,18 @@ export function llms(config) {
+         configureServer(server) {
+             let content;
+             server.middlewares.use(async (req, res, next) => {
+-                if (req.url === '/llms.txt' || req.url === '/llms-full.txt') {
++                // The dev server serves these under the base path, matching where the
++                // build writes them, so drop it before matching the asset route.
++                const url = req.url ? Path.stripBasePath(req.url, config.basePath) : undefined;
++                if (url === '/llms.txt' || url === '/llms-full.txt') {
+                     content = await buildLlmsContent();
+                     res.setHeader('Content-Type', 'text/plain');
+-                    res.end(req.url === '/llms.txt' ? content.short : content.full);
++                    res.end(url === '/llms.txt' ? content.short : content.full);
+                     return;
+                 }
+-                if (req.url?.startsWith('/assets/md/')) {
++                if (url?.startsWith('/assets/md/')) {
+                     content = await buildLlmsContent();
+-                    const pagePath = req.url.slice('/assets/md'.length, -3) || '/';
++                    const pagePath = url.slice('/assets/md'.length, -3) || '/';
+                     const result = content.results.find((r) => r.path.replace(/\/$/, '') === pagePath.replace(/\/index$/, ''));
+                     if (result) {
+                         res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+diff --git a/dist/react/internal/AskAi.js b/dist/react/internal/AskAi.js
+index 6150cb4c5efe875f37cd00dcda791bdc93e4b0d9..c76cdcd2388b79dbd67755130e93a5eab5284236 100644
+--- a/dist/react/internal/AskAi.js
++++ b/dist/react/internal/AskAi.js
+@@ -9,12 +9,13 @@ import LucideFileText from '~icons/lucide/file-text';
+ import SimpleIconsClaude from '~icons/simple-icons/claude';
+ import SimpleIconsModelcontextprotocol from '~icons/simple-icons/modelcontextprotocol';
+ import SimpleIconsOpenai from '~icons/simple-icons/openai';
++import * as Path from '../../internal/path.js';
+ import { useConfig } from '../useConfig.js';
+ import { getMarkdownAssetPath } from './markdown-url.js';
+ export function AskAi(props) {
+     const { className } = props;
+     const { path } = useRouter();
+-    const { mcp } = useConfig();
++    const { basePath, mcp } = useConfig();
+     const [menuOpen, setMenuOpen] = React.useState(false);
+     const [copied, setCopied] = React.useState(false);
+     const [mcpCopied, setMcpCopied] = React.useState(false);
+@@ -50,8 +51,8 @@ export function AskAi(props) {
+     const pageUrl = React.useMemo(() => {
+         if (typeof window === 'undefined')
+             return '';
+-        return window.location.origin + path;
+-    }, [path]);
++        return window.location.origin + Path.withBasePath(path, basePath);
++    }, [basePath, path]);
+     const query = React.useMemo(() => {
+         return `Please research and analyze this page: ${pageUrl} so I can ask you questions about it. Once you have read it, prompt me with any questions I have. Do not post content from the page in your response. Any of my follow up questions must reference the site I gave you.`;
+     }, [pageUrl]);
+@@ -68,8 +69,8 @@ export function AskAi(props) {
+         },
+     ], [query]);
+     const markdownUrl = React.useMemo(() => {
+-        return getMarkdownAssetPath(path);
+-    }, [path]);
++        return getMarkdownAssetPath(path, basePath);
++    }, [basePath, path]);
+     const copyPageForAi = React.useCallback(async () => {
+         try {
+             const response = await fetch(markdownUrl);
+@@ -90,8 +91,8 @@ export function AskAi(props) {
+     const mcpUrl = React.useMemo(() => {
+         if (typeof window === 'undefined')
+             return '';
+-        return `${window.location.origin}/api/mcp`;
+-    }, []);
++        return `${window.location.origin}${Path.withBasePath('/api/mcp', basePath)}`;
++    }, [basePath]);
+     return (_jsxs(Menu.Root, { open: menuOpen, onOpenChange: setMenuOpen, children: [_jsxs(Menu.Trigger, { className: cx('vocs:flex vocs:items-center vocs:justify-between vocs:cursor-pointer vocs:pl-3 vocs:pr-2 vocs:text-sm vocs:text-secondary vocs:hover:text-primary vocs:w-full vocs:h-full vocs:bg-surface vocs:hover:bg-surfaceTint vocs:border vocs:border-primary vocs:rounded-xl vocs:transition-colors vocs:duration-100', className), children: [_jsx("div", { className: "vocs:flex vocs:items-center vocs:gap-2", children: "Ask AI..." }), _jsxs("div", { className: "vocs:flex vocs:items-center vocs:gap-0.5", children: [_jsx("div", { className: "vocs:bg-primary vocs:text-xs vocs:flex vocs:items-center vocs:justify-center vocs:h-5 vocs:w-auto vocs:px-0.75 vocs:border vocs:border-primary vocs:rounded-sm", children: modifierKey }), _jsx("div", { className: "vocs:bg-primary vocs:text-xs vocs:flex vocs:items-center vocs:justify-center vocs:h-5 vocs:w-auto vocs:px-0.75 vocs:border vocs:border-primary vocs:rounded-sm", children: "I" })] })] }), _jsx(Menu.Portal, { children: _jsx(Menu.Positioner, { side: "top", align: "start", sideOffset: 4, className: "vocs:z-100", children: _jsxs(Menu.Popup, { className: "vocs:bg-surface vocs:w-(--anchor-width) vocs:border vocs:border-primary vocs:p-2 vocs:rounded-lg vocs:shadow-lg/5 vocs:origin-(--transform-origin) vocs:transition-all vocs:duration-75 vocs:scale-100 vocs:opacity-100 vocs:data-starting-style:opacity-0 vocs:data-starting-style:scale-90", children: [_jsxs(Menu.Group, { children: [_jsx(Menu.GroupLabel, { className: "vocs:flex vocs:items-center vocs:gap-1.5 vocs:px-2 vocs:py-1.5 vocs:text-secondary vocs:text-xs vocs:font-medium", children: "Open in..." }), llmProviders.map((provider) => (_jsxs(Menu.Item, { className: "vocs:flex vocs:items-center vocs:gap-2 vocs:px-2 vocs:py-1.5 vocs:text-primary/80 vocs:hover:text-heading vocs:hover:bg-accenta3 vocs:rounded-md vocs:text-sm vocs:cursor-pointer vocs:transition-colors", onClick: () => {
+                                             // On mobile, use location.href to trigger Universal Links / App Links
+                                             // which will open the native app if installed
+diff --git a/dist/react/internal/CopyForAi.client.js b/dist/react/internal/CopyForAi.client.js
+index 0ff98da05580f8eda3ab26daaf242c437b2a5a76..7f91f4e06c0e4fa776f3071a306dbde9fb8e32dc 100644
+--- a/dist/react/internal/CopyForAi.client.js
++++ b/dist/react/internal/CopyForAi.client.js
+@@ -5,17 +5,19 @@ import * as React from 'react';
+ import { useRouter } from 'waku';
+ import LucideCheck from '~icons/lucide/check';
+ import LucideClipboard from '~icons/lucide/clipboard';
++import { useConfig } from '../useConfig.js';
+ import { getMarkdownAssetPath } from './markdown-url.js';
+ export function CopyForAi(props) {
+     const { className, frontmatter } = props;
+     const router = useRouter();
++    const { basePath } = useConfig();
+     const [state, setState] = React.useState('idle');
+     const handleCopy = React.useCallback(async () => {
+         if (state === 'copying')
+             return;
+         setState('copying');
+         try {
+-            const response = await fetch(getMarkdownAssetPath(router.path));
++            const response = await fetch(getMarkdownAssetPath(router.path, basePath));
+             if (!response.ok)
+                 throw new Error('Failed to fetch markdown');
+             const markdown = await response.text();
+@@ -28,7 +30,7 @@ export function CopyForAi(props) {
+             setState('error');
+             setTimeout(() => setState('idle'), 2000);
+         }
+-    }, [router.path, state]);
++    }, [basePath, router.path, state]);
+     if (frontmatter?.showAskAi === false)
+         return null;
+     return (_jsxs("button", { "aria-label": "Copy page content as markdown for AI", className: cx('vocs:flex vocs:items-center vocs:gap-2 vocs:text-[13px] vocs:text-secondary vocs:hover:text-heading vocs:cursor-pointer vocs:disabled:cursor-default vocs:transition-colors', className), "data-v-copy-for-ai": true, disabled: state === 'copying', onClick: handleCopy, type: "button", children: [state === 'copied' ? (_jsx(LucideCheck, { className: "vocs:size-4 vocs:text-accent" })) : (_jsx(LucideClipboard, { className: "vocs:size-4" })), _jsx("span", { children: "Copy page for AI" })] }));
+diff --git a/dist/react/internal/markdown-url.d.ts b/dist/react/internal/markdown-url.d.ts
+index 9be110aed4783e44dfd22b6ed6871524ad218afe..6171e2d9d48d6aa50ac3510e7088f62513335b4d 100644
+--- a/dist/react/internal/markdown-url.d.ts
++++ b/dist/react/internal/markdown-url.d.ts
+@@ -1,2 +1,2 @@
+-export declare function getMarkdownAssetPath(path: string): string;
++export declare function getMarkdownAssetPath(path: string, basePath?: string): string;
+ //# sourceMappingURL=markdown-url.d.ts.map
+\ No newline at end of file
+diff --git a/dist/react/internal/markdown-url.js b/dist/react/internal/markdown-url.js
+index 5397bdf40f789fc4f8fe45b3a3e4e71416b5a7f4..053209acbf06aedf67d9e26f195ac637b803f840 100644
+--- a/dist/react/internal/markdown-url.js
++++ b/dist/react/internal/markdown-url.js
+@@ -1,5 +1,6 @@
+-export function getMarkdownAssetPath(path) {
++import * as Path from '../../internal/path.js';
++export function getMarkdownAssetPath(path, basePath) {
+     const pagePath = path === '/' ? '/index' : path.replace(/\/$/, '');
+-    return `/assets/md${pagePath}.md`;
++    return Path.withBasePath(`/assets/md${pagePath}.md`, basePath);
+ }
+ //# sourceMappingURL=markdown-url.js.map
+\ No newline at end of file
+diff --git a/dist/waku/internal/middleware/md-router.d.ts b/dist/waku/internal/middleware/md-router.d.ts
+index b39df0b3c12c27fdcc3f37641df47da64dbc4728..13e10ec7f44512160246c6d24a3e78d4bcdfcd8f 100644
+--- a/dist/waku/internal/middleware/md-router.d.ts
++++ b/dist/waku/internal/middleware/md-router.d.ts
+@@ -1,5 +1,5 @@
+ import type { MiddlewareHandler } from 'hono';
+-export declare function fetchMarkdown(url: URL, assetPath: string, cookie?: string): Promise<string | null>;
++export declare function fetchMarkdown(url: URL, assetPath: string, cookie?: string, basePath?: string): Promise<string | null>;
+ export declare function middleware(): MiddlewareHandler;
+ export default middleware;
+ //# sourceMappingURL=md-router.d.ts.map
+\ No newline at end of file
+diff --git a/dist/waku/internal/middleware/md-router.js b/dist/waku/internal/middleware/md-router.js
+index c8c56a8c054964fcad68e2029a604bfaa3d72098..e804dce4f1c25c644af3cb896fb113c41802196f 100644
+--- a/dist/waku/internal/middleware/md-router.js
++++ b/dist/waku/internal/middleware/md-router.js
+@@ -1,5 +1,15 @@
+ import { aiUserAgents, ogBotUserAgents, representationVary, searchEngineUserAgents, terminalUserAgents, } from '../../../internal/markdown-negotiation.js';
++import * as Path from '../../../internal/path.js';
+ const isDev = process.env['NODE_ENV'] !== 'production';
++let basePathPromise;
++/** The configured base path, resolved once per process. */
++function resolveBasePath() {
++    basePathPromise ??= import('../../../internal/config.js')
++        .then((Config) => Config.resolve({ server: true }))
++        .then((config) => config.basePath)
++        .catch(() => '/');
++    return basePathPromise;
++}
+ async function resolveContent() {
+     const path = await import('node:path');
+     const Config = await import('../../../internal/config.js');
+@@ -20,7 +30,7 @@ async function resolveContent() {
+         sidebar: config.sidebar,
+     });
+ }
+-export async function fetchMarkdown(url, assetPath, cookie) {
++export async function fetchMarkdown(url, assetPath, cookie, basePath) {
+     // Try reading from disk first (avoids self-fetch issues with deployment protection).
+     try {
+         const fs = await import('node:fs/promises');
+@@ -32,7 +42,7 @@ export async function fetchMarkdown(url, assetPath, cookie) {
+     }
+     catch { }
+     // Fall back to HTTP fetch, forwarding cookies for auth-protected deployments.
+-    const assetUrl = new URL(assetPath, url.origin);
++    const assetUrl = new URL(Path.withBasePath(assetPath, basePath), url.origin);
+     const headers = {};
+     if (cookie)
+         headers['cookie'] = cookie;
+@@ -70,18 +80,22 @@ async function hasPublicFile(pathname) {
+ export function middleware() {
+     return async (context, next) => {
+         const url = new URL(context.req.url);
++        const basePath = await resolveBasePath();
++        // Routes and static output are both base-path-agnostic, so match and resolve
++        // against the pathname with the base path removed.
++        const pathname = Path.stripBasePath(url.pathname, basePath);
+         // Generated markdown twins are static output; routing them back through
+         // twin resolution would trigger a recursive self-fetch.
+-        if (url.pathname.startsWith('/assets/md/'))
++        if (pathname.startsWith('/assets/md/'))
+             return next();
+-        const isMarkdownRequest = url.pathname.endsWith('.md');
++        const isMarkdownRequest = pathname.endsWith('.md');
+         // A file physically present in `public/` wins over markdown-twin resolution,
+         // so static `.md` files (skill manifests, plain markdown) are served as-is.
+-        if (isMarkdownRequest && (await hasPublicFile(url.pathname)))
++        if (isMarkdownRequest && (await hasPublicFile(pathname)))
+             return next();
+         // Static assets (`.json`, `.svg`, `.png`, ...) have no markdown twin. Skip
+         // twin resolution so a disk miss never falls back to a slow self-fetch.
+-        const filename = url.pathname.split('/').pop() ?? '';
++        const filename = pathname.split('/').pop() ?? '';
+         if (!isMarkdownRequest && filename.includes('.'))
+             return next();
+         const nextWithVary = async () => {
+@@ -97,14 +111,14 @@ export function middleware() {
+         const isTerminal = terminalUserAgents.some((agent) => userAgent.includes(agent));
+         const acceptHeader = context.req.header('accept') ?? '';
+         const acceptsMarkdown = acceptHeader.includes('text/markdown');
+-        if (url.pathname === '/' && (acceptsMarkdown || isTerminal) && !isSearchEngine) {
++        if (pathname === '/' && (acceptsMarkdown || isTerminal) && !isSearchEngine) {
+             let text;
+             if (isDev) {
+                 const content = await resolveContent();
+                 text = content.short;
+             }
+             else {
+-                text = await fetchMarkdown(url, '/llms.txt', context.req.header('cookie'));
++                text = await fetchMarkdown(url, '/llms.txt', context.req.header('cookie'), basePath);
+             }
+             if (!text)
+                 return nextWithVary();
+@@ -118,7 +132,7 @@ export function middleware() {
+         }
+         if (!isMarkdownRequest && (isSearchEngine || (!isAiAgent && !isTerminal && !acceptsMarkdown)))
+             return nextWithVary();
+-        const pagePath = url.pathname.replace(/\.md$/, '').replace(/\/index$/, '');
++        const pagePath = pathname.replace(/\.md$/, '').replace(/\/index$/, '');
+         let text;
+         if (isDev) {
+             const content = await resolveContent();
+@@ -126,10 +140,10 @@ export function middleware() {
+             text = result?.content ?? null;
+         }
+         else {
+-            const assetPath = url.pathname.endsWith('.md')
+-                ? `/assets/md${url.pathname}`
+-                : `/assets/md${url.pathname}.md`;
+-            text = await fetchMarkdown(url, assetPath, context.req.header('cookie'));
++            const assetPath = pathname.endsWith('.md')
++                ? `/assets/md${pathname}`
++                : `/assets/md${pathname}.md`;
++            text = await fetchMarkdown(url, assetPath, context.req.header('cookie'), basePath);
+         }
+         if (!text)
+             return nextWithVary();
+diff --git a/src/internal/path.ts b/src/internal/path.ts
+index 20e12cf9e60ee8e2dba1dfe594bcc1f8e92bd480..927b0de7138d000f72c6637d634b127335496059 100644
+--- a/src/internal/path.ts
++++ b/src/internal/path.ts
+@@ -63,3 +63,42 @@ export function isExternal(url: string | undefined) {
+     url.startsWith('tel:')
+   )
+ }
++
++/**
++ * Normalize a base path into a prefix that can be concatenated with a
++ * root-absolute path. The root base path (`/`) yields an empty string.
++ *
++ * @param basePath - The configured base path (e.g. `/docs`, `/docs/`, `/`).
++ * @returns The prefix (e.g. `/docs`), or an empty string when there is none.
++ */
++export function basePathPrefix(basePath: string | undefined) {
++  if (!basePath || basePath === '/') return ''
++  return basePath.endsWith('/') ? basePath.slice(0, -1) : basePath
++}
++
++/**
++ * Prefix a root-absolute path with the configured base path.
++ *
++ * @param pathname - The root-absolute path (e.g. `/assets/md/index.md`).
++ * @param basePath - The configured base path (e.g. `/docs`).
++ * @returns The prefixed path (e.g. `/docs/assets/md/index.md`).
++ */
++export function withBasePath(pathname: string, basePath: string | undefined) {
++  return `${basePathPrefix(basePath)}${pathname}`
++}
++
++/**
++ * Remove the configured base path from a pathname, so it can be matched
++ * against base-path-agnostic routes and resolved against on-disk output.
++ *
++ * @param pathname - The incoming pathname (e.g. `/docs/assets/md/index.md`).
++ * @param basePath - The configured base path (e.g. `/docs`).
++ * @returns The pathname without the base path (e.g. `/assets/md/index.md`).
++ */
++export function stripBasePath(pathname: string, basePath: string | undefined) {
++  const prefix = basePathPrefix(basePath)
++  if (!prefix) return pathname
++  if (pathname === prefix) return '/'
++  if (!pathname.startsWith(`${prefix}/`)) return pathname
++  return pathname.slice(prefix.length)
++}
+diff --git a/src/internal/vite-plugins.ts b/src/internal/vite-plugins.ts
+index 2852c38212fde11881cb8fa97328576cee9c5a8c..c02318d9f5dee3c34ee92a35957692d3853a61e8 100644
+--- a/src/internal/vite-plugins.ts
++++ b/src/internal/vite-plugins.ts
+@@ -16,6 +16,7 @@ import * as Mdx from './mdx.js'
+ import type * as OpenApi from './openapi/index.js'
+ import * as OpenApiRegistry from './openapi/registry.js'
+ import { type SchemaModel, schemaModelSource, schemaModels } from './openapi/schema-model.js'
++import * as Path from './path.js'
+ import * as Retriever from './retriever.js'
+ import { SearchDocuments, SearchIndex } from './search.js'
+ import * as ShikiTransformers from './shiki-transformers.js'
+@@ -207,16 +208,20 @@ export function llms(config: Config.Config): PluginOption {
+     configureServer(server) {
+       let content: Awaited<ReturnType<typeof buildLlmsContent>> | undefined
+       server.middlewares.use(async (req, res, next) => {
+-        if (req.url === '/llms.txt' || req.url === '/llms-full.txt') {
++        // The dev server serves these under the base path, matching where the
++        // build writes them, so drop it before matching the asset route.
++        const url = req.url ? Path.stripBasePath(req.url, config.basePath) : undefined
++
++        if (url === '/llms.txt' || url === '/llms-full.txt') {
+           content = await buildLlmsContent()
+           res.setHeader('Content-Type', 'text/plain')
+-          res.end(req.url === '/llms.txt' ? content.short : content.full)
++          res.end(url === '/llms.txt' ? content.short : content.full)
+           return
+         }
+ 
+-        if (req.url?.startsWith('/assets/md/')) {
++        if (url?.startsWith('/assets/md/')) {
+           content = await buildLlmsContent()
+-          const pagePath = req.url.slice('/assets/md'.length, -3) || '/'
++          const pagePath = url.slice('/assets/md'.length, -3) || '/'
+           const result = content.results.find(
+             (r) => r.path.replace(/\/$/, '') === pagePath.replace(/\/index$/, ''),
+           )
+diff --git a/src/react/internal/AskAi.tsx b/src/react/internal/AskAi.tsx
+index a8bb67547be0e145cf26646567c50401e01f89d2..699f8a02a7cf9242b0771696c7286aa7b47fa4e5 100644
+--- a/src/react/internal/AskAi.tsx
++++ b/src/react/internal/AskAi.tsx
+@@ -9,6 +9,7 @@ import LucideFileText from '~icons/lucide/file-text'
+ import SimpleIconsClaude from '~icons/simple-icons/claude'
+ import SimpleIconsModelcontextprotocol from '~icons/simple-icons/modelcontextprotocol'
+ import SimpleIconsOpenai from '~icons/simple-icons/openai'
++import * as Path from '../../internal/path.js'
+ import { useConfig } from '../useConfig.js'
+ import { getMarkdownAssetPath } from './markdown-url.js'
+ 
+@@ -16,7 +17,7 @@ export function AskAi(props: AskAi.Props) {
+   const { className } = props
+ 
+   const { path } = useRouter()
+-  const { mcp } = useConfig()
++  const { basePath, mcp } = useConfig()
+ 
+   const [menuOpen, setMenuOpen] = React.useState(false)
+   const [copied, setCopied] = React.useState(false)
+@@ -54,8 +55,8 @@ export function AskAi(props: AskAi.Props) {
+ 
+   const pageUrl = React.useMemo(() => {
+     if (typeof window === 'undefined') return ''
+-    return window.location.origin + path
+-  }, [path])
++    return window.location.origin + Path.withBasePath(path, basePath)
++  }, [basePath, path])
+ 
+   const query = React.useMemo(() => {
+     return `Please research and analyze this page: ${pageUrl} so I can ask you questions about it. Once you have read it, prompt me with any questions I have. Do not post content from the page in your response. Any of my follow up questions must reference the site I gave you.`
+@@ -78,8 +79,8 @@ export function AskAi(props: AskAi.Props) {
+   )
+ 
+   const markdownUrl = React.useMemo(() => {
+-    return getMarkdownAssetPath(path)
+-  }, [path])
++    return getMarkdownAssetPath(path, basePath)
++  }, [basePath, path])
+ 
+   const copyPageForAi = React.useCallback(async () => {
+     try {
+@@ -100,8 +101,8 @@ export function AskAi(props: AskAi.Props) {
+ 
+   const mcpUrl = React.useMemo(() => {
+     if (typeof window === 'undefined') return ''
+-    return `${window.location.origin}/api/mcp`
+-  }, [])
++    return `${window.location.origin}${Path.withBasePath('/api/mcp', basePath)}`
++  }, [basePath])
+ 
+   return (
+     <Menu.Root open={menuOpen} onOpenChange={setMenuOpen}>
+diff --git a/src/react/internal/CopyForAi.client.tsx b/src/react/internal/CopyForAi.client.tsx
+index 73e9d8c595a1bb2fc89ea5e1165f1033496b34a5..92d1186eb5f858c612a14dd04060f8e230927384 100644
+--- a/src/react/internal/CopyForAi.client.tsx
++++ b/src/react/internal/CopyForAi.client.tsx
+@@ -5,6 +5,7 @@ import * as React from 'react'
+ import { useRouter } from 'waku'
+ import LucideCheck from '~icons/lucide/check'
+ import LucideClipboard from '~icons/lucide/clipboard'
++import { useConfig } from '../useConfig.js'
+ import { getMarkdownAssetPath } from './markdown-url.js'
+ 
+ type CopyState = 'idle' | 'copying' | 'copied' | 'error'
+@@ -13,6 +14,7 @@ export function CopyForAi(props: CopyForAi.Props) {
+   const { className, frontmatter } = props
+ 
+   const router = useRouter()
++  const { basePath } = useConfig()
+   const [state, setState] = React.useState<CopyState>('idle')
+ 
+   const handleCopy = React.useCallback(async () => {
+@@ -20,7 +22,7 @@ export function CopyForAi(props: CopyForAi.Props) {
+ 
+     setState('copying')
+     try {
+-      const response = await fetch(getMarkdownAssetPath(router.path))
++      const response = await fetch(getMarkdownAssetPath(router.path, basePath))
+       if (!response.ok) throw new Error('Failed to fetch markdown')
+ 
+       const markdown = await response.text()
+@@ -33,7 +35,7 @@ export function CopyForAi(props: CopyForAi.Props) {
+       setState('error')
+       setTimeout(() => setState('idle'), 2000)
+     }
+-  }, [router.path, state])
++  }, [basePath, router.path, state])
+ 
+   if (frontmatter?.showAskAi === false) return null
+ 
+diff --git a/src/react/internal/markdown-url.ts b/src/react/internal/markdown-url.ts
+index 3ecec4da51ac82ae9f713916ae1a4f8de35c29c6..1d9426e383563beae721227d0ffefc1174563307 100644
+--- a/src/react/internal/markdown-url.ts
++++ b/src/react/internal/markdown-url.ts
+@@ -1,4 +1,6 @@
+-export function getMarkdownAssetPath(path: string) {
++import * as Path from '../../internal/path.js'
++
++export function getMarkdownAssetPath(path: string, basePath?: string) {
+   const pagePath = path === '/' ? '/index' : path.replace(/\/$/, '')
+-  return `/assets/md${pagePath}.md`
++  return Path.withBasePath(`/assets/md${pagePath}.md`, basePath)
+ }
+diff --git a/src/waku/internal/middleware/md-router.ts b/src/waku/internal/middleware/md-router.ts
+index 31b6e3001c39b4d2490232d332ad1471859499a6..4dacbb30beeb2e2baf3f5a80a3d5c63ae78a26a7 100644
+--- a/src/waku/internal/middleware/md-router.ts
++++ b/src/waku/internal/middleware/md-router.ts
+@@ -6,9 +6,21 @@ import {
+   searchEngineUserAgents,
+   terminalUserAgents,
+ } from '../../../internal/markdown-negotiation.js'
++import * as Path from '../../../internal/path.js'
+ 
+ const isDev = process.env['NODE_ENV'] !== 'production'
+ 
++let basePathPromise: Promise<string> | undefined
++
++/** The configured base path, resolved once per process. */
++function resolveBasePath() {
++  basePathPromise ??= import('../../../internal/config.js')
++    .then((Config) => Config.resolve({ server: true }))
++    .then((config) => config.basePath)
++    .catch(() => '/')
++  return basePathPromise
++}
++
+ async function resolveContent() {
+   const path = await import('node:path')
+   const Config = await import('../../../internal/config.js')
+@@ -31,7 +43,12 @@ async function resolveContent() {
+   })
+ }
+ 
+-export async function fetchMarkdown(url: URL, assetPath: string, cookie?: string) {
++export async function fetchMarkdown(
++  url: URL,
++  assetPath: string,
++  cookie?: string,
++  basePath?: string,
++) {
+   // Try reading from disk first (avoids self-fetch issues with deployment protection).
+   try {
+     const fs = await import('node:fs/promises')
+@@ -43,7 +60,7 @@ export async function fetchMarkdown(url: URL, assetPath: string, cookie?: string
+   } catch {}
+ 
+   // Fall back to HTTP fetch, forwarding cookies for auth-protected deployments.
+-  const assetUrl = new URL(assetPath, url.origin)
++  const assetUrl = new URL(Path.withBasePath(assetPath, basePath), url.origin)
+   const headers: HeadersInit = {}
+   if (cookie) headers['cookie'] = cookie
+   const response = await globalThis.fetch(assetUrl, { headers })
+@@ -80,20 +97,25 @@ async function hasPublicFile(pathname: string) {
+ export function middleware(): MiddlewareHandler {
+   return async (context, next) => {
+     const url = new URL(context.req.url)
++    const basePath = await resolveBasePath()
++
++    // Routes and static output are both base-path-agnostic, so match and resolve
++    // against the pathname with the base path removed.
++    const pathname = Path.stripBasePath(url.pathname, basePath)
+ 
+     // Generated markdown twins are static output; routing them back through
+     // twin resolution would trigger a recursive self-fetch.
+-    if (url.pathname.startsWith('/assets/md/')) return next()
++    if (pathname.startsWith('/assets/md/')) return next()
+ 
+-    const isMarkdownRequest = url.pathname.endsWith('.md')
++    const isMarkdownRequest = pathname.endsWith('.md')
+ 
+     // A file physically present in `public/` wins over markdown-twin resolution,
+     // so static `.md` files (skill manifests, plain markdown) are served as-is.
+-    if (isMarkdownRequest && (await hasPublicFile(url.pathname))) return next()
++    if (isMarkdownRequest && (await hasPublicFile(pathname))) return next()
+ 
+     // Static assets (`.json`, `.svg`, `.png`, ...) have no markdown twin. Skip
+     // twin resolution so a disk miss never falls back to a slow self-fetch.
+-    const filename = url.pathname.split('/').pop() ?? ''
++    const filename = pathname.split('/').pop() ?? ''
+     if (!isMarkdownRequest && filename.includes('.')) return next()
+ 
+     const nextWithVary = async () => {
+@@ -111,13 +133,13 @@ export function middleware(): MiddlewareHandler {
+     const acceptHeader = context.req.header('accept') ?? ''
+     const acceptsMarkdown = acceptHeader.includes('text/markdown')
+ 
+-    if (url.pathname === '/' && (acceptsMarkdown || isTerminal) && !isSearchEngine) {
++    if (pathname === '/' && (acceptsMarkdown || isTerminal) && !isSearchEngine) {
+       let text: string | null
+       if (isDev) {
+         const content = await resolveContent()
+         text = content.short
+       } else {
+-        text = await fetchMarkdown(url, '/llms.txt', context.req.header('cookie'))
++        text = await fetchMarkdown(url, '/llms.txt', context.req.header('cookie'), basePath)
+       }
+       if (!text) return nextWithVary()
+ 
+@@ -133,7 +155,7 @@ export function middleware(): MiddlewareHandler {
+     if (!isMarkdownRequest && (isSearchEngine || (!isAiAgent && !isTerminal && !acceptsMarkdown)))
+       return nextWithVary()
+ 
+-    const pagePath = url.pathname.replace(/\.md$/, '').replace(/\/index$/, '')
++    const pagePath = pathname.replace(/\.md$/, '').replace(/\/index$/, '')
+ 
+     let text: string | null
+     if (isDev) {
+@@ -143,10 +165,10 @@ export function middleware(): MiddlewareHandler {
+       )
+       text = result?.content ?? null
+     } else {
+-      const assetPath = url.pathname.endsWith('.md')
+-        ? `/assets/md${url.pathname}`
+-        : `/assets/md${url.pathname}.md`
+-      text = await fetchMarkdown(url, assetPath, context.req.header('cookie'))
++      const assetPath = pathname.endsWith('.md')
++        ? `/assets/md${pathname}`
++        : `/assets/md${pathname}.md`
++      text = await fetchMarkdown(url, assetPath, context.req.header('cookie'), basePath)
+     }
+     if (!text) return nextWithVary()
+ 
