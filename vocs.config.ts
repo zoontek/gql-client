@@ -15,7 +15,7 @@ export default defineConfig({
   },
   socials: [{ icon: "github", link: "https://github.com/zoontek/gql-client" }],
   editLink: {
-    link: "https://github.com/zoontek/gql-client/edit/main/docs/:path",
+    link: "https://github.com/zoontek/gql-client/edit/main/docs/pages/:path",
     text: "Suggest changes to this page",
   },
   sidebar: [
