@@ -959,6 +959,19 @@ describe("numeric ids", () => {
 });
 
 describe("connection registration", () => {
+  test("keeps the connection ref out of the visible result", () => {
+    const { read } = setup(`query Q { items { edges { node { id } } } }`, {
+      __typename: "Query",
+      items: { __typename: "ItemConnection", edges: [] },
+    });
+
+    const result = read() as { items: object };
+
+    expect(Object.keys(result.items)).toEqual(["__typename", "edges"]);
+    expect(JSON.stringify(result)).not.toContain("__connectionRef");
+    expect("__connectionRef" in result.items).toBe(true);
+  });
+
   test("records the path of each connection in the query", () => {
     const pageInfo = { __typename: "PageInfo", hasNextPage: false };
     const characters = { __typename: "CharacterConnection", pageInfo };

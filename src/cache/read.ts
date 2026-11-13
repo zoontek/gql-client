@@ -20,6 +20,7 @@ import {
   CONNECTION_REF,
   getCacheKeyFromOperationNode,
   REQUESTED_KEYS,
+  setConnectionRef,
   TYPENAME_KEY,
 } from "./keys";
 import { isCacheEntry, MISS, type CacheEntry } from "./types";
@@ -54,7 +55,10 @@ const shareEqualSubtrees = (prev: unknown, next: unknown): unknown => {
 
   if (isRecord(prev) && isRecord(next)) {
     const keys = Object.keys(next);
-    let equal = keys.length === Object.keys(prev).length;
+    // The connection ref is not enumerable, so it's compared on its own.
+    let equal =
+      keys.length === Object.keys(prev).length &&
+      prev[CONNECTION_REF] === next[CONNECTION_REF];
 
     for (const key of keys) {
       const value = shareEqualSubtrees(prev[key], next[key]);
@@ -419,11 +423,10 @@ export const createReadOperation = (
       return MISS;
     }
 
-    // Carry over the connection reference (a string key, not a queried
-    // field) so consumers like `useForwardPagination`/`useBackwardPagination`
+    // Carry over the connection reference (not a queried field) so consumers like `useForwardPagination`/`useBackwardPagination`
     // and `updateConnection` can locate the registered connection.
     if (hasOwn(source, CONNECTION_REF)) {
-      result[CONNECTION_REF] = source[CONNECTION_REF];
+      setConnectionRef(result, source[CONNECTION_REF]);
     }
 
     return result;

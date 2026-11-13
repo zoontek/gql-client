@@ -1,6 +1,6 @@
 import { useCallback, useRef } from "react";
 
-import { CONNECTION_REF } from "../cache/keys";
+import { CONNECTION_REF, setConnectionRef } from "../cache/keys";
 import type { Connection, JsonValue } from "../types";
 import { filterMap, isRecord } from "../utils";
 import { useClient } from "./context";
@@ -145,7 +145,7 @@ const createPaginationHook = (direction: "after" | "before") => {
       const start = isForwardPagination ? previous : next;
       const end = isForwardPagination ? next : previous;
 
-      return {
+      const merged = {
         ...next,
         edges: [...(start.edges ?? []), ...(end.edges ?? [])],
         pageInfo: {
@@ -155,6 +155,13 @@ const createPaginationHook = (direction: "after" | "before") => {
           hasNextPage: end.pageInfo.hasNextPage,
         },
       };
+
+      // The spread skips the non-enumerable connection ref.
+      if (CONNECTION_REF in next) {
+        setConnectionRef(merged, next[CONNECTION_REF]);
+      }
+
+      return merged;
     });
   };
 };

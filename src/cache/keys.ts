@@ -7,6 +7,12 @@ export const REQUESTED_KEYS = Symbol.for("__requestedKeys");
 
 export const CONNECTION_REF = "__connectionRef";
 
+// Adds the connection ref to a read result as a non-enumerable property, so
+// it stays out of `JSON.stringify`, `Object.keys`, and deep comparisons.
+export const setConnectionRef = (target: object, ref: unknown): void => {
+  Object.defineProperty(target, CONNECTION_REF, { value: ref });
+};
+
 export const TYPENAME_KEY = Symbol.for("__typename");
 export const EDGES_KEY = Symbol.for("edges");
 export const NODE_KEY = Symbol.for("node");
