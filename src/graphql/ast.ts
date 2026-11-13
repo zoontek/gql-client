@@ -11,8 +11,9 @@ import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import type { AnyVariables } from "../types";
 import { stableStringify } from "../utils";
 
-// Field name as it appears in the response payload (alias if present).
-export const getFieldName = (fieldNode: FieldNode): string =>
+// Key of the field in the response payload: its alias if present, else its
+// name. Cache keys use the name instead, see `getFieldNameWithArguments`.
+export const getResponseKey = (fieldNode: FieldNode): string =>
   fieldNode.alias != null ? fieldNode.alias.value : fieldNode.name.value;
 
 // Resolves a GraphQL AST value node to a plain JS value, inlining variables.

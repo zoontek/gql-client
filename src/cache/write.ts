@@ -7,7 +7,7 @@ import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
 import {
   extractArguments,
-  getFieldName,
+  getResponseKey,
   getFieldNameWithArguments,
   getOperationDefinition,
   isExcluded,
@@ -78,13 +78,13 @@ export const createWriteOperation = (
       parentJson: Record<PropertyKey, unknown>,
       parentCache: CacheEntry,
     ): void => {
-      const originalFieldName = getFieldName(field);
+      const responseKey = getResponseKey(field);
 
       // Absent from the response (`@include`/`@skip` exclusion, or a field
       // the server did not return): record nothing. Adding it to
       // REQUESTED_KEYS or storing `undefined` would make later reads treat
       // the missing value as cached and silently drop the field.
-      if (!hasOwn(parentJson, originalFieldName)) {
+      if (!hasOwn(parentJson, responseKey)) {
         return;
       }
 
@@ -93,7 +93,7 @@ export const createWriteOperation = (
         variables,
       );
 
-      const fieldValue = parentJson[originalFieldName];
+      const fieldValue = parentJson[responseKey];
       parentCache[REQUESTED_KEYS].add(fieldNameWithArguments);
 
       if (touched != null) {
@@ -114,7 +114,7 @@ export const createWriteOperation = (
             : [];
         arrayCache.length = fieldValue.length;
         parentCache[fieldNameWithArguments] = arrayCache;
-        path.push(originalFieldName);
+        path.push(responseKey);
         fieldValue.forEach((item, index) => {
           if (item == null) {
             arrayCache[index] = item;
@@ -143,7 +143,7 @@ export const createWriteOperation = (
         parentCache[fieldNameWithArguments],
       );
       parentCache[fieldNameWithArguments] = stored;
-      path.push(originalFieldName);
+      path.push(responseKey);
 
       if (
         typeof record.__typename === "string" &&

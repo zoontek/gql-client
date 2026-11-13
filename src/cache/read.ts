@@ -8,7 +8,7 @@ import {
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
 import {
-  getFieldName,
+  getResponseKey,
   getFieldNameWithArguments,
   getOperationDefinition,
   isExcluded,
@@ -273,7 +273,7 @@ export const createReadOperation = (
     result: Record<PropertyKey, unknown>,
   ): boolean => {
     const { variables, watched } = context;
-    const originalFieldName = getFieldName(fieldNode);
+    const responseKey = getResponseKey(fieldNode);
     const fieldNameWithArguments = getFieldNameWithArguments(
       fieldNode,
       variables,
@@ -304,14 +304,14 @@ export const createReadOperation = (
     if (rawValue == null) {
       // Preserve a cached `null`; drop `undefined` (matches JSON output).
       if (rawValue === null) {
-        result[originalFieldName] = null;
+        result[responseKey] = null;
       }
       return true;
     }
 
     // Both reads of a shared field use the same `source` key, so on a
     // second read the array length and item order line up with `existing`.
-    const existingValue = result[originalFieldName];
+    const existingValue = result[responseKey];
 
     if (Array.isArray(rawValue)) {
       const existingItems = Array.isArray(existingValue)
@@ -334,7 +334,7 @@ export const createReadOperation = (
         items.push(value == null ? null : value);
       }
 
-      result[originalFieldName] = items;
+      result[responseKey] = items;
       return true;
     }
 
@@ -344,7 +344,7 @@ export const createReadOperation = (
       return false;
     }
 
-    result[originalFieldName] = value;
+    result[responseKey] = value;
     return true;
   };
 
