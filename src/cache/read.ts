@@ -31,10 +31,8 @@ import {
 import { isCacheEntry, MISS, type CacheEntry } from "./types";
 import { trackField } from "./watch";
 
-const STABILITY_CACHE = new WeakMap<
-  TypedDocumentNode,
-  Map<string, JsonValue>
->();
+// Last result returned per document and serialized variables.
+export type ResultCache = WeakMap<TypedDocumentNode, Map<string, JsonValue>>;
 
 // Structural sharing: returns `next` with each subtree that deeply equals its
 // `prev` counterpart swapped for it, or `prev` itself if everything is equal.
@@ -77,6 +75,8 @@ export type ReadDeps = {
   // connection-update paths, so it lives on the class instead of being
   // duplicated here.
   get: (cacheKey: symbol) => CacheEntry | typeof MISS;
+  // Owned by the cache instance, so `purge` and `restore` can drop it.
+  getResultCache: () => ResultCache;
   isTypeCompatible: (typename: string, typeCondition: string) => boolean;
 };
 
@@ -424,11 +424,12 @@ export const createReadOperation = (
     // its unchanged subtrees, so consumers comparing by reference (e.g.
     // React) only re-render what changed.
     const serializedVariables = serializeVariables(variables);
-    let documentCache = STABILITY_CACHE.get(transformedDocument);
+    const resultCache = deps.getResultCache();
+    let documentCache = resultCache.get(transformedDocument);
 
     if (documentCache == null) {
       documentCache = new Map();
-      STABILITY_CACHE.set(transformedDocument, documentCache);
+      resultCache.set(transformedDocument, documentCache);
     }
 
     // `traverse` builds this from cache entries whose field values are

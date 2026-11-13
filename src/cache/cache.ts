@@ -12,7 +12,7 @@ import {
   getCacheEntryKey,
   getIdFromCacheKey,
 } from "./keys";
-import { createReadOperation } from "./read";
+import { createReadOperation, type ResultCache } from "./read";
 import { decodeEntry, encodeEntry, type SerializedCache } from "./serialize";
 import {
   MISS,
@@ -33,6 +33,7 @@ export class ClientCache {
   private interfaceToType: Record<string, Set<string>>;
   private connectionCache: Map<number, ConnectionInfo>;
   private connectionRefCount = -1;
+  private resultCache: ResultCache = new WeakMap();
 
   public readonly readOperation: <Data, Variables extends AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
@@ -58,6 +59,7 @@ export class ClientCache {
 
     this.readOperation = createReadOperation({
       get: (cacheKey) => this.get(cacheKey),
+      getResultCache: () => this.resultCache,
       isTypeCompatible: (typename, typeCondition) =>
         this.isTypeCompatible(typename, typeCondition),
     });
@@ -71,12 +73,13 @@ export class ClientCache {
     });
   }
 
-  // Drops every entry and registered connection. Exposed through
-  // `Client#purge`; see the rationale there.
+  // Drops every entry, registered connection, and stored read result.
+  // Exposed through `Client#purge`; see the rationale there.
   public purge(): void {
     this.cache = new Map();
     this.connectionCache = new Map();
     this.connectionRefCount = -1;
+    this.resultCache = new WeakMap();
   }
 
   // Serializes every entry to a JSON-safe structure. Exposed through
@@ -99,6 +102,7 @@ export class ClientCache {
     );
     this.connectionCache = new Map();
     this.connectionRefCount = -1;
+    this.resultCache = new WeakMap();
   }
 
   public dump(): Map<symbol, CacheEntry> {

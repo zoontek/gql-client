@@ -137,6 +137,50 @@ describe("readOperation", () => {
     expect(after.users[1]?.address).toBe(before.users[1]?.address);
   });
 
+  test("does not share results across cache instances", () => {
+    const document = doc(`query Q { me { id name } }`);
+    const response = {
+      __typename: "Query",
+      me: { __typename: "User", id: "1", name: "Jo" },
+    };
+
+    const a = new ClientCache({ interfaceToTypes: {} });
+    const b = new ClientCache({ interfaceToTypes: {} });
+    a.writeOperation(document, response, {});
+    b.writeOperation(document, response, {});
+
+    const resultA = a.readOperation(document, {});
+    const resultB = b.readOperation(document, {});
+
+    expect(resultB).toEqual(resultA);
+    expect(resultB).not.toBe(resultA);
+  });
+
+  test("drops stored results on purge and restore", () => {
+    const response = {
+      __typename: "Query",
+      me: { __typename: "User", id: "1", name: "Jo" },
+    };
+    const { cache, document, read } = setup(
+      `query Q { me { id name } }`,
+      response,
+    );
+
+    const first = read();
+    cache.purge();
+    cache.writeOperation(document, response, {});
+    const afterPurge = read();
+
+    expect(afterPurge).toEqual(first);
+    expect(afterPurge).not.toBe(first);
+
+    cache.restore(cache.extract());
+    const afterRestore = read();
+
+    expect(afterRestore).toEqual(first);
+    expect(afterRestore).not.toBe(afterPurge);
+  });
+
   test("preserves field aliases", () => {
     const { read } = setup(`query Q { account { handle: name owner: id } }`, {
       __typename: "Query",
