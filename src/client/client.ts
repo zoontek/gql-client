@@ -34,10 +34,14 @@ export type ClientConfig = {
 
 // One stored request per (document, serialized variables): joined while in
 // flight, kept after success only while its response can't be read from the
-// cache (see `Client#query`), dropped on rejection.
+// cache, and after rejection only until a `suspense` call gets it (see
+// `Client#query`).
 type StoredRequest = {
   promise: Promise<unknown>;
   settled: boolean;
+  rejected: boolean;
+  // A `suspense` call got this promise before it settled.
+  suspense: boolean;
 };
 
 // A mounted query, registered by `useQuery` for the duration of its mount, so
@@ -523,20 +527,27 @@ export class Client {
    * never loop network requests. Otherwise it is dropped once resolved. Pass
    * `refresh: true` to replace a settled promise with a fresh request (an
    * in-flight one is always joined). A rejected promise is dropped, so the
-   * next call retries. Used internally by `useQuery` and `useDeferredQuery`;
-   * most apps won't call this directly.
+   * next call retries, except with `suspense: true`. Used internally by
+   * `useQuery` and `useDeferredQuery`; most apps won't call this directly.
    *
    * @param document - The document to send.
    * @param variables - The document's variables.
    * @param options.refresh - Send a new request even if a settled one is
    * stored. Defaults to `false`.
+   * @param options.suspense - The caller passes the promise to `use()`. If
+   * it rejects, it stays stored until a call gets it, so the render React
+   * runs after the rejection throws the error instead of sending a new
+   * request. Defaults to `false`.
    * @returns The response data. The same promise is returned for calls with
    * the same `document` and `variables` while it is stored.
    */
   public query<Data, Variables extends AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: NoInfer<Variables>,
-    { refresh = false }: { refresh?: boolean } = {},
+    {
+      refresh = false,
+      suspense = false,
+    }: { refresh?: boolean; suspense?: boolean } = {},
   ): Promise<Data> {
     const key = serializeVariables(variables);
 
@@ -544,6 +555,20 @@ export class Client {
     const existing = documentRequests?.get(key);
 
     if (existing != null && (!existing.settled || !refresh)) {
+      if (existing.rejected) {
+        const requests = documentRequests;
+
+        // Dropped after the current task, so a render React repeats right
+        // away (Strict Mode, recovery from an error) gets the same promise.
+        queueMicrotask(() => {
+          if (requests?.get(key) === existing) {
+            requests.delete(key);
+          }
+        });
+      } else if (suspense) {
+        existing.suspense = true;
+      }
+
       // The request map is shared across every document, so a stored promise
       // is typed `Promise<unknown>`; it was created by `request<Data>` below
       // for this exact document, so it does resolve to `Data`.
@@ -557,7 +582,12 @@ export class Client {
 
     const requests = documentRequests;
     const promise = this.request(document, variables);
-    const stored: StoredRequest = { promise, settled: false };
+    const stored: StoredRequest = {
+      promise,
+      settled: false,
+      rejected: false,
+      suspense,
+    };
 
     requests.set(key, stored);
 
@@ -580,10 +610,14 @@ export class Client {
       },
       () => {
         stored.settled = true;
+        stored.rejected = true;
 
         // Drop failed requests so a retry (an ErrorBoundary reset, a
         // `refetch()`) fires a fresh one instead of replaying the rejection.
-        if (requests.get(key) === stored) {
+        // A suspended component never committed, so React renders it again
+        // from scratch: it must get this promise back, or it sends a new
+        // request and suspends again, in a loop.
+        if (!stored.suspense && requests.get(key) === stored) {
           requests.delete(key);
         }
       },

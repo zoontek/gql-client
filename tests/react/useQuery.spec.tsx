@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/experimental-ct-react";
+import { StrictMode } from "react";
 
 import { QueryFixture } from "./fixtures/QueryFixture";
 import { RefetchFixture } from "./fixtures/RefetchFixture";
@@ -222,3 +223,40 @@ test("a missing fragment is thrown to the nearest ErrorBoundary as a ClientError
     "failed with an unknown error",
   );
 });
+
+for (const strict of [false, true]) {
+  test(`a failed first load is thrown to the nearest ErrorBoundary after 1 request${strict ? " (Strict Mode)" : ""}`, async ({
+    mount,
+    page,
+  }) => {
+    let requestCount = 0;
+
+    await page.route("**/graphql", async (route) => {
+      requestCount++;
+      await route.fulfill({ status: 500, body: "nope" });
+    });
+
+    const fixture = (
+      <QueryFixture
+        url="/graphql"
+        query={GreetingQuery}
+        variables={{ id: "1" }}
+      />
+    );
+
+    const component = await mount(
+      strict ? <StrictMode>{fixture}</StrictMode> : fixture,
+    );
+
+    await expect(component.getByTestId("error")).toContainText("status 500");
+
+    // No other request arrives later.
+    await page.waitForTimeout(200);
+    expect(requestCount).toBe(1);
+
+    // A reset of the ErrorBoundary sends a new request.
+    await component.getByTestId("reset").click();
+    await expect(component.getByTestId("error")).toContainText("status 500");
+    expect(requestCount).toBe(2);
+  });
+}

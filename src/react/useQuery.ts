@@ -126,7 +126,9 @@ export const useQuery = <Data, Variables extends AnyVariables>(
   // at most one network request per set of variables, even when a response
   // was written but the cache read still misses.
   if (needsInitialFetch) {
-    const promise = client.query(stableQuery, effective);
+    const promise = client.query(stableQuery, effective, {
+      suspense: dataToExpose == null,
+    });
 
     if (dataToExpose == null) {
       // Nothing to show yet: suspend until the first result, and let a

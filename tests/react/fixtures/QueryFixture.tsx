@@ -42,8 +42,17 @@ const QueryInner = <Data,>({
   );
 };
 
-const ErrorFallback = ({ error }: FallbackProps): React.ReactNode => (
-  <pre data-testid="error">{(error as Error).message}</pre>
+const ErrorFallback = ({
+  error,
+  resetErrorBoundary,
+}: FallbackProps): React.ReactNode => (
+  <div>
+    <pre data-testid="error">{(error as Error).message}</pre>
+
+    <button data-testid="reset" onClick={resetErrorBoundary}>
+      reset
+    </button>
+  </div>
 );
 
 export const QueryFixture = <Data,>({
