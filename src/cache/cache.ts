@@ -215,12 +215,18 @@ export class ClientCache {
   }
 
   private mapEdgesToCacheEntries<A>(
-    edges: Edge<A>[],
+    edges: (Edge<A> | null | undefined)[],
     info: ConnectionInfo,
   ): CacheEntry[] {
     const edgesSelectionSets = this.getEdgesSelectionSets(info);
 
-    return filterMap(edges, ({ node, __typename, cursor }) => {
+    return filterMap(edges, (item) => {
+      // A `null` edge adds nothing.
+      if (item == null) {
+        return undefined;
+      }
+
+      const { node, __typename, cursor } = item;
       const key = getCacheEntryKey(node);
 
       if (key == null || this.get(key) === MISS) {
@@ -267,8 +273,8 @@ export class ClientCache {
   public updateConnection<A>(
     connection: Connection<A>,
     config:
-      | { prepend: Edge<A>[] }
-      | { append: Edge<A>[] }
+      | { prepend: (Edge<A> | null | undefined)[] }
+      | { append: (Edge<A> | null | undefined)[] }
       | { remove: (string | number)[] },
     touched?: Map<object, Set<symbol>>,
   ): void {

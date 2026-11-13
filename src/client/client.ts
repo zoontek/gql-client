@@ -51,22 +51,22 @@ type ActiveQuery = {
 type ConnectionUpdate<Node> = [
   Connection<Node>,
   (
-    | { prepend: Edge<Node>[] }
-    | { append: Edge<Node>[] }
+    | { prepend: (Edge<Node> | null | undefined)[] }
+    | { append: (Edge<Node> | null | undefined)[] }
     | { remove: (string | number)[] }
   ),
 ];
 
 const prepend = <A>(
   connection: Connection<A>,
-  edges: Edge<A>[],
+  edges: (Edge<A> | null | undefined)[],
 ): ConnectionUpdate<A> => {
   return [connection, { prepend: edges }];
 };
 
 const append = <A>(
   connection: Connection<A>,
-  edges: Edge<A>[],
+  edges: (Edge<A> | null | undefined)[],
 ): ConnectionUpdate<A> => {
   return [connection, { append: edges }];
 };
@@ -101,11 +101,11 @@ export type GetConnectionUpdate<
   variables: Variables;
   prepend: <A>(
     connection: Connection<A>,
-    edges: Edge<A>[],
+    edges: (Edge<A> | null | undefined)[],
   ) => ConnectionUpdate<A>;
   append: <A>(
     connection: Connection<A>,
-    edges: Edge<A>[],
+    edges: (Edge<A> | null | undefined)[],
   ) => ConnectionUpdate<A>;
   remove: <A>(
     connection: Connection<A>,

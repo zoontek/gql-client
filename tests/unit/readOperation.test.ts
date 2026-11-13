@@ -775,6 +775,26 @@ describe("updateConnection", () => {
     ]);
   });
 
+  test("skips null edges when prepending and appending", () => {
+    const { cache, read } = setup(connectionQuery, connectionResponse);
+    const result = read() as {
+      items: Connection<{ __typename: string; id: string }>;
+    };
+
+    cache.updateConnection(result.items, { prepend: [null, undefined] });
+    cache.updateConnection(result.items, { append: [null] });
+
+    const updated = read() as { items: { edges: unknown[] } };
+    expect(updated.items.edges).toEqual([
+      null,
+      {
+        __typename: "ItemEdge",
+        cursor: "c1",
+        node: { __typename: "Item", id: "i1" },
+      },
+    ]);
+  });
+
   test("remove only drops edges whose node id matches", () => {
     const { cache, read } = setup(connectionQuery, connectionResponse);
     const result = read() as {

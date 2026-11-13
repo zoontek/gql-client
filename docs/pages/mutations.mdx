@@ -120,11 +120,11 @@ type GetConnectionUpdate<Data, Variables> = (config: {
   variables: Variables;
   prepend: <A>(
     connection: Connection<A>,
-    edges: Edge<A>[],
+    edges: (Edge<A> | null | undefined)[],
   ) => ConnectionUpdate<A>;
   append: <A>(
     connection: Connection<A>,
-    edges: Edge<A>[],
+    edges: (Edge<A> | null | undefined)[],
   ) => ConnectionUpdate<A>;
   remove: <A>(
     connection: Connection<A>,
