@@ -90,6 +90,53 @@ describe("readOperation", () => {
     expect(a).toBe(b);
   });
 
+  test("keeps references to unchanged subtrees when a field changes", () => {
+    const { cache, read } = setup(
+      `query Q { users { id name address { city } } }`,
+      {
+        __typename: "Query",
+        users: [
+          {
+            __typename: "User",
+            id: "1",
+            name: "Jo",
+            address: { __typename: "Address", city: "Paris" },
+          },
+          {
+            __typename: "User",
+            id: "2",
+            name: "Al",
+            address: { __typename: "Address", city: "Lyon" },
+          },
+        ],
+      },
+    );
+
+    type Result = {
+      users: { name: string; address: { city: string } }[];
+    };
+
+    const before = read() as Result;
+
+    cache.writeOperation(
+      doc(`query U { user(id: "2") { id name } }`),
+      {
+        __typename: "Query",
+        user: { __typename: "User", id: "2", name: "Bo" },
+      },
+      {},
+    );
+
+    const after = read() as Result;
+
+    expect(after).not.toBe(before);
+    expect(after.users).not.toBe(before.users);
+    expect(after.users[0]).toBe(before.users[0]);
+    expect(after.users[1]).not.toBe(before.users[1]);
+    expect(after.users[1]?.name).toBe("Bo");
+    expect(after.users[1]?.address).toBe(before.users[1]?.address);
+  });
+
   test("preserves field aliases", () => {
     const { read } = setup(`query Q { account { handle: name owner: id } }`, {
       __typename: "Query",

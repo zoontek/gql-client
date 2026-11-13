@@ -18,7 +18,6 @@ import type { AnyVariables, JsonValue } from "../types";
 import {
   containsAll,
   deepCopy,
-  deepEqual,
   hasOwn,
   isRecord,
   serializeVariables,
@@ -36,6 +35,42 @@ const STABILITY_CACHE = new WeakMap<
   TypedDocumentNode,
   Map<string, JsonValue>
 >();
+
+// Structural sharing: returns `next` with each subtree that deeply equals its
+// `prev` counterpart swapped for it, or `prev` itself if everything is equal.
+// Mutates `next`, a fresh tree from `traverse` that nobody else holds.
+const shareEqualSubtrees = (prev: unknown, next: unknown): unknown => {
+  if (Object.is(prev, next)) {
+    return prev;
+  }
+
+  if (Array.isArray(prev) && Array.isArray(next)) {
+    let equal = prev.length === next.length;
+
+    for (let index = 0; index < next.length; index++) {
+      const item = shareEqualSubtrees(prev[index], next[index]);
+      next[index] = item;
+      equal = equal && item === prev[index];
+    }
+
+    return equal ? prev : next;
+  }
+
+  if (isRecord(prev) && isRecord(next)) {
+    const keys = Object.keys(next);
+    let equal = keys.length === Object.keys(prev).length;
+
+    for (const key of keys) {
+      const value = shareEqualSubtrees(prev[key], next[key]);
+      next[key] = value;
+      equal = equal && hasOwn(prev, key) && value === prev[key];
+    }
+
+    return equal ? prev : next;
+  }
+
+  return next;
+};
 
 export type ReadDeps = {
   // Raw map lookup, defaulting to MISS. Shared with the write and
@@ -385,27 +420,28 @@ export const createReadOperation = (
       return undefined;
     }
 
+    // Keep the last result per document and serialized variables, and reuse
+    // its unchanged subtrees, so consumers comparing by reference (e.g.
+    // React) only re-render what changed.
+    const serializedVariables = serializeVariables(variables);
+    let documentCache = STABILITY_CACHE.get(transformedDocument);
+
+    if (documentCache == null) {
+      documentCache = new Map();
+      STABILITY_CACHE.set(transformedDocument, documentCache);
+    }
+
     // `traverse` builds this from cache entries whose field values are
     // untyped at the storage level, but it only ever writes plain scalars,
     // plain objects, and plain arrays into `result`, never a raw cache entry
-    // or a symbol key. So the tree is already `JsonValue`-shaped.
-    const value = traversed as JsonValue;
+    // or a symbol key. So the tree is already `JsonValue`-shaped, as is the
+    // previous result.
+    const shared = shareEqualSubtrees(
+      documentCache.get(serializedVariables),
+      traversed,
+    ) as JsonValue;
 
-    // Return a stable reference when possible: per document, a WeakMap keyed
-    // by serialized variables holds the last result returned for that key. If
-    // the new value deeply equals it, hand back the old reference instead so
-    // consumers relying on referential equality (e.g. React) don't re-render.
-    const serializedVariables = serializeVariables(variables);
-    const documentCache = STABILITY_CACHE.get(transformedDocument);
-    const previous = documentCache?.get(serializedVariables);
-
-    if (previous != null && deepEqual(value, previous)) {
-      return previous;
-    }
-
-    const nextDocumentCache = documentCache ?? new Map<string, JsonValue>();
-    nextDocumentCache.set(serializedVariables, value);
-    STABILITY_CACHE.set(transformedDocument, nextDocumentCache);
-    return value;
+    documentCache.set(serializedVariables, shared);
+    return shared;
   };
 };
