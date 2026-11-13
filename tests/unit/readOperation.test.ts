@@ -46,6 +46,22 @@ const expectNoSymbolKeys = (value: unknown): void => {
   }
 };
 
+// Runs `run` with `NODE_ENV` set to "development", for dev-only warnings.
+const inDevelopment = (run: () => void): void => {
+  const nodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "development";
+
+  try {
+    run();
+  } finally {
+    if (nodeEnv == null) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = nodeEnv;
+    }
+  }
+};
+
 describe("readOperation", () => {
   test("reads a basic entity with nested object and scalars", () => {
     const { read } = setup(
@@ -841,8 +857,10 @@ describe("updateConnection", () => {
     );
 
     const warn = spyOn(console, "warn").mockImplementation(() => {});
-    cache.updateConnection(result.items, {
-      prepend: [{ node: { __typename: "Item", id: "i2" } }],
+    inDevelopment(() => {
+      cache.updateConnection(result.items, {
+        prepend: [{ node: { __typename: "Item", id: "i2" } }],
+      });
     });
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
@@ -880,8 +898,10 @@ describe("updateConnection", () => {
     );
 
     const warn = spyOn(console, "warn").mockImplementation(() => {});
-    cache.updateConnection(result.items, {
-      append: [{ node: { __typename: "Item", id: "i2" } }],
+    inDevelopment(() => {
+      cache.updateConnection(result.items, {
+        append: [{ node: { __typename: "Item", id: "i2" } }],
+      });
     });
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();

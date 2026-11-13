@@ -66,24 +66,36 @@ export const deepEqual = (a: any, b: any): boolean => {
   return true;
 };
 
+// A `BigInt` is written as a string that starts with `BIGINT_MARK`, so
+// building a key never throws. A string that starts with the mark gets a
+// second one, so the 2 can't share a key. The request body can't hold a
+// `BigInt`, so the request fails instead.
+const BIGINT_MARK = "\u0000";
+
 // Deterministic serialization: object keys are sorted at every depth, so the
 // same logical value always produces the same string regardless of key
 // order. Sorting goes through a replacer function: a replacer array would
 // whitelist top-level keys at every depth and drop all nested values.
-// A `BigInt` is written as `"1n"` instead of throwing, so building a key never
-// throws. The request body can't hold it, so the request fails instead.
 export const stableStringify = (value: unknown): string =>
-  JSON.stringify(value, (_key, val: unknown) =>
-    isRecord(val)
-      ? Object.fromEntries(
-          Object.keys(val)
-            .sort()
-            .map((key) => [key, val[key]]),
-        )
-      : typeof val === "bigint"
-        ? `${val}n`
-        : val,
-  );
+  JSON.stringify(value, (_key, val: unknown) => {
+    if (isRecord(val)) {
+      return Object.fromEntries(
+        Object.keys(val)
+          .sort()
+          .map((key) => [key, val[key]]),
+      );
+    }
+
+    if (typeof val === "bigint") {
+      return `${BIGINT_MARK}${val}n`;
+    }
+
+    if (typeof val === "string" && val.startsWith(BIGINT_MARK)) {
+      return `${BIGINT_MARK}${val}`;
+    }
+
+    return val;
+  });
 
 // Memoized by object identity. Variables objects are never mutated in place
 // here, a change always produces a new object, so caching the serialized

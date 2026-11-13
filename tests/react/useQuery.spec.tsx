@@ -206,3 +206,19 @@ test("Client#refetch re-sends every mounted query", async ({ mount, page }) => {
   await component.getByTestId("refetch-all").click();
   await expect(component.getByTestId("state")).toContainText("hello-2");
 });
+
+test("a missing fragment is thrown to the nearest ErrorBoundary as a ClientError", async ({
+  mount,
+}) => {
+  const BrokenQuery = gql<GreetingData, GreetingVariables>(
+    `query Greeting($id: ID!) { greeting(id: $id) ...Missing }`,
+  );
+
+  const component = await mount(
+    <QueryFixture url="/graphql" query={BrokenQuery} variables={{ id: "1" }} />,
+  );
+
+  await expect(component.getByTestId("error")).toContainText(
+    "failed with an unknown error",
+  );
+});

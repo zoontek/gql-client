@@ -433,7 +433,16 @@ export const createReadOperation = (
   };
 
   const readOperation: ReadOperation = (document, variables, watched) => {
-    const transformedDocument = transformDocument(document);
+    let transformedDocument: TypedDocumentNode;
+
+    // A broken document, e.g. with a missing fragment, is a miss. The request
+    // then fails on it with a `ClientError`.
+    try {
+      transformedDocument = transformDocument(document);
+    } catch {
+      return undefined;
+    }
+
     const operation = getOperationDefinition(transformedDocument);
 
     if (operation == null) {
