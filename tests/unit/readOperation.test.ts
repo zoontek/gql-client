@@ -192,6 +192,39 @@ describe("readOperation", () => {
     });
   });
 
+  test("keys cached fields by name, not by alias", () => {
+    const { cache, read } = setup(`query A { user { id title: name } }`, {
+      __typename: "Query",
+      user: { __typename: "User", id: "1", title: "Alice" },
+    });
+
+    const roleQuery = doc(`query B { me { id title: role } }`);
+    cache.writeOperation(
+      roleQuery,
+      {
+        __typename: "Query",
+        me: { __typename: "User", id: "1", title: "admin" },
+      },
+      {},
+    );
+
+    expect(read()).toMatchObject({ user: { id: "1", title: "Alice" } });
+    expect(cache.readOperation(roleQuery, {})).toMatchObject({
+      me: { id: "1", title: "admin" },
+    });
+  });
+
+  test("shares a cached field between different aliases", () => {
+    const { cache } = setup(`query A { user { id name } }`, {
+      __typename: "Query",
+      user: { __typename: "User", id: "1", name: "Alice" },
+    });
+
+    expect(
+      cache.readOperation(doc(`query B { user { id title: name } }`), {}),
+    ).toMatchObject({ user: { id: "1", title: "Alice" } });
+  });
+
   test("reads scalar lists and entity lists with null elements", () => {
     const { read } = setup(
       `query Q {

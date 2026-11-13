@@ -54,7 +54,6 @@ Set {
       Symbol(id),
       Symbol(user),
       Symbol(account),
-      Symbol(membershipUser),
     }
 ,
     [Symbol(__typename)]: "AccountMembership",
@@ -69,7 +68,6 @@ Set {
       [Symbol(name)]: "First",
     },
     [Symbol(id)]: "account-membership-1",
-    [Symbol(membershipUser)]: Symbol(User<user-1>),
     [Symbol(user)]: Symbol(User<user-1>),
   },
   Symbol(User<user-1>) => {
@@ -94,7 +92,7 @@ Set {
       Symbol(__typename),
       Symbol(id),
       Symbol(account),
-      Symbol(membershipUser),
+      Symbol(user),
     }
 ,
     [Symbol(__typename)]: "AccountMembership",
@@ -109,7 +107,7 @@ Set {
       [Symbol(name)]: "Second",
     },
     [Symbol(id)]: "account-membership-2",
-    [Symbol(membershipUser)]: Symbol(User<user-2>),
+    [Symbol(user)]: Symbol(User<user-2>),
   },
   Symbol(User<user-2>) => {
     [Symbol(__requestedKeys)]:     
@@ -206,7 +204,6 @@ Set {
       Symbol(id),
       Symbol(user),
       Symbol(account),
-      Symbol(membershipUser),
     }
 ,
     [Symbol(__typename)]: "AccountMembership",
@@ -221,7 +218,6 @@ Set {
       [Symbol(name)]: "First",
     },
     [Symbol(id)]: "account-membership-1",
-    [Symbol(membershipUser)]: Symbol(User<user-1>),
     [Symbol(user)]: Symbol(User<user-1>),
   },
   Symbol(User<user-1>) => {
@@ -246,7 +242,6 @@ Set {
       Symbol(__typename),
       Symbol(id),
       Symbol(account),
-      Symbol(membershipUser),
       Symbol(user),
     }
 ,
@@ -262,7 +257,6 @@ Set {
       [Symbol(name)]: "Second",
     },
     [Symbol(id)]: "account-membership-2",
-    [Symbol(membershipUser)]: Symbol(User<user-2>),
     [Symbol(user)]: Symbol(User<user-2>),
   },
   Symbol(User<user-2>) => {
@@ -377,7 +371,6 @@ Set {
       Symbol(id),
       Symbol(user),
       Symbol(account),
-      Symbol(membershipUser),
     }
 ,
     [Symbol(__typename)]: "AccountMembership",
@@ -392,7 +385,6 @@ Set {
       [Symbol(name)]: "First",
     },
     [Symbol(id)]: "account-membership-1",
-    [Symbol(membershipUser)]: Symbol(User<user-1>),
     [Symbol(user)]: Symbol(User<user-1>),
   },
   Symbol(User<user-1>) => {
@@ -430,7 +422,6 @@ Set {
       Symbol(__typename),
       Symbol(id),
       Symbol(account),
-      Symbol(membershipUser),
       Symbol(user),
     }
 ,
@@ -446,7 +437,6 @@ Set {
       [Symbol(name)]: "Second",
     },
     [Symbol(id)]: "account-membership-2",
-    [Symbol(membershipUser)]: Symbol(User<user-2>),
     [Symbol(user)]: Symbol(User<user-2>),
   },
   Symbol(User<user-2>) => {

@@ -100,7 +100,9 @@ export const extractArguments = (
   );
 
 /**
- * Serializes the field name and arguments as a symbol.
+ * Serializes the field name and arguments as a symbol. The alias is left
+ * out: it only names the field in the response, so two aliases of the same
+ * field share one cache slot, and one alias on two fields does not.
  *
  * { user {id} }
  * => Symbol(`user`)
@@ -110,6 +112,9 @@ export const extractArguments = (
  *
  * { user(id: $id) {id} } with variables `{"id": "2"}`
  * => Symbol(`user({"id":"2"})`)
+ *
+ * { owner: user(id: "1") {id} }
+ * => Symbol(`user({"id":"1"})`)
  *
  * @param fieldNode - The field to serialize.
  * @param variables - The operation's variables, used to resolve any
@@ -131,7 +136,7 @@ const computeFieldSymbol = (
   fieldNode: FieldNode,
   variables: AnyVariables,
 ): symbol => {
-  const fieldName = getFieldName(fieldNode);
+  const fieldName = fieldNode.name.value;
   const args = extractArguments(fieldNode, variables);
   // `stableStringify` sorts keys at every depth, so the same logical
   // arguments produce the same symbol regardless of the order they were
@@ -150,7 +155,7 @@ export const getFieldNameWithArguments = (
   if (fieldArguments == null || fieldArguments.length === 0) {
     let symbol = fieldSymbolCache.get(fieldNode);
     if (symbol == null) {
-      symbol = Symbol.for(getFieldName(fieldNode));
+      symbol = Symbol.for(fieldNode.name.value);
       fieldSymbolCache.set(fieldNode, symbol);
     }
     return symbol;
