@@ -10,6 +10,7 @@ import type { JsonArray } from "../types";
  * - `"status"`: the response status was not ok (outside 200-299).
  * - `"timeout"`: the request exceeded the client's configured `timeout`.
  * - `"transform"`: the client's `transformRequest` function threw or rejected.
+ * - `"unknown"`: anything else threw, see `cause`.
  */
 export type ClientErrorReason =
   | "graphQL"
@@ -17,7 +18,8 @@ export type ClientErrorReason =
   | "network"
   | "status"
   | "timeout"
-  | "transform";
+  | "transform"
+  | "unknown";
 
 const parseGraphQLError = (error: unknown): GraphQLError => {
   if (
@@ -74,6 +76,7 @@ export class ClientError extends Error {
       url: string;
       response?: Response | undefined;
       graphQLErrors?: GraphQLError[];
+      cause?: unknown;
     },
   ) {
     super(message);
@@ -82,23 +85,29 @@ export class ClientError extends Error {
     this.url = options.url;
     this.response = options.response;
     this.graphQLErrors = options.graphQLErrors ?? [];
+    this.cause = options.cause;
   }
 
   // The `static` factories below build a `ClientError` for each `reason`.
   // They're used internally by `Client#mutate`; construct errors this way
   // rather than with `new ClientError(...)` directly.
 
-  static network(url: string): ClientError {
+  static network(url: string, cause?: unknown): ClientError {
     return new ClientError(`Request to ${url} failed`, {
       reason: "network",
       url,
+      cause,
     });
   }
 
-  static transform(url: string, message?: string): ClientError {
+  static transform(
+    url: string,
+    message?: string,
+    cause?: unknown,
+  ): ClientError {
     return new ClientError(
       message ?? `Failed to transform the request to ${url}`,
-      { reason: "transform", url },
+      { reason: "transform", url, cause },
     );
   }
 
@@ -118,11 +127,16 @@ export class ClientError extends Error {
     );
   }
 
-  static malformed(url: string, response: Response): ClientError {
+  static malformed(
+    url: string,
+    response: Response,
+    cause?: unknown,
+  ): ClientError {
     return new ClientError("Received a malformed GraphQL response", {
       reason: "malformed",
       url,
       response,
+      cause,
     });
   }
 
@@ -137,5 +151,13 @@ export class ClientError extends Error {
       graphQLErrors[0]?.message ?? "Received a GraphQL error",
       { reason: "graphQL", url, response, graphQLErrors },
     );
+  }
+
+  static unknown(url: string, cause: unknown): ClientError {
+    return new ClientError(`Request to ${url} failed with an unknown error`, {
+      reason: "unknown",
+      url,
+      cause,
+    });
   }
 }

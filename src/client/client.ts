@@ -308,8 +308,8 @@ export class Client {
 
     const requestToSend = await Promise.resolve()
       .then(() => transformRequest(request))
-      .catch(() => {
-        throw ClientError.transform(this.url);
+      .catch((error: unknown) => {
+        throw ClientError.transform(this.url, undefined, error);
       });
 
     if (requestToSend.bodyUsed) {
@@ -328,12 +328,22 @@ export class Client {
     }
 
     return fetch(requestToSend, { signal: controller.signal })
+      .catch((error: unknown) => {
+        // A timeout aborts with its own `ClientError` as the reason.
+        throw error instanceof ClientError
+          ? error
+          : ClientError.network(this.url, error);
+      })
       .then(async (response) => {
         if (!response.ok) {
           throw ClientError.status(response);
         }
 
-        const json: JsonValue = await response.json().catch(() => null);
+        const json: JsonValue = await response
+          .json()
+          .catch((error: unknown) => {
+            throw ClientError.malformed(this.url, response, error);
+          });
 
         if (isRecord(json)) {
           if ("errors" in json && Array.isArray(json.errors)) {
@@ -359,15 +369,15 @@ export class Client {
 
         const touched = new Map<object, Set<symbol>>();
 
-        this.cache.writeOperation(
-          transformedDocument,
-          json,
-          variables,
-          touched,
-        );
+        try {
+          this.cache.writeOperation(
+            transformedDocument,
+            json,
+            variables,
+            touched,
+          );
 
-        if (connectionUpdates != null) {
-          connectionUpdates.forEach((getUpdate) => {
+          connectionUpdates?.forEach((getUpdate) => {
             const result = getUpdate({
               data,
               variables,
@@ -381,18 +391,17 @@ export class Client {
               this.cache.updateConnection(connection, update, touched);
             }
           });
+        } finally {
+          // Announce what was written, even if a later step threw.
+          this.notify(touched);
         }
-
-        this.notify(touched);
 
         return data;
       })
-      .catch((error) => {
-        if (error instanceof ClientError) {
-          throw error;
-        }
-
-        throw ClientError.network(this.url);
+      .catch((error: unknown) => {
+        throw error instanceof ClientError
+          ? error
+          : ClientError.unknown(this.url, error);
       })
       .finally(() => {
         clearTimeout(timer);

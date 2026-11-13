@@ -10,6 +10,7 @@ Every failed request throws a `ClientError`, never a raw `fetch` or parsing exce
 | `status`    | The response status was outside the `200`-`299` range.          |
 | `timeout`   | The request took longer than the client's configured `timeout`. |
 | `transform` | The client's `transformRequest` function threw or rejected.     |
+| `unknown`   | Anything else threw, see `cause`.                               |
 
 In `useQuery`, the error is thrown during render, to be caught by an `ErrorBoundary`. In `useDeferredQuery` and `useMutation`, it lands in `state.error` (and rejects the returned promise).
 
@@ -35,10 +36,17 @@ class ClientError extends Error {
   url: string;
   response: Response | undefined;
   graphQLErrors: GraphQLError[];
+  cause: unknown;
 }
 
 type ClientErrorReason =
-  "graphQL" | "malformed" | "network" | "status" | "timeout" | "transform";
+  | "graphQL"
+  | "malformed"
+  | "network"
+  | "status"
+  | "timeout"
+  | "transform"
+  | "unknown";
 ```
 
 | Property        | Description                                                             |
@@ -47,5 +55,6 @@ type ClientErrorReason =
 | `url`           | The request URL.                                                        |
 | `response`      | The raw `fetch` response, when one was received.                        |
 | `graphQLErrors` | The parsed `errors` array. Only populated when `reason` is `"graphQL"`. |
+| `cause`         | The original error, if any.                                             |
 
 `graphQLErrors` holds instances of `GraphQLError` from [`@0no-co/graphql.web`](https://github.com/0no-co/graphql-web), a dependency of this package.

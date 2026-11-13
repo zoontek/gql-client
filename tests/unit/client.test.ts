@@ -279,3 +279,115 @@ for (const reset of ["purge", "restore"] as const) {
     }
   });
 }
+
+test("a fetch failure is a 'network' error caused by the fetch error", async () => {
+  const originalFetch = globalThis.fetch;
+  const fetchError = new TypeError("Failed to fetch");
+
+  globalThis.fetch = (async () => {
+    throw fetchError;
+  }) as unknown as typeof fetch;
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+    });
+
+    const result = client.query(parse(`query Me { me { id } }`), {});
+
+    await expect(result).rejects.toBeInstanceOf(ClientError);
+    await expect(result).rejects.toMatchObject({
+      reason: "network",
+      cause: fetchError,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("an error in connectionUpdates is an 'unknown' error, and the write is still announced", async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    jsonResponse({
+      __typename: "Mutation",
+      addItem: { __typename: "Item", id: "1" },
+    })) as unknown as typeof fetch;
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+    });
+    const callbackError = new TypeError("Cannot read properties of undefined");
+
+    let notified = 0;
+    client.subscribe(() => {
+      notified++;
+    });
+
+    const result = client.mutate(
+      parse(`mutation AddItem { addItem { id } }`),
+      {},
+      {
+        connectionUpdates: [
+          () => {
+            throw callbackError;
+          },
+        ],
+      },
+    );
+
+    await expect(result).rejects.toBeInstanceOf(ClientError);
+    await expect(result).rejects.toMatchObject({
+      reason: "unknown",
+      cause: callbackError,
+    });
+    expect(client.cache.dump().has(Symbol.for("Item<1>"))).toBe(true);
+    expect(notified).toBe(1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a transformRequest error is kept as the cause", async () => {
+  const transformError = new Error("boom");
+
+  const client = new Client({
+    url: "http://localhost/graphql",
+    schemaConfig: { interfaceToTypes: {} },
+    transformRequest: () => {
+      throw transformError;
+    },
+  });
+
+  await expect(
+    client.mutate(parse(`mutation M { ping }`), {}),
+  ).rejects.toMatchObject({ reason: "transform", cause: transformError });
+});
+
+test("a body that isn't JSON is a 'malformed' error caused by the parse error", async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    new Response("<html>Bad Gateway</html>", {
+      status: 200,
+      headers: { "Content-Type": "text/html" },
+    })) as unknown as typeof fetch;
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+    });
+
+    const result = client.query(parse(`query Me { me { id } }`), {});
+
+    await expect(result).rejects.toMatchObject({ reason: "malformed" });
+    const error = await result.catch((error: unknown) => error);
+    expect((error as ClientError).cause).toBeInstanceOf(SyntaxError);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
