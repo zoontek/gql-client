@@ -38,7 +38,7 @@ The client builds a `POST` request to `url`, with `Accept` and `Content-Type` se
 Read the body from `request.clone()`, never from `request` itself. A `Request` whose body has been consumed can no longer be sent.
 :::
 
-If the function throws or rejects, or returns a request whose body has been consumed, the request fails with a [`ClientError`](/errors) whose `reason` is `"transform"`.
+If the function throws or rejects, or returns a request whose body has been consumed, the request fails with a [`ClientError`](/errors) whose `reason` is `"unknown"`.
 
 :::note
 The abort signal is attached after the function runs, so returning a brand new `Request` never disables `timeout`.

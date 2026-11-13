@@ -21,7 +21,7 @@ export type ClientConfig = {
    * Receives the `Request` about to be sent and returns the one to send
    * instead, sync or async. Use it to add an auth header, sign the body, or
    * set any other `fetch` option. If the function throws or rejects, the
-   * request fails with a `ClientError` whose `reason` is `"transform"`.
+   * request fails with a `ClientError` whose `reason` is `"unknown"`.
    */
   transformRequest?: (request: Request) => Request | Promise<Request>;
 };
@@ -309,13 +309,15 @@ export class Client {
     const requestToSend = await Promise.resolve()
       .then(() => transformRequest(request))
       .catch((error: unknown) => {
-        throw ClientError.transform(this.url, undefined, error);
+        throw ClientError.unknown(this.url, error);
       });
 
     if (requestToSend.bodyUsed) {
-      throw ClientError.transform(
+      throw ClientError.unknown(
         this.url,
-        "`transformRequest` returned a consumed request. Read its body from `request.clone()`.",
+        new TypeError(
+          "`transformRequest` returned a consumed request. Read its body from `request.clone()`.",
+        ),
       );
     }
 

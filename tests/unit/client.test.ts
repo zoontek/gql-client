@@ -6,7 +6,7 @@ import { Client } from "../../src/client/client";
 import { ClientError } from "../../src/client/errors";
 import { brandingQuery } from "./data";
 
-test("ClientError has reason 'transform' when transformRequest throws synchronously", async () => {
+test("ClientError has reason 'unknown' when transformRequest throws synchronously", async () => {
   const client = new Client({
     url: "http://localhost/graphql",
     schemaConfig: { interfaceToTypes: {} },
@@ -20,10 +20,10 @@ test("ClientError has reason 'transform' when transformRequest throws synchronou
   });
 
   await expect(result).rejects.toBeInstanceOf(ClientError);
-  await expect(result).rejects.toMatchObject({ reason: "transform" });
+  await expect(result).rejects.toMatchObject({ reason: "unknown" });
 });
 
-test("ClientError has reason 'transform' when transformRequest rejects", async () => {
+test("ClientError has reason 'unknown' when transformRequest rejects", async () => {
   const client = new Client({
     url: "http://localhost/graphql",
     schemaConfig: { interfaceToTypes: {} },
@@ -37,7 +37,7 @@ test("ClientError has reason 'transform' when transformRequest rejects", async (
   });
 
   await expect(result).rejects.toBeInstanceOf(ClientError);
-  await expect(result).rejects.toMatchObject({ reason: "transform" });
+  await expect(result).rejects.toMatchObject({ reason: "unknown" });
 });
 
 const jsonResponse = (data: unknown): Response =>
@@ -364,7 +364,7 @@ test("a transformRequest error is kept as the cause", async () => {
 
   await expect(
     client.mutate(parse(`mutation M { ping }`), {}),
-  ).rejects.toMatchObject({ reason: "transform", cause: transformError });
+  ).rejects.toMatchObject({ reason: "unknown", cause: transformError });
 });
 
 test("a body that isn't JSON is a 'malformed' error caused by the parse error", async () => {
@@ -594,4 +594,23 @@ test("an unread error body is released when the timeout fires", async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("a consumed request from transformRequest is an 'unknown' error", async () => {
+  const client = new Client({
+    url: "http://localhost/graphql",
+    schemaConfig: { interfaceToTypes: {} },
+    transformRequest: async (request) => {
+      await request.text();
+      return request;
+    },
+  });
+
+  const error = await client
+    .mutate(parse(`mutation M { ping }`), {})
+    .catch((error: unknown) => error);
+
+  expect(error).toMatchObject({ reason: "unknown" });
+  expect((error as ClientError).cause).toBeInstanceOf(TypeError);
+  expect(String((error as ClientError).cause)).toContain("request.clone()");
 });

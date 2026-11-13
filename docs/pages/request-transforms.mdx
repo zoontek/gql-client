@@ -24,7 +24,7 @@ export const client = new Client({
 ```
 
 :::warning[Always clone before reading the body]
-Reading `request.arrayBuffer()` directly consumes the body, and a request whose body has been consumed can no longer be sent. Such a request fails with a [`ClientError`](/errors) whose `reason` is `"transform"`.
+Reading `request.arrayBuffer()` directly consumes the body, and a request whose body has been consumed can no longer be sent. Such a request fails with a [`ClientError`](/errors) whose `reason` is `"unknown"`.
 :::
 
 A digest proves the body arrived intact. It doesn't prove who sent it, since anyone can compute one: [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530.html#section-6.1) states that "integrity fields are not intended to be a general protection against malicious tampering with HTTP messages". Pair it with the auth header from [Authentication](/authentication), and with a signature if the body must be tamper-evident.

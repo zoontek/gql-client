@@ -10,7 +10,6 @@ import type { JsonArray } from "../types";
  * - `"network"`: the connection failed, before or during the response.
  * - `"status"`: the response status was not ok (outside 200-299).
  * - `"timeout"`: the request exceeded the client's configured `timeout`.
- * - `"transform"`: the client's `transformRequest` function threw or rejected.
  * - `"unknown"`: anything else threw, see `cause`.
  */
 export type ClientErrorReason =
@@ -20,7 +19,6 @@ export type ClientErrorReason =
   | "network"
   | "status"
   | "timeout"
-  | "transform"
   | "unknown";
 
 const parseGraphQLError = (error: unknown): GraphQLError => {
@@ -108,17 +106,6 @@ export class ClientError extends Error {
       url,
       cause,
     });
-  }
-
-  static transform(
-    url: string,
-    message?: string,
-    cause?: unknown,
-  ): ClientError {
-    return new ClientError(
-      message ?? `Failed to transform the request to ${url}`,
-      { reason: "transform", url, cause },
-    );
   }
 
   static timeout(url: string, timeout?: number, cause?: unknown): ClientError {
