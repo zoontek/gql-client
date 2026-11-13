@@ -1020,4 +1020,29 @@ describe("purge", () => {
 
     expect(read()).toBeUndefined();
   });
+
+  test.each(["purge", "restore"] as const)(
+    "a connection ref from before %s matches no later connection",
+    (reset) => {
+      const source = `query Q { items { edges { node { id } } } }`;
+      const response = {
+        __typename: "Query",
+        items: { __typename: "ItemConnection", edges: [] },
+      };
+      const { cache, document, read } = setup(source, response);
+
+      const before = read() as { items: { __connectionRef: number } };
+      const ref = before.items.__connectionRef;
+
+      if (reset === "purge") {
+        cache.purge();
+      } else {
+        cache.restore(cache.extract());
+      }
+
+      cache.writeOperation(document, response, {});
+
+      expect(cache.getCachedConnection(ref)).toBeUndefined();
+    },
+  );
 });

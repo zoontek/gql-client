@@ -39,6 +39,8 @@ export class ClientCache {
   private cache = new Map<symbol, CacheEntry>();
   private interfaceToType: Record<string, Set<string>>;
   private connectionCache: Map<number, ConnectionInfo>;
+  // Never reset, so a ref held by a mounted hook can't match a connection
+  // registered after `purge` or `restore`.
   private connectionRefCount = -1;
   private resultCache: ResultCache = new WeakMap();
 
@@ -85,7 +87,6 @@ export class ClientCache {
   public purge(): void {
     this.cache = new Map();
     this.connectionCache = new Map();
-    this.connectionRefCount = -1;
     this.resultCache = new WeakMap();
   }
 
@@ -108,7 +109,6 @@ export class ClientCache {
       data.entries.map(([key, entry]) => [Symbol.for(key), decodeEntry(entry)]),
     );
     this.connectionCache = new Map();
-    this.connectionRefCount = -1;
     this.resultCache = new WeakMap();
   }
 
