@@ -1,5 +1,7 @@
+import { Kind, type SelectionSetNode } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
+import { getFieldNameWithArguments, isExcluded } from "../graphql/ast";
 import type { AnyVariables, Connection, Edge, JsonValue } from "../types";
 import { filterMap } from "../utils";
 import {
@@ -12,7 +14,12 @@ import {
   getCacheEntryKey,
   getIdFromCacheKey,
 } from "./keys";
-import { createReadOperation, type ResultCache } from "./read";
+import {
+  createReadOperation,
+  type CanReadSelection,
+  type ReadOperation,
+  type ResultCache,
+} from "./read";
 import { decodeEntry, encodeEntry, type SerializedCache } from "./serialize";
 import {
   MISS,
@@ -35,11 +42,8 @@ export class ClientCache {
   private connectionRefCount = -1;
   private resultCache: ResultCache = new WeakMap();
 
-  public readonly readOperation: <Data, Variables extends AnyVariables>(
-    document: TypedDocumentNode<Data, Variables>,
-    variables: Variables,
-    watched?: Map<object, Set<symbol>>,
-  ) => JsonValue | undefined;
+  public readonly readOperation: ReadOperation;
+  private readonly canReadSelection: CanReadSelection;
 
   public readonly writeOperation: (
     document: TypedDocumentNode,
@@ -57,12 +61,15 @@ export class ClientCache {
     );
     this.connectionCache = new Map<number, ConnectionInfo>();
 
-    this.readOperation = createReadOperation({
+    const { readOperation, canReadSelection } = createReadOperation({
       get: (cacheKey) => this.get(cacheKey),
       getResultCache: () => this.resultCache,
       isTypeCompatible: (typename, typeCondition) =>
         this.isTypeCompatible(typename, typeCondition),
     });
+
+    this.readOperation = readOperation;
+    this.canReadSelection = canReadSelection;
 
     this.writeOperation = createWriteOperation({
       getOrCreateEntry: (cacheKey) => this.getOrCreateEntry(cacheKey),
@@ -168,12 +175,54 @@ export class ClientCache {
     return { entry, stored: cacheKey ?? entry };
   }
 
-  private mapEdgesToCacheEntries<A>(edges: Edge<A>[]): CacheEntry[] {
+  // The selection sets of the `edges` fields under the connection field,
+  // including inline fragments that apply to the connection's type.
+  private getEdgesSelectionSets(info: ConnectionInfo): SelectionSetNode[] {
+    const { cacheEntry, field, variables } = info;
+    const typename = cacheEntry[TYPENAME_KEY];
+    const selectionSets: SelectionSetNode[] = [];
+
+    const collect = (selectionSet: SelectionSetNode): void => {
+      for (const selection of selectionSet.selections) {
+        if (selection.kind === Kind.FIELD) {
+          if (
+            selection.selectionSet != null &&
+            !isExcluded(selection, variables) &&
+            getFieldNameWithArguments(selection, variables) === EDGES_KEY
+          ) {
+            selectionSets.push(selection.selectionSet);
+          }
+        } else if (selection.kind === Kind.INLINE_FRAGMENT) {
+          const typeCondition = selection.typeCondition?.name.value;
+
+          if (
+            !isExcluded(selection, variables) &&
+            (typeCondition == null ||
+              typeof typename !== "string" ||
+              this.isTypeCompatible(typename, typeCondition))
+          ) {
+            collect(selection.selectionSet);
+          }
+        }
+      }
+    };
+
+    if (field.selectionSet != null) {
+      collect(field.selectionSet);
+    }
+
+    return selectionSets;
+  }
+
+  private mapEdgesToCacheEntries<A>(
+    edges: Edge<A>[],
+    info: ConnectionInfo,
+  ): CacheEntry[] {
+    const edgesSelectionSets = this.getEdgesSelectionSets(info);
+
     return filterMap(edges, ({ node, __typename, cursor }) => {
       const key = getCacheEntryKey(node);
 
-      // No need to check requested fields here: `Connection<A>` already
-      // constrains which fields exist on a node.
       if (key == null || this.get(key) === MISS) {
         return undefined;
       }
@@ -192,6 +241,23 @@ export class ClientCache {
 
       edge[NODE_KEY] = key;
       edge[CURSOR_KEY] = cursor ?? null;
+
+      // An edge the connection's query can't fully read would turn the whole
+      // query into a cache miss. This happens when the request that returned
+      // the node selected fewer fields than the connection's query.
+      const readable = edgesSelectionSets.every((selectionSet) =>
+        this.canReadSelection(selectionSet, edge, info.variables),
+      );
+
+      if (!readable) {
+        console.warn(
+          `GraphQL Client: skipped adding ${key.description ?? "a node"} to a connection. ` +
+            "The cache doesn't have every field the connection's query selects on its edges. " +
+            "Select the same fields in the request that returns the node.",
+        );
+        return undefined;
+      }
+
       return edge;
     });
   }
@@ -234,7 +300,7 @@ export class ClientCache {
 
       if ("prepend" in config) {
         connectionConfig.cacheEntry[EDGES_KEY] = [
-          ...this.mapEdgesToCacheEntries(config.prepend),
+          ...this.mapEdgesToCacheEntries(config.prepend, connectionConfig),
           ...currentEdges,
         ];
         return;
@@ -243,7 +309,7 @@ export class ClientCache {
       if ("append" in config) {
         connectionConfig.cacheEntry[EDGES_KEY] = [
           ...currentEdges,
-          ...this.mapEdgesToCacheEntries(config.append),
+          ...this.mapEdgesToCacheEntries(config.append, connectionConfig),
         ];
         return;
       }

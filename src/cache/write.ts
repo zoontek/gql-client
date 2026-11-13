@@ -57,8 +57,7 @@ export const createWriteOperation = (
 
     const registerConnection = (
       cacheEntry: CacheEntry,
-      pathInQuery: PropertyKey[],
-      fieldVariables: AnyVariables,
+      field: FieldNode,
     ): void => {
       if (cacheEntry[CONNECTION_REF] != null) {
         return;
@@ -66,8 +65,9 @@ export const createWriteOperation = (
       const id = deps.registerConnectionInfo({
         cacheEntry,
         variables,
-        pathInQuery,
-        fieldVariables,
+        pathInQuery: [...path],
+        field,
+        fieldVariables: extractArguments(field, variables),
         document,
       });
       cacheEntry[CONNECTION_REF] = id;
@@ -149,11 +149,7 @@ export const createWriteOperation = (
         typeof record.__typename === "string" &&
         record.__typename.endsWith("Connection")
       ) {
-        registerConnection(
-          cacheObject,
-          [...path],
-          extractArguments(field, variables),
-        );
+        registerConnection(cacheObject, field);
       }
 
       // oxlint-disable-next-line no-use-before-define

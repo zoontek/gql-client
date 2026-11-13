@@ -92,13 +92,22 @@ const getEntryTypename = (entry: CacheEntry): string | undefined => {
   return typeof typename === "string" ? typename : undefined;
 };
 
-export const createReadOperation = (
-  deps: ReadDeps,
-): (<Data, Variables extends AnyVariables>(
+export type ReadOperation = <Data, Variables extends AnyVariables>(
   document: TypedDocumentNode<Data, Variables>,
   variables: Variables,
   watched?: Map<object, Set<symbol>>,
-) => JsonValue | undefined) => {
+) => JsonValue | undefined;
+
+// Whether reading `selectionSet` from `source` hits the cache.
+export type CanReadSelection = (
+  selectionSet: SelectionSetNode,
+  source: CacheEntry,
+  variables: AnyVariables,
+) => boolean;
+
+export const createReadOperation = (
+  deps: ReadDeps,
+): { readOperation: ReadOperation; canReadSelection: CanReadSelection } => {
   // The field symbols an entry must hold under REQUESTED_KEYS to satisfy
   // `node`'s selection set, given the entry's concrete typename: fields
   // excluded by `@include`/`@skip` are not required, and neither are fields
@@ -422,11 +431,7 @@ export const createReadOperation = (
     return result;
   };
 
-  return <Data, Variables extends AnyVariables>(
-    document: TypedDocumentNode<Data, Variables>,
-    variables: Variables,
-    watched?: Map<object, Set<symbol>>,
-  ): JsonValue | undefined => {
+  const readOperation: ReadOperation = (document, variables, watched) => {
     const transformedDocument = transformDocument(document);
     const operation = getOperationDefinition(transformedDocument);
 
@@ -481,4 +486,13 @@ export const createReadOperation = (
     documentCache.set(serializedVariables, shared);
     return shared;
   };
+
+  const canReadSelection: CanReadSelection = (
+    selectionSet,
+    source,
+    variables,
+  ) =>
+    traverse({ variables, watched: undefined }, selectionSet, source) !== MISS;
+
+  return { readOperation, canReadSelection };
 };

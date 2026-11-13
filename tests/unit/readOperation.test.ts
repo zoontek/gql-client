@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import { parse } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
@@ -722,6 +722,114 @@ describe("updateConnection", () => {
 
     const updated = read() as { items: { edges: unknown[] } };
     expect(updated.items.edges).toEqual([null]);
+  });
+
+  const itemQuery = `query Q {
+    items { edges { node { id name done } } }
+  }`;
+
+  const itemResponse = {
+    __typename: "Query",
+    items: {
+      __typename: "ItemConnection",
+      edges: [
+        {
+          __typename: "ItemEdge",
+          node: { __typename: "Item", id: "i1", name: "a", done: false },
+        },
+      ],
+    },
+  };
+
+  test("skips a new edge whose node misses fields the connection selects", () => {
+    const { cache, read } = setup(itemQuery, itemResponse);
+    const before = read();
+    const result = before as {
+      items: Connection<{ __typename: string; id: string }>;
+    };
+
+    cache.writeOperation(
+      doc(`mutation M { addItem { id name } }`),
+      {
+        __typename: "Mutation",
+        addItem: { __typename: "Item", id: "i2", name: "b" },
+      },
+      {},
+    );
+
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    cache.updateConnection(result.items, {
+      prepend: [{ node: { __typename: "Item", id: "i2" } }],
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+
+    expect(read()).toEqual(before);
+  });
+
+  test("skips a new edge when the connection selects other edge fields", () => {
+    const { cache, read } = setup(
+      `query Q {
+        items { edges { role node { id } } }
+      }`,
+      {
+        __typename: "Query",
+        items: {
+          __typename: "ItemConnection",
+          edges: [
+            {
+              __typename: "ItemEdge",
+              role: "owner",
+              node: { __typename: "Item", id: "i1" },
+            },
+          ],
+        },
+      },
+    );
+    const result = read() as {
+      items: Connection<{ __typename: string; id: string }>;
+    };
+
+    cache.writeOperation(
+      doc(`mutation M { addItem { id } }`),
+      { __typename: "Mutation", addItem: { __typename: "Item", id: "i2" } },
+      {},
+    );
+
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    cache.updateConnection(result.items, {
+      append: [{ node: { __typename: "Item", id: "i2" } }],
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+
+    expect(read()).toMatchObject({ items: { edges: [{ role: "owner" }] } });
+  });
+
+  test("adds a new edge whose node has every field the connection selects", () => {
+    const { cache, read } = setup(itemQuery, itemResponse);
+    const result = read() as {
+      items: Connection<{ __typename: string; id: string }>;
+    };
+
+    cache.writeOperation(
+      doc(`mutation M { addItem { id name done } }`),
+      {
+        __typename: "Mutation",
+        addItem: { __typename: "Item", id: "i2", name: "b", done: true },
+      },
+      {},
+    );
+
+    cache.updateConnection(result.items, {
+      append: [{ node: { __typename: "Item", id: "i2" } }],
+    });
+
+    const updated = read() as { items: { edges: { node: unknown }[] } };
+    expect(updated.items.edges.map((edge) => edge.node)).toEqual([
+      { __typename: "Item", id: "i1", name: "a", done: false },
+      { __typename: "Item", id: "i2", name: "b", done: true },
+    ]);
   });
 });
 

@@ -1,3 +1,4 @@
+import type { FieldNode } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
 import type { AnyVariables } from "../types";
@@ -27,6 +28,9 @@ export type ConnectionInfo = {
   document: TypedDocumentNode;
   variables: AnyVariables;
   pathInQuery: PropertyKey[];
+  // The connection field in `document`, so updateConnection can check that a
+  // new edge has every field this query selects.
+  field: FieldNode;
   fieldVariables: AnyVariables;
 };
 
