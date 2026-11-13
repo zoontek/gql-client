@@ -14,7 +14,7 @@ Set {
     [Symbol(__typename)]: "Query",
     [Symbol(accountMembership({"id":"1"}))]: Symbol(AccountMembership<account-membership-1>),
     [Symbol(accountMemberships({"first":"2"}))]: {
-      "__connectionRef": 0,
+      "__connectionRef": {},
       [Symbol(__requestedKeys)]:       
 Set {
         Symbol(__typename),
@@ -164,7 +164,7 @@ Set {
     [Symbol(__typename)]: "Query",
     [Symbol(accountMembership({"id":"1"}))]: Symbol(AccountMembership<account-membership-1>),
     [Symbol(accountMemberships({"first":"2"}))]: {
-      "__connectionRef": 0,
+      "__connectionRef": {},
       [Symbol(__requestedKeys)]:       
 Set {
         Symbol(__typename),
@@ -331,7 +331,7 @@ Set {
     [Symbol(__typename)]: "Query",
     [Symbol(accountMembership({"id":"1"}))]: Symbol(AccountMembership<account-membership-1>),
     [Symbol(accountMemberships({"first":"2"}))]: {
-      "__connectionRef": 0,
+      "__connectionRef": {},
       [Symbol(__requestedKeys)]:       
 Set {
         Symbol(__typename),
@@ -760,7 +760,7 @@ exports[`Write & read in cache 5`] = `
     },
   },
   "accountMemberships": {
-    "__connectionRef": 0,
+    "__connectionRef": {},
     "__typename": "AccountMembershipConnection",
     "edges": [
       {

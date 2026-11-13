@@ -24,6 +24,7 @@ import {
   isCacheEntryArrayItem,
   type CacheEntry,
   type ConnectionInfo,
+  type ConnectionRef,
 } from "./types";
 import { trackField } from "./watch";
 
@@ -34,7 +35,8 @@ export type WriteDeps = {
     json: unknown,
     existing: unknown,
   ) => { entry: CacheEntry; stored: symbol | CacheEntry };
-  registerConnectionInfo: (info: ConnectionInfo) => number;
+  getCachedConnection: (ref: unknown) => ConnectionInfo | undefined;
+  registerConnectionInfo: (info: ConnectionInfo) => ConnectionRef;
 };
 
 export const createWriteOperation = (
@@ -59,18 +61,21 @@ export const createWriteOperation = (
       cacheEntry: CacheEntry,
       field: FieldNode,
     ): void => {
-      if (cacheEntry[CONNECTION_REF] != null) {
+      const info = deps.getCachedConnection(cacheEntry[CONNECTION_REF]);
+
+      if (info != null) {
+        info.readers.set(field, variables);
         return;
       }
-      const id = deps.registerConnectionInfo({
+
+      cacheEntry[CONNECTION_REF] = deps.registerConnectionInfo({
         cacheEntry,
         variables,
         pathInQuery: [...path],
-        field,
         fieldVariables: extractArguments(field, variables),
         document,
+        readers: new Map([[field, variables]]),
       });
-      cacheEntry[CONNECTION_REF] = id;
     };
 
     const cacheField = (

@@ -909,6 +909,50 @@ describe("updateConnection", () => {
     expect(read()).toMatchObject({ items: { edges: [{ role: "owner" }] } });
   });
 
+  test("skips a new edge when another query of the connection selects more fields", () => {
+    const response = {
+      __typename: "Query",
+      items: {
+        __typename: "ItemConnection",
+        edges: [
+          {
+            __typename: "ItemEdge",
+            node: { __typename: "Item", id: "i1", name: "a" },
+          },
+        ],
+      },
+    };
+
+    const { cache, read } = setup(
+      `query Ids { items { edges { node { id } } } }`,
+      response,
+    );
+
+    const names = doc(`query Names { items { edges { node { id name } } } }`);
+    cache.writeOperation(names, response, {});
+
+    cache.writeOperation(
+      doc(`mutation M { addItem { id } }`),
+      { __typename: "Mutation", addItem: { __typename: "Item", id: "i2" } },
+      {},
+    );
+
+    const result = read() as {
+      items: Connection<{ __typename: string; id: string }>;
+    };
+
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    inDevelopment(() => {
+      cache.updateConnection(result.items, {
+        append: [{ node: { __typename: "Item", id: "i2" } }],
+      });
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+
+    expect(cache.readOperation(names, {})).toBeDefined();
+  });
+
   test("adds a new edge whose node has every field the connection selects", () => {
     const { cache, read } = setup(itemQuery, itemResponse);
     const result = read() as {
@@ -1035,7 +1079,7 @@ describe("connection registration", () => {
       },
     );
 
-    type Ref = { __connectionRef: number };
+    type Ref = { __connectionRef: object };
     const result = read() as {
       items: Ref;
       films: ({ characters: Ref } | null)[];
@@ -1084,7 +1128,7 @@ describe("purge", () => {
       };
       const { cache, document, read } = setup(source, response);
 
-      const before = read() as { items: { __connectionRef: number } };
+      const before = read() as { items: { __connectionRef: object } };
       const ref = before.items.__connectionRef;
 
       if (reset === "purge") {

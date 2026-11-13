@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 
 import { CONNECTION_REF, setConnectionRef } from "../cache/keys";
+import type { ConnectionRef } from "../cache/types";
 import type { Connection, JsonValue } from "../types";
 import { filterMap, isRecord } from "../utils";
 import { useClient } from "./context";
@@ -25,7 +26,7 @@ const createPaginationHook = (direction: "after" | "before") => {
 
   return <A, T extends Connection<A>>(connection: T): T => {
     const client = useClient();
-    const connectionRefs = useRef<number[]>([]);
+    const connectionRefs = useRef<ConnectionRef[]>([]);
     const lastReturnedValueRef = useRef<T[] | undefined>(undefined);
 
     // A connection read from a restored cache (see `Client#restore`) has no
@@ -39,7 +40,7 @@ const createPaginationHook = (direction: "after" | "before") => {
     } else if (CONNECTION_REF in connection) {
       const ref = connection[CONNECTION_REF];
 
-      if (typeof ref === "number") {
+      if (typeof ref === "object" && ref != null) {
         const info = client.cache.getCachedConnection(ref);
 
         // A connection queried without its pagination cursor is a first page.

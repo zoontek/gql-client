@@ -28,15 +28,20 @@ export type ConnectionInfo = {
   document: TypedDocumentNode;
   variables: AnyVariables;
   pathInQuery: PropertyKey[];
-  // The connection field in `document`, so updateConnection can check that a
-  // new edge has every field this query selects.
-  field: FieldNode;
   fieldVariables: AnyVariables;
+  // Every query field written to this connection, with the variables of its
+  // last write, so updateConnection can check that a new edge has every
+  // field each of them selects.
+  readers: Map<FieldNode, AnyVariables>;
 };
+
+// Opaque handle to a registered connection, held by the connection's entry
+// and by read results.
+export type ConnectionRef = object;
 
 export type CacheEntry = Record<PropertyKey, unknown> & {
   [REQUESTED_KEYS]: Set<symbol>;
-  [CONNECTION_REF]?: number;
+  [CONNECTION_REF]?: ConnectionRef;
 };
 
 export const createEmptyCacheEntry = (): CacheEntry => ({

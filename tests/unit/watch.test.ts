@@ -6,7 +6,7 @@ import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { ClientCache } from "../../src/cache/cache";
 import { entriesOverlap } from "../../src/cache/watch";
 import { transformDocument } from "../../src/graphql/transform";
-import type { AnyVariables, JsonValue } from "../../src/types";
+import type { AnyVariables, Connection, JsonValue } from "../../src/types";
 
 const doc = (source: string): TypedDocumentNode =>
   transformDocument(parse(source));
@@ -163,11 +163,10 @@ describe("dependency tracking (watch.ts)", () => {
       `query Q6 { items(first: 2) { edges { cursor node { id } } } }`,
     );
 
-    const connection = {
-      edges: [{ cursor: "c1", node: { __typename: "Item", id: "i1" } }],
-      pageInfo: {},
-      __connectionRef: 0,
-    };
+    const { items: connection } = cache.readOperation(
+      doc(`query Q6 { items(first: 2) { edges { cursor node { id } } } }`),
+      {},
+    ) as { items: Connection<{ __typename: string; id: string }> };
 
     const touched = new Map<object, Set<symbol>>();
     cache.updateConnection(

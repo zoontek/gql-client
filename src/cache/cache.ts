@@ -28,6 +28,7 @@ import {
   isCachedEdge,
   type CacheEntry,
   type ConnectionInfo,
+  type ConnectionRef,
   type SchemaConfig,
 } from "./types";
 import { trackField } from "./watch";
@@ -38,10 +39,10 @@ export type { ConnectionInfo, SchemaConfig } from "./types";
 export class ClientCache {
   private cache = new Map<symbol, CacheEntry>();
   private interfaceToType: Record<string, Set<string>>;
-  private connectionCache: Map<number, ConnectionInfo>;
-  // Never reset, so a ref held by a mounted hook can't match a connection
-  // registered after `purge` or `restore`.
-  private connectionRefCount = -1;
+  // Keyed by the ref the connection's entry holds, so an info goes away with
+  // its entry. Replaced on `purge` and `restore`, so an older ref held by a
+  // mounted hook matches nothing.
+  private connections = new WeakMap<ConnectionRef, ConnectionInfo>();
   private resultCache: ResultCache = new WeakMap();
 
   public readonly readOperation: ReadOperation;
@@ -61,7 +62,6 @@ export class ClientCache {
         new Set<string>(value),
       ]),
     );
-    this.connectionCache = new Map<number, ConnectionInfo>();
 
     const { readOperation, canReadSelection } = createReadOperation({
       get: (cacheKey) => this.get(cacheKey),
@@ -78,6 +78,7 @@ export class ClientCache {
       isTypeCompatible: (typename, typeCondition) =>
         this.isTypeCompatible(typename, typeCondition),
       linkCacheEntry: (json, existing) => this.linkCacheEntry(json, existing),
+      getCachedConnection: (ref) => this.getCachedConnection(ref),
       registerConnectionInfo: (info) => this.registerConnectionInfo(info),
     });
   }
@@ -86,7 +87,7 @@ export class ClientCache {
   // Exposed through `Client#purge`; see the rationale there.
   public purge(): void {
     this.cache = new Map();
-    this.connectionCache = new Map();
+    this.connections = new WeakMap();
     this.resultCache = new WeakMap();
   }
 
@@ -108,7 +109,7 @@ export class ClientCache {
     this.cache = new Map(
       data.entries.map(([key, entry]) => [Symbol.for(key), decodeEntry(entry)]),
     );
-    this.connectionCache = new Map();
+    this.connections = new WeakMap();
     this.resultCache = new WeakMap();
   }
 
@@ -116,14 +117,16 @@ export class ClientCache {
     return this.cache;
   }
 
-  public getCachedConnection(id: number): ConnectionInfo | undefined {
-    return this.connectionCache.get(id);
+  public getCachedConnection(ref: unknown): ConnectionInfo | undefined {
+    return typeof ref === "object" && ref != null
+      ? this.connections.get(ref)
+      : undefined;
   }
 
-  public registerConnectionInfo(info: ConnectionInfo): number {
-    const id = ++this.connectionRefCount;
-    this.connectionCache.set(id, info);
-    return id;
+  public registerConnectionInfo(info: ConnectionInfo): ConnectionRef {
+    const ref: ConnectionRef = {};
+    this.connections.set(ref, info);
+    return ref;
   }
 
   private isTypeCompatible(typename: string, typeCondition: string): boolean {
@@ -175,14 +178,22 @@ export class ClientCache {
     return { entry, stored: cacheKey ?? entry };
   }
 
-  // The selection sets of the `edges` fields under the connection field,
-  // including inline fragments that apply to the connection's type.
-  private getEdgesSelectionSets(info: ConnectionInfo): SelectionSetNode[] {
-    const { cacheEntry, field, variables } = info;
-    const typename = cacheEntry[TYPENAME_KEY];
-    const selectionSets: SelectionSetNode[] = [];
+  // The selection sets of the `edges` fields under each connection field
+  // written to this connection, with their variables, including inline
+  // fragments that apply to the connection's type.
+  private getEdgesSelectionSets(
+    info: ConnectionInfo,
+  ): { selectionSet: SelectionSetNode; variables: AnyVariables }[] {
+    const typename = info.cacheEntry[TYPENAME_KEY];
+    const selectionSets: {
+      selectionSet: SelectionSetNode;
+      variables: AnyVariables;
+    }[] = [];
 
-    const collect = (selectionSet: SelectionSetNode): void => {
+    const collect = (
+      selectionSet: SelectionSetNode,
+      variables: AnyVariables,
+    ): void => {
       for (const selection of selectionSet.selections) {
         if (selection.kind === Kind.FIELD) {
           if (
@@ -190,7 +201,10 @@ export class ClientCache {
             !isExcluded(selection, variables) &&
             getFieldNameWithArguments(selection, variables) === EDGES_KEY
           ) {
-            selectionSets.push(selection.selectionSet);
+            selectionSets.push({
+              selectionSet: selection.selectionSet,
+              variables,
+            });
           }
         } else if (selection.kind === Kind.INLINE_FRAGMENT) {
           const typeCondition = selection.typeCondition?.name.value;
@@ -201,15 +215,17 @@ export class ClientCache {
               typeof typename !== "string" ||
               this.isTypeCompatible(typename, typeCondition))
           ) {
-            collect(selection.selectionSet);
+            collect(selection.selectionSet, variables);
           }
         }
       }
     };
 
-    if (field.selectionSet != null) {
-      collect(field.selectionSet);
-    }
+    info.readers.forEach((variables, field) => {
+      if (field.selectionSet != null) {
+        collect(field.selectionSet, variables);
+      }
+    });
 
     return selectionSets;
   }
@@ -251,8 +267,8 @@ export class ClientCache {
       // An edge the connection's query can't fully read would turn the whole
       // query into a cache miss. This happens when the request that returned
       // the node selected fewer fields than the connection's query.
-      const readable = edgesSelectionSets.every((selectionSet) =>
-        this.canReadSelection(selectionSet, edge, info.variables),
+      const readable = edgesSelectionSets.every(({ selectionSet, variables }) =>
+        this.canReadSelection(selectionSet, edge, variables),
       );
 
       if (!readable) {
@@ -281,10 +297,7 @@ export class ClientCache {
     if (connection == null) {
       return;
     }
-    if (
-      CONNECTION_REF in connection &&
-      typeof connection[CONNECTION_REF] === "number"
-    ) {
+    if (CONNECTION_REF in connection) {
       const connectionConfig = this.getCachedConnection(
         connection[CONNECTION_REF],
       );
