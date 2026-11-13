@@ -111,6 +111,9 @@ export class Client {
   private subscribers: Map<() => void, WatchedEntriesBox>;
   private timeout: number;
   private version = 0;
+  // Bumped by `purge` and `restore`. A response to a request sent before
+  // that is not written: its data belongs to the cache that was dropped.
+  private generation = 0;
 
   private transformRequest: (request: Request) => Request | Promise<Request>;
 
@@ -196,7 +199,8 @@ export class Client {
    * Replaces the cache content with data produced by `Client#extract`, then
    * notifies subscribers. Accepts the JSON string itself, or the object it
    * evaluates to when inlined in a `<script>` tag. Call it before rendering,
-   * on a client that has not fetched anything yet.
+   * on a client that has not fetched anything yet. Requests still in flight
+   * resolve as usual, but their responses are not written to the cache.
    *
    * @param data - The serialized cache to load.
    */
@@ -205,6 +209,7 @@ export class Client {
       typeof data === "string" ? (JSON.parse(data) as SerializedCache) : data,
     );
     this.requests = new WeakMap();
+    this.generation++;
     this.version++;
     this.subscribers.forEach((_watched, fn) => {
       fn();
@@ -214,11 +219,14 @@ export class Client {
   /**
    * Drops every cache entry, registered connection, and stored query
    * response, then notifies all subscribers so mounted queries fetch fresh
-   * data. Call it when all cached data must go, e.g. on logout.
+   * data. Call it when all cached data must go, e.g. on logout. Requests
+   * still in flight resolve as usual, but their responses are not written to
+   * the cache.
    */
   public purge(): void {
     this.cache.purge();
     this.requests = new WeakMap();
+    this.generation++;
     this.version++;
     this.subscribers.forEach((_watched, fn) => {
       fn();
@@ -282,7 +290,7 @@ export class Client {
   ): Promise<Data> {
     const controller = new AbortController();
     const transformedDocument = transformDocument(document);
-    const { timeout, transformRequest } = this;
+    const { generation, timeout, transformRequest } = this;
 
     const request = new Request(this.url, {
       cache: "no-store",
@@ -344,6 +352,11 @@ export class Client {
         // `TypedDocumentNode` declares. Nothing short of runtime schema
         // validation could confirm that from a parsed JSON payload alone.
         const data: Data = json as Data;
+
+        if (generation !== this.generation) {
+          return data;
+        }
+
         const touched = new Map<object, Set<symbol>>();
 
         this.cache.writeOperation(

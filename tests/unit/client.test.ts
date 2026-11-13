@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 
+import { parse } from "@0no-co/graphql.web";
+
 import { Client } from "../../src/client/client";
 import { ClientError } from "../../src/client/errors";
 import { brandingQuery } from "./data";
@@ -225,3 +227,55 @@ test("refetch re-sends registered queries once, until unregistered", async () =>
     globalThis.fetch = originalFetch;
   }
 });
+
+for (const reset of ["purge", "restore"] as const) {
+  test(`a response that arrives after ${reset} is not written to the cache`, async () => {
+    const originalFetch = globalThis.fetch;
+    let release: (() => void) | undefined;
+
+    globalThis.fetch = (() =>
+      new Promise<Response>((resolve) => {
+        release = () => {
+          resolve(
+            jsonResponse({
+              __typename: "Query",
+              me: { __typename: "User", id: "1", name: "Alice" },
+            }),
+          );
+        };
+      })) as unknown as typeof fetch;
+
+    try {
+      const client = new Client({
+        url: "http://localhost/graphql",
+        schemaConfig: { interfaceToTypes: {} },
+      });
+      const query = parse(`query Me { me { id name } }`);
+
+      let notified = 0;
+      client.subscribe(() => {
+        notified++;
+      });
+
+      const pending = client.query(query, {});
+      while (release == null) {
+        await Promise.resolve();
+      }
+
+      if (reset === "purge") {
+        client.purge();
+      } else {
+        client.restore({ entries: [] });
+      }
+
+      const notifiedAfterReset = notified;
+      release();
+
+      await expect(pending).resolves.toMatchObject({ me: { name: "Alice" } });
+      expect(client.cache.dump().size).toBe(0);
+      expect(notified).toBe(notifiedAfterReset);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+}
