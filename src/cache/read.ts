@@ -15,13 +15,7 @@ import {
 } from "../graphql/ast";
 import { transformDocument } from "../graphql/transform";
 import type { AnyVariables, JsonValue } from "../types";
-import {
-  containsAll,
-  deepCopy,
-  hasOwn,
-  isRecord,
-  serializeVariables,
-} from "../utils";
+import { containsAll, deepCopy, hasOwn, isRecord } from "../utils";
 import {
   CONNECTION_REF,
   getCacheKeyFromOperationNode,
@@ -31,8 +25,12 @@ import {
 import { isCacheEntry, MISS, type CacheEntry } from "./types";
 import { trackField } from "./watch";
 
-// Last result returned per document and serialized variables.
-export type ResultCache = WeakMap<TypedDocumentNode, Map<string, JsonValue>>;
+// Last result returned per document and variables object. Weak keys, so a
+// result goes away with the variables it was read with.
+export type ResultCache = WeakMap<
+  TypedDocumentNode,
+  WeakMap<AnyVariables, JsonValue>
+>;
 
 // Structural sharing: returns `next` with each subtree that deeply equals its
 // `prev` counterpart swapped for it, or `prev` itself if everything is equal.
@@ -461,15 +459,14 @@ export const createReadOperation = (
       return undefined;
     }
 
-    // Keep the last result per document and serialized variables, and reuse
-    // its unchanged subtrees, so consumers comparing by reference (e.g.
-    // React) only re-render what changed.
-    const serializedVariables = serializeVariables(variables);
+    // Keep the last result per document and variables, and reuse its
+    // unchanged subtrees, so consumers comparing by reference (e.g. React)
+    // only re-render what changed.
     const resultCache = deps.getResultCache();
     let documentCache = resultCache.get(transformedDocument);
 
     if (documentCache == null) {
-      documentCache = new Map();
+      documentCache = new WeakMap();
       resultCache.set(transformedDocument, documentCache);
     }
 
@@ -479,11 +476,11 @@ export const createReadOperation = (
     // or a symbol key. So the tree is already `JsonValue`-shaped, as is the
     // previous result.
     const shared = shareEqualSubtrees(
-      documentCache.get(serializedVariables),
+      documentCache.get(variables),
       traversed,
     ) as JsonValue;
 
-    documentCache.set(serializedVariables, shared);
+    documentCache.set(variables, shared);
     return shared;
   };
 

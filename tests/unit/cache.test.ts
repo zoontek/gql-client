@@ -127,12 +127,9 @@ test("Write & read in cache", () => {
     }),
   );
 
-  const a = cache.readOperation(preparedAppQuery, {
-    id: "1",
-  });
-  const b = cache.readOperation(preparedAppQuery, {
-    id: "1",
-  });
+  const appVariables = { id: "1" };
+  const a = cache.readOperation(preparedAppQuery, appVariables);
+  const b = cache.readOperation(preparedAppQuery, appVariables);
 
   expect(a).toBeDefined();
   expect(a).toBe(b);

@@ -88,7 +88,7 @@ test("transformRequest receives the built request and its result is sent", async
   }
 });
 
-test("query reuses settled requests and only refreshes on demand", async () => {
+test("query keeps a settled request the cache can't read, and only refreshes on demand", async () => {
   const originalFetch = globalThis.fetch;
   let fetchCount = 0;
 
@@ -122,6 +122,38 @@ test("query reuses settled requests and only refreshes on demand", async () => {
     expect(refreshed).not.toBe(first);
 
     await refreshed;
+    expect(fetchCount).toBe(2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("query drops a settled request once the cache can read its response", async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+
+  globalThis.fetch = (async () => {
+    fetchCount++;
+    return jsonResponse({
+      __typename: "Query",
+      me: { __typename: "User", id: "1" },
+    });
+  }) as unknown as typeof fetch;
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+    });
+    const document = parse(`query Me { me { id } }`);
+
+    const first = client.query(document, {});
+    await first;
+
+    const second = client.query(document, {});
+    expect(second).not.toBe(first);
+
+    await second;
     expect(fetchCount).toBe(2);
   } finally {
     globalThis.fetch = originalFetch;

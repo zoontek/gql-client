@@ -8,6 +8,12 @@ import { ClientCache, type SchemaConfig } from "../../src/cache/cache";
 import { transformDocument } from "../../src/graphql/transform";
 import type { AnyVariables, JsonValue } from "../../src/types";
 
+// ES2021, out of the project's ES2019 lib. Bun has it.
+declare class WeakRef<T extends object> {
+  constructor(target: T);
+  deref(): T | undefined;
+}
+
 // Build a transformed document directly from a query string, decoupled from
 // the gql.tada schema so we can freely exercise read-path branches.
 const doc = (source: string): TypedDocumentNode =>
@@ -179,6 +185,30 @@ describe("readOperation", () => {
 
     expect(afterRestore).toEqual(first);
     expect(afterRestore).not.toBe(afterPurge);
+  });
+
+  test("drops a stored result once its variables object is gone", () => {
+    const { cache, document } = setup(
+      `query Q($id: ID!) { user(id: $id) { id } }`,
+      {
+        __typename: "Query",
+        user: { __typename: "User", id: "1" },
+      },
+      { id: "1" },
+    );
+
+    const readOnce = (): WeakRef<object> => {
+      const result = cache.readOperation(document, { id: "1" });
+      if (result == null || typeof result !== "object") {
+        throw new Error("Expected a cache hit");
+      }
+      return new WeakRef(result);
+    };
+
+    const ref = readOnce();
+    Bun.gc(true);
+
+    expect(ref.deref()).toBeUndefined();
   });
 
   test("preserves field aliases", () => {

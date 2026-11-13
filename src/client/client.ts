@@ -33,7 +33,8 @@ export type ClientConfig = {
 };
 
 // One stored request per (document, serialized variables): joined while in
-// flight, reusable after success (see `Client#query`), dropped on rejection.
+// flight, kept after success only while its response can't be read from the
+// cache (see `Client#query`), dropped on rejection.
 type StoredRequest = {
   promise: Promise<unknown>;
   settled: boolean;
@@ -499,20 +500,21 @@ export class Client {
   /**
    * Suspense-friendly request: returns one stable promise per `document` and
    * `variables` so a component can safely call this on every render and
-   * `use()` the returned promise. The promise stays stored after it resolves:
-   * a cache read that still misses after its response was written re-renders
-   * with the settled promise instead of firing a new request, so a persistent
-   * miss can never loop network requests. Pass `refresh: true` to replace a
-   * settled promise with a fresh request (an in-flight one is always joined).
-   * A rejected promise is dropped, so the next call retries. Used internally
-   * by `useQuery` and `useDeferredQuery`; most apps won't call this directly.
+   * `use()` the returned promise. If the cache read still misses after the
+   * response was written, the promise stays stored: the next render gets the
+   * settled promise instead of firing a new request, so a persistent miss can
+   * never loop network requests. Otherwise it is dropped once resolved. Pass
+   * `refresh: true` to replace a settled promise with a fresh request (an
+   * in-flight one is always joined). A rejected promise is dropped, so the
+   * next call retries. Used internally by `useQuery` and `useDeferredQuery`;
+   * most apps won't call this directly.
    *
    * @param document - The document to send.
    * @param variables - The document's variables.
    * @param options.refresh - Send a new request even if a settled one is
    * stored. Defaults to `false`.
    * @returns The response data. The same promise is returned for calls with
-   * the same `document` and `variables` until it rejects or is refreshed.
+   * the same `document` and `variables` while it is stored.
    */
   public query<Data, Variables extends AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
@@ -549,6 +551,15 @@ export class Client {
     promise.then(
       () => {
         stored.settled = true;
+
+        // Only a read that still misses needs the settled promise. Dropping
+        // the others keeps their data from piling up until `purge`.
+        if (
+          requests.get(key) === stored &&
+          this.cache.readOperation(document, variables) != null
+        ) {
+          requests.delete(key);
+        }
       },
       () => {
         stored.settled = true;

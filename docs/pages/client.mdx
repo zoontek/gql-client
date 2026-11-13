@@ -60,7 +60,7 @@ query<Data, Variables>(
 
 Sends `document`, writes the response into the cache, and resolves with the response data. Throws a [`ClientError`](/errors) on failure.
 
-Calls for the same document and variables share one promise: a call made while a request is in flight joins it, and a call after success reuses the settled result. Pass `refresh: true` to replace a settled result with a fresh request. A rejected promise is dropped, so the next call retries.
+A call made while a request for the same document and variables is in flight joins it. After success, the promise is dropped and the next call sends a new request. The exception is a response the cache can't read back: its promise is kept, and later calls reuse it, so a cache miss can't loop requests. Pass `refresh: true` to replace a kept promise with a fresh request. A rejected promise is dropped, so the next call retries.
 
 ### mutate
 
