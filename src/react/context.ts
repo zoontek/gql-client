@@ -6,11 +6,9 @@ import {
   type ReactNode,
 } from "react";
 
-import { Client } from "../client/client";
+import type { Client } from "../client/client";
 
-const ClientContext = createContext(
-  new Client({ url: "/graphql", schemaConfig: { interfaceToTypes: {} } }),
-);
+const ClientContext = createContext<Client | null>(null);
 
 type Props = {
   children: ReactNode;
@@ -35,4 +33,14 @@ export const ClientProvider = (props: Props): ReactElement =>
  *
  * @returns The `Client` instance.
  */
-export const useClient = (): Client => useContext(ClientContext);
+export const useClient = (): Client => {
+  const client = useContext(ClientContext);
+
+  if (client == null) {
+    throw new Error(
+      "GraphQL Client: no ClientProvider found. Wrap your app in a ClientProvider.",
+    );
+  }
+
+  return client;
+};

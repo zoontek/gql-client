@@ -135,3 +135,12 @@ test("restore notifies subscribers and bumps the version", () => {
   expect(notified).toBe(1);
   expect(target.getVersion()).toBeGreaterThan(versionBefore);
 });
+
+test("useQuery throws without a ClientProvider", () => {
+  const App = (): React.ReactNode => {
+    useQuery(GreetingQuery, { id: "1" });
+    return null;
+  };
+
+  expect(() => renderToString(<App />)).toThrow("no ClientProvider found");
+});
