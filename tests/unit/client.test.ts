@@ -561,16 +561,15 @@ test("a connection drop during the body read is a 'network' error", async () => 
   }
 });
 
-test("an unread error body is released when the timeout fires", async () => {
+test("an error body that never ends is a 'status' error once the timeout fires", async () => {
   const originalFetch = globalThis.fetch;
-  let bodyAborted = false;
 
   globalThis.fetch = (async (_request: Request, init: RequestInit) =>
     new Response(
       new ReadableStream({
-        start() {
+        start(controller) {
           init.signal?.addEventListener("abort", () => {
-            bodyAborted = true;
+            controller.error(abortError());
           });
         },
       }),
@@ -587,10 +586,6 @@ test("an unread error body is released when the timeout fires", async () => {
     await expect(
       client.query(parse(`query Me { me { id } }`), {}),
     ).rejects.toMatchObject({ reason: "status" });
-    expect(bodyAborted).toBe(false);
-
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    expect(bodyAborted).toBe(true);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -613,4 +608,113 @@ test("a consumed request from transformRequest is an 'unknown' error", async () 
   expect(error).toMatchObject({ reason: "unknown" });
   expect((error as ClientError).cause).toBeInstanceOf(TypeError);
   expect(String((error as ClientError).cause)).toContain("request.clone()");
+});
+
+const respondWith = (body: unknown, init?: ResponseInit): typeof fetch =>
+  (async () =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+      ...init,
+    })) as unknown as typeof fetch;
+
+test("an empty `errors` array next to `data` is not an error", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = respondWith({
+    data: { __typename: "Query", me: { __typename: "User", id: "1" } },
+    errors: [],
+  });
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+    });
+
+    await expect(
+      client.query(parse(`query Me { me { id } }`), {}),
+    ).resolves.toMatchObject({ me: { id: "1" } });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a response with `data` and errors is a 'graphQL' error and is not written to the cache", async () => {
+  const originalFetch = globalThis.fetch;
+  const data = {
+    __typename: "Query",
+    me: { __typename: "User", id: "1", avatar: null },
+  };
+
+  globalThis.fetch = respondWith({
+    data,
+    errors: [{ message: "Avatar service is down", path: ["me", "avatar"] }],
+  });
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+    });
+
+    const error = await client
+      .query(parse(`query Me { me { id avatar } }`), {})
+      .catch((error: unknown) => error);
+
+    expect(error).toMatchObject({
+      reason: "graphQL",
+      message: "Avatar service is down",
+    });
+    expect(client.cache.dump().size).toBe(0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("GraphQL errors with a 4xx status are a 'graphQL' error", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = respondWith(
+    { errors: [{ message: 'Cannot query field "nope" on type "Query".' }] },
+    { status: 400 },
+  );
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+    });
+
+    const error = await client
+      .query(parse(`query Q { nope }`), {})
+      .catch((error: unknown) => error);
+
+    expect(error).toMatchObject({ reason: "graphQL" });
+    expect((error as ClientError).response?.status).toBe(400);
+    expect((error as ClientError).graphQLErrors[0]?.message).toContain("nope");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a 4xx JSON body without GraphQL errors is a 'status' error with a readable response", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = respondWith({ message: "Unauthorized" }, { status: 401 });
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+    });
+
+    const error = await client
+      .query(parse(`query Me { me { id } }`), {})
+      .catch((error: unknown) => error);
+
+    expect(error).toMatchObject({ reason: "status" });
+    expect(await (error as ClientError).response?.json()).toEqual({
+      message: "Unauthorized",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

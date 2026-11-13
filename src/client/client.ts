@@ -6,7 +6,13 @@ import { entriesOverlap, type WatchedEntriesBox } from "../cache/watch";
 import { getOperationName } from "../graphql/ast";
 import { printDocument } from "../graphql/print";
 import { transformDocument } from "../graphql/transform";
-import type { AnyVariables, Connection, Edge, JsonValue } from "../types";
+import type {
+  AnyVariables,
+  Connection,
+  Edge,
+  JsonArray,
+  JsonValue,
+} from "../types";
 import { identity, isRecord, serializeVariables } from "../utils";
 import { ClientError } from "./errors";
 
@@ -66,6 +72,15 @@ const remove = <A>(
 ): ConnectionUpdate<A> => {
   return [connection, { remove: ids }];
 };
+
+// The `errors` of a GraphQL response, if it has any. The spec forbids an
+// empty array, but some servers send one alongside valid `data`.
+const getGraphQLErrors = (
+  json: Record<PropertyKey, unknown>,
+): JsonArray | undefined =>
+  Array.isArray(json.errors) && json.errors.length > 0
+    ? json.errors
+    : undefined;
 
 /**
  * Given a request's `data` and `variables`, returns how a cached connection
@@ -323,7 +338,6 @@ export class Client {
 
     let timer: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
-    let keepTimer = false;
 
     if (Number.isFinite(timeout) && timeout >= 0) {
       timer = setTimeout(() => {
@@ -367,10 +381,19 @@ export class Client {
       })
       .then(async (response) => {
         if (!response.ok) {
-          // Callers may read the body from `error.response`. If they don't,
-          // the timeout aborts it, which frees the connection.
-          keepTimer = true;
-          throw ClientError.status(response);
+          // Some servers send GraphQL errors with a 4xx status, e.g. for a
+          // validation error. A clone is read, so `error.response` stays
+          // readable.
+          const body: unknown = await response
+            .clone()
+            .json()
+            .catch(() => undefined);
+
+          const errors = isRecord(body) ? getGraphQLErrors(body) : undefined;
+
+          throw errors != null
+            ? ClientError.graphQL(this.url, response, errors)
+            : ClientError.status(response);
         }
 
         const json: JsonValue = await response
@@ -385,11 +408,15 @@ export class Client {
           });
 
         if (isRecord(json)) {
-          if ("errors" in json && Array.isArray(json.errors)) {
-            throw ClientError.graphQL(this.url, response, json.errors);
+          const errors = getGraphQLErrors(json);
+
+          // Partial `data` is not written to the cache: the fields that
+          // failed are `null` in it, and would replace good cached values.
+          if (errors != null) {
+            throw ClientError.graphQL(this.url, response, errors);
           }
 
-          if ("data" in json && json.data != null) {
+          if (json.data != null) {
             return json.data;
           }
         }
@@ -444,10 +471,7 @@ export class Client {
       })
       .finally(() => {
         requestSignal?.removeEventListener("abort", forwardAbort);
-
-        if (!keepTimer) {
-          clearTimeout(timer);
-        }
+        clearTimeout(timer);
       });
   }
 
