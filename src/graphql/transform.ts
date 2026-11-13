@@ -159,7 +159,7 @@ export const transformDocument = (
         console.warn(
           "This library doesn't support declaring multiple operations in a single document." +
             (operationName != null
-              ? `Ignoring operation ${operationName}`
+              ? ` Ignoring operation ${operationName}.`
               : ""),
         );
       }

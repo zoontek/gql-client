@@ -750,3 +750,30 @@ test("a 4xx JSON body without GraphQL errors is a 'status' error with a readable
     globalThis.fetch = originalFetch;
   }
 });
+
+test.each([
+  {
+    name: "a missing fragment",
+    url: "http://localhost/graphql",
+    source: `query Me { me { ...Missing } }`,
+    variables: {},
+  },
+  {
+    name: "a BigInt in the variables",
+    url: "http://localhost/graphql",
+    source: `query User($id: ID!) { user(id: $id) { id } }`,
+    variables: { id: BigInt(1) },
+  },
+  {
+    name: "an invalid URL",
+    url: "http://[invalid",
+    source: `query Me { me { id } }`,
+    variables: {},
+  },
+])("$name is an 'unknown' error", async ({ url, source, variables }) => {
+  const client = new Client({ url, schemaConfig: { interfaceToTypes: {} } });
+  const result = client.query(parse(source), variables);
+
+  await expect(result).rejects.toBeInstanceOf(ClientError);
+  await expect(result).rejects.toMatchObject({ reason: "unknown" });
+});

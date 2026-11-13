@@ -250,11 +250,13 @@ export class ClientCache {
       );
 
       if (!readable) {
-        console.warn(
-          `GraphQL Client: skipped adding ${key.description ?? "a node"} to a connection. ` +
-            "The cache doesn't have every field the connection's query selects on its edges. " +
-            "Select the same fields in the request that returns the node.",
-        );
+        if (process.env.NODE_ENV === "development") {
+          console.warn(
+            `GraphQL Client: skipped adding ${key.description ?? "a node"} to a connection. ` +
+              "The cache doesn't have every field the connection's query selects on its edges. " +
+              "Select the same fields in the request that returns the node.",
+          );
+        }
         return undefined;
       }
 

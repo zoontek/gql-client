@@ -312,22 +312,32 @@ export class Client {
     { connectionUpdates }: MutationConfig<Data, Variables> = {},
   ): Promise<Data> {
     const controller = new AbortController();
-    const transformedDocument = transformDocument(document);
     const { generation, timeout, transformRequest } = this;
 
-    const request = new Request(this.url, {
-      cache: "no-store",
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        operationName: getOperationName(transformedDocument),
-        query: printDocument(transformedDocument),
-        variables,
-      }),
-    });
+    let transformedDocument: TypedDocumentNode;
+    let request: Request;
+
+    // Throws on a missing fragment, a `BigInt` in the variables, or an
+    // invalid URL.
+    try {
+      transformedDocument = transformDocument(document);
+
+      request = new Request(this.url, {
+        cache: "no-store",
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          operationName: getOperationName(transformedDocument),
+          query: printDocument(transformedDocument),
+          variables,
+        }),
+      });
+    } catch (error) {
+      throw ClientError.unknown(this.url, error);
+    }
 
     const requestToSend = await Promise.resolve()
       .then(() => transformRequest(request))

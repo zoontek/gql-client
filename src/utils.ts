@@ -70,6 +70,8 @@ export const deepEqual = (a: any, b: any): boolean => {
 // same logical value always produces the same string regardless of key
 // order. Sorting goes through a replacer function: a replacer array would
 // whitelist top-level keys at every depth and drop all nested values.
+// A `BigInt` is written as `"1n"` instead of throwing, so building a key never
+// throws. The request body can't hold it, so the request fails instead.
 export const stableStringify = (value: unknown): string =>
   JSON.stringify(value, (_key, val: unknown) =>
     isRecord(val)
@@ -78,7 +80,9 @@ export const stableStringify = (value: unknown): string =>
             .sort()
             .map((key) => [key, val[key]]),
         )
-      : val,
+      : typeof val === "bigint"
+        ? `${val}n`
+        : val,
   );
 
 // Memoized by object identity. Variables objects are never mutated in place
