@@ -7,6 +7,7 @@ import {
   CURSOR_KEY,
   EDGES_KEY,
   NODE_KEY,
+  REQUESTED_KEYS,
   TYPENAME_KEY,
   getCacheEntryKey,
   getIdFromCacheKey,
@@ -19,7 +20,6 @@ import {
   isCacheEntry,
   isCachedEdge,
   type CacheEntry,
-  type CachedEdge,
   type ConnectionInfo,
   type SchemaConfig,
 } from "./types";
@@ -164,22 +164,31 @@ export class ClientCache {
     return { entry, stored: cacheKey ?? entry };
   }
 
-  private mapEdgesToCacheEntries<A>(edges: Edge<A>[]): CachedEdge[] {
+  private mapEdgesToCacheEntries<A>(edges: Edge<A>[]): CacheEntry[] {
     return filterMap(edges, ({ node, __typename, cursor }) => {
       const key = getCacheEntryKey(node);
+
       // No need to check requested fields here: `Connection<A>` already
       // constrains which fields exist on a node.
       if (key == null || this.get(key) === MISS) {
         return undefined;
       }
-      // Preserve `cursor` alongside the node reference. Without it, a query that
-      // selects `edges { cursor ... }` reads the synthesized edge as a miss and
-      // the whole connection read fails.
-      return {
-        [TYPENAME_KEY]: __typename,
-        [NODE_KEY]: key,
-        [CURSOR_KEY]: cursor,
-      };
+
+      // A real cache entry, so later writes to this connection reuse the
+      // edges array and `extract` serializes it. `cursor` is kept alongside
+      // the node reference: without it, a query that selects
+      // `edges { cursor ... }` reads the synthesized edge as a miss and the
+      // whole connection read fails.
+      const edge = createEmptyCacheEntry();
+      edge[REQUESTED_KEYS].add(NODE_KEY).add(CURSOR_KEY);
+
+      if (typeof __typename === "string") {
+        edge[TYPENAME_KEY] = __typename;
+      }
+
+      edge[NODE_KEY] = key;
+      edge[CURSOR_KEY] = cursor ?? null;
+      return edge;
     });
   }
 

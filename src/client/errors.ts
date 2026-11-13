@@ -77,7 +77,6 @@ export class ClientError extends Error {
     },
   ) {
     super(message);
-    Object.setPrototypeOf(this, ClientError.prototype);
     this.name = "ClientError";
     this.reason = options.reason;
     this.url = options.url;

@@ -20,6 +20,7 @@ import {
   REQUESTED_KEYS,
 } from "./keys";
 import {
+  createEmptyCacheEntry,
   isCacheEntryArrayItem,
   type CacheEntry,
   type ConnectionInfo,
@@ -88,15 +89,9 @@ export const createWriteOperation = (
         field,
         variables,
       );
-      const fieldValue = parentJson[originalFieldName];
 
-      if (parentCache[REQUESTED_KEYS] != null) {
-        parentCache[REQUESTED_KEYS].add(fieldNameWithArguments);
-      } else {
-        console.error(
-          `GraphQL Client cache error: ${path.join(".")} likely didn't query its \`id\` field`,
-        );
-      }
+      const fieldValue = parentJson[originalFieldName];
+      parentCache[REQUESTED_KEYS].add(fieldNameWithArguments);
 
       if (touched != null) {
         trackField(touched, parentCache, fieldNameWithArguments);
@@ -113,11 +108,9 @@ export const createWriteOperation = (
           Array.isArray(existingArray) &&
           existingArray.every(isCacheEntryArrayItem)
             ? existingArray
-            : Array(fieldValue.length);
+            : [];
         arrayCache.length = fieldValue.length;
-        if (parentCache[fieldNameWithArguments] == null) {
-          parentCache[fieldNameWithArguments] = arrayCache;
-        }
+        parentCache[fieldNameWithArguments] = arrayCache;
         fieldValue.forEach((item, index) => {
           if (item == null) {
             arrayCache[index] = item;
@@ -211,11 +204,15 @@ export const createWriteOperation = (
       return;
     }
 
-    // Root __typename can vary, but we can't guess it from the document alone
-    const cacheKey =
-      getCacheKeyFromOperationNode(operation) ?? Symbol.for("Mutation");
+    // A mutation root is never read back, so it is written into a detached
+    // entry. Nested entities still land in the cache through `linkCacheEntry`.
+    const cacheKey = getCacheKeyFromOperationNode(operation);
 
-    const cacheEntry = deps.getOrCreateEntry(cacheKey);
+    const cacheEntry =
+      cacheKey != null
+        ? deps.getOrCreateEntry(cacheKey)
+        : createEmptyCacheEntry();
+
     cacheSelectionSet(operation.selectionSet, response, cacheEntry, []);
   };
 };

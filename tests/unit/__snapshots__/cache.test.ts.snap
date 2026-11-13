@@ -320,25 +320,6 @@ Set {
     [Symbol(createdAt)]: "2024-03-14T12:06:10.857Z",
     [Symbol(id)]: "supporting-document-1",
   },
-  Symbol(Mutation) => {
-    [Symbol(__requestedKeys)]:     
-Set {
-      Symbol(__typename),
-      Symbol(bindAccountMembership({"input":{"accountMembershipId":"account-membership-2"}})),
-    }
-,
-    [Symbol(__typename)]: "Mutation",
-    [Symbol(bindAccountMembership({"input":{"accountMembershipId":"account-membership-2"}}))]: {
-      [Symbol(__requestedKeys)]:       
-Set {
-        Symbol(__typename),
-        Symbol(accountMembership),
-      }
-,
-      [Symbol(__typename)]: "BindAccountMembershipSuccessPayload",
-      [Symbol(accountMembership)]: Symbol(AccountMembership<account-membership-2>),
-    },
-  },
 }
 `;
 
@@ -522,25 +503,6 @@ Set {
     [Symbol(__typename)]: "SupportingDocument",
     [Symbol(createdAt)]: "2024-03-14T12:06:10.857Z",
     [Symbol(id)]: "supporting-document-1",
-  },
-  Symbol(Mutation) => {
-    [Symbol(__requestedKeys)]:     
-Set {
-      Symbol(__typename),
-      Symbol(bindAccountMembership({"input":{"accountMembershipId":"account-membership-2"}})),
-    }
-,
-    [Symbol(__typename)]: "Mutation",
-    [Symbol(bindAccountMembership({"input":{"accountMembershipId":"account-membership-2"}}))]: {
-      [Symbol(__requestedKeys)]:       
-Set {
-        Symbol(__typename),
-        Symbol(accountMembership),
-      }
-,
-      [Symbol(__typename)]: "BindAccountMembershipSuccessPayload",
-      [Symbol(accountMembership)]: Symbol(AccountMembership<account-membership-2>),
-    },
   },
 }
 `;

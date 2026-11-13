@@ -11,7 +11,6 @@ import {
   getFieldName,
   getFieldNameWithArguments,
   getOperationDefinition,
-  getTypename,
   isExcluded,
 } from "../graphql/ast";
 import { transformDocument } from "../graphql/transform";
@@ -203,11 +202,7 @@ export const createReadOperation = (
         trackField(watched, source, fieldNameWithArguments);
       }
 
-      const cacheHasKey =
-        hasOwn(source, originalFieldName) ||
-        hasOwn(source, fieldNameWithArguments);
-
-      if (!cacheHasKey) {
+      if (!hasOwn(source, fieldNameWithArguments)) {
         // A field excluded by `@include(if: false)` / `@skip(if: true)` is
         // absent from the response, so its absence from the cache is not a
         // miss, skip it. Same for `__typename` (see `getRequiredKeys`). Any
@@ -218,9 +213,7 @@ export const createReadOperation = (
         );
       }
 
-      const rawValue = hasOwn(source, originalFieldName)
-        ? source[originalFieldName]
-        : source[fieldNameWithArguments];
+      const rawValue = source[fieldNameWithArguments];
 
       if (rawValue == null) {
         // Preserve a cached `null`; drop `undefined` (matches JSON output).
@@ -309,48 +302,17 @@ export const createReadOperation = (
       // `__typename` is selected first in every selection set (see
       // transform.ts), so by the time we reach an inline fragment it has
       // already been written to `result`.
-      const dataTypename = getTypename(result);
+      const dataTypename =
+        typeof result.__typename === "string" ? result.__typename : undefined;
 
-      if (typeCondition != null && dataTypename != null) {
-        if (deps.isTypeCompatible(dataTypename, typeCondition)) {
-          // oxlint-disable-next-line no-use-before-define
-          return applySelections(
-            inlineFragmentNode.selectionSet,
-            source,
-            result,
-          );
-        }
-
-        // Incompatible type condition: if it nests inline fragments, keep only
-        // the ones still compatible with the concrete type; otherwise skip.
-        if (
-          inlineFragmentNode.selectionSet.selections.some(
-            (selection) => selection.kind === Kind.INLINE_FRAGMENT,
-          )
-        ) {
-          // oxlint-disable-next-line no-use-before-define
-          return applySelections(
-            {
-              ...inlineFragmentNode.selectionSet,
-              selections: inlineFragmentNode.selectionSet.selections.filter(
-                (selection) => {
-                  if (selection.kind === Kind.INLINE_FRAGMENT) {
-                    const nestedTypeCondition =
-                      selection.typeCondition?.name.value;
-                    return (
-                      nestedTypeCondition == null ||
-                      deps.isTypeCompatible(dataTypename, nestedTypeCondition)
-                    );
-                  }
-                  return true;
-                },
-              ),
-            },
-            source,
-            result,
-          );
-        }
-
+      // Per the spec, nothing inside a fragment with an incompatible type
+      // condition applies, nested fragments included. The write path skips
+      // it the same way (see write.ts).
+      if (
+        typeCondition != null &&
+        dataTypename != null &&
+        !deps.isTypeCompatible(dataTypename, typeCondition)
+      ) {
         return true;
       }
 
@@ -363,10 +325,6 @@ export const createReadOperation = (
       source: Record<PropertyKey, unknown>,
       result: Record<PropertyKey, unknown>,
     ): boolean => {
-      if (source == null) {
-        return false;
-      }
-
       for (const selection of selectionSet.selections) {
         if (selection.kind === Kind.FIELD) {
           if (!applyField(selection, source, result)) {
