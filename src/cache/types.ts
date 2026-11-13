@@ -29,10 +29,13 @@ export type ConnectionInfo = {
   variables: AnyVariables;
   pathInQuery: PropertyKey[];
   fieldVariables: AnyVariables;
-  // Every query field written to this connection, with the variables of its
-  // last write, so updateConnection can check that a new edge has every
-  // field each of them selects.
-  readers: Map<FieldNode, AnyVariables>;
+  // Every query field written to this connection, with its document and the
+  // variables of its last write, so updateConnection can check that a new
+  // edge has every field each mounted query selects.
+  readers: Map<
+    FieldNode,
+    { document: TypedDocumentNode; variables: AnyVariables }
+  >;
 };
 
 // Opaque handle to a registered connection, held by the connection's entry

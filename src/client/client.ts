@@ -34,15 +34,21 @@ export type ClientConfig = {
 
 // One stored request per (document, serialized variables): joined while in
 // flight, kept after success only while its response can't be read from the
-// cache, and after rejection only until a `suspense` call gets it (see
-// `Client#query`).
+// cache, and after rejection only until a `suspense` call gets it, for at
+// most `KEEP_REJECTED_MS` (see `Client#query`).
 type StoredRequest = {
   promise: Promise<unknown>;
   settled: boolean;
-  rejected: boolean;
+  // `Date.now()` when the promise rejected.
+  rejectedAt: number | undefined;
   // A `suspense` call got this promise before it settled.
   suspense: boolean;
 };
+
+// React renders a suspended component again a few ms after its promise
+// rejects. If it has not after this delay, the component is gone, and the
+// rejection must not reach the next call.
+const KEEP_REJECTED_MS = 1000;
 
 // A mounted query, registered by `useQuery` for the duration of its mount, so
 // `Client#refetch` knows what to re-send.
@@ -159,7 +165,8 @@ export class Client {
   }
 
   /**
-   * Registers a mounted query so `Client#refetch` can re-send it. Returns an
+   * Registers a mounted query so `Client#refetch` can re-send it, and so a
+   * new edge in its connections is checked against it. Returns an
    * unregister function. Called by `useQuery` for the duration of its mount;
    * most apps won't call this directly.
    *
@@ -171,7 +178,10 @@ export class Client {
   ): () => void {
     const activeQuery: ActiveQuery = { document, variables };
     this.activeQueries.add(activeQuery);
+    const release = this.cache.retainDocument(transformDocument(document));
+
     return () => {
+      release();
       this.activeQueries.delete(activeQuery);
     };
   }
@@ -535,9 +545,9 @@ export class Client {
    * @param options.refresh - Send a new request even if a settled one is
    * stored. Defaults to `false`.
    * @param options.suspense - The caller passes the promise to `use()`. If
-   * it rejects, it stays stored until a call gets it, so the render React
-   * runs after the rejection throws the error instead of sending a new
-   * request. Defaults to `false`.
+   * it rejects, it stays stored until a call gets it, for at most 1 second,
+   * so the render React runs after the rejection throws the error instead of
+   * sending a new request. Defaults to `false`.
    * @returns The response data. The same promise is returned for calls with
    * the same `document` and `variables` while it is stored.
    */
@@ -552,16 +562,24 @@ export class Client {
     const key = serializeVariables(variables);
 
     let documentRequests = this.requests.get(document);
-    const existing = documentRequests?.get(key);
+    let existing = documentRequests?.get(key);
+
+    if (
+      existing?.rejectedAt != null &&
+      Date.now() - existing.rejectedAt > KEEP_REJECTED_MS
+    ) {
+      documentRequests?.delete(key);
+      existing = undefined;
+    }
 
     if (existing != null && (!existing.settled || !refresh)) {
-      if (existing.rejected) {
+      if (existing.rejectedAt != null) {
         const requests = documentRequests;
 
         // Dropped after the current task, so a render React repeats right
         // away (Strict Mode, recovery from an error) gets the same promise.
         queueMicrotask(() => {
-          if (requests?.get(key) === existing) {
+          if (existing != null && requests?.get(key) === existing) {
             requests.delete(key);
           }
         });
@@ -585,7 +603,7 @@ export class Client {
     const stored: StoredRequest = {
       promise,
       settled: false,
-      rejected: false,
+      rejectedAt: undefined,
       suspense,
     };
 
@@ -610,7 +628,7 @@ export class Client {
       },
       () => {
         stored.settled = true;
-        stored.rejected = true;
+        stored.rejectedAt = Date.now();
 
         // Drop failed requests so a retry (an ErrorBoundary reset, a
         // `refetch()`) fires a fresh one instead of replaying the rejection.

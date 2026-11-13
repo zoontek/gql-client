@@ -841,7 +841,8 @@ describe("updateConnection", () => {
   };
 
   test("skips a new edge whose node misses fields the connection selects", () => {
-    const { cache, read } = setup(itemQuery, itemResponse);
+    const { cache, document, read } = setup(itemQuery, itemResponse);
+    cache.retainDocument(document);
     const before = read();
     const result = before as {
       items: Connection<{ __typename: string; id: string }>;
@@ -869,7 +870,7 @@ describe("updateConnection", () => {
   });
 
   test("skips a new edge when the connection selects other edge fields", () => {
-    const { cache, read } = setup(
+    const { cache, document, read } = setup(
       `query Q {
         items { edges { role node { id } } }
       }`,
@@ -887,6 +888,7 @@ describe("updateConnection", () => {
         },
       },
     );
+    cache.retainDocument(document);
     const result = read() as {
       items: Connection<{ __typename: string; id: string }>;
     };
@@ -930,6 +932,7 @@ describe("updateConnection", () => {
 
     const names = doc(`query Names { items { edges { node { id name } } } }`);
     cache.writeOperation(names, response, {});
+    cache.retainDocument(names);
 
     cache.writeOperation(
       doc(`mutation M { addItem { id } }`),
@@ -951,6 +954,50 @@ describe("updateConnection", () => {
     warn.mockRestore();
 
     expect(cache.readOperation(names, {})).toBeDefined();
+  });
+
+  test("adds a new edge when the query that selects more fields is not mounted", () => {
+    const response = {
+      __typename: "Query",
+      items: {
+        __typename: "ItemConnection",
+        edges: [
+          {
+            __typename: "ItemEdge",
+            node: { __typename: "Item", id: "i1", name: "a" },
+          },
+        ],
+      },
+    };
+
+    const { cache, document, read } = setup(
+      `query Ids { items { edges { node { id } } } }`,
+      response,
+    );
+    cache.retainDocument(document);
+
+    const names = doc(`query Names { items { edges { node { id name } } } }`);
+    cache.writeOperation(names, response, {});
+    const release = cache.retainDocument(names);
+    release();
+
+    cache.writeOperation(
+      doc(`mutation M { addItem { id } }`),
+      { __typename: "Mutation", addItem: { __typename: "Item", id: "i2" } },
+      {},
+    );
+
+    const result = read() as {
+      items: Connection<{ __typename: string; id: string }>;
+    };
+
+    cache.updateConnection(result.items, {
+      append: [{ node: { __typename: "Item", id: "i2" } }],
+    });
+
+    expect(read()).toMatchObject({
+      items: { edges: [{ node: { id: "i1" } }, { node: { id: "i2" } }] },
+    });
   });
 
   test("adds a new edge whose node has every field the connection selects", () => {

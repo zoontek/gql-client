@@ -64,7 +64,7 @@ export const createWriteOperation = (
       const info = deps.getCachedConnection(cacheEntry[CONNECTION_REF]);
 
       if (info != null) {
-        info.readers.set(field, variables);
+        info.readers.set(field, { document, variables });
         return;
       }
 
@@ -74,7 +74,7 @@ export const createWriteOperation = (
         pathInQuery: [...path],
         fieldVariables: extractArguments(field, variables),
         document,
-        readers: new Map([[field, variables]]),
+        readers: new Map([[field, { document, variables }]]),
       });
     };
 

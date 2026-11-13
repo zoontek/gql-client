@@ -44,6 +44,8 @@ export class ClientCache {
   // mounted hook matches nothing.
   private connections = new WeakMap<ConnectionRef, ConnectionInfo>();
   private resultCache: ResultCache = new WeakMap();
+  // How many mounted queries use each transformed document.
+  private mountedDocuments = new Map<TypedDocumentNode, number>();
 
   public readonly readOperation: ReadOperation;
   private readonly canReadSelection: CanReadSelection;
@@ -117,6 +119,25 @@ export class ClientCache {
     return this.cache;
   }
 
+  // Marks `document` as used by a mounted query. Returns a function that
+  // releases it.
+  public retainDocument(document: TypedDocumentNode): () => void {
+    this.mountedDocuments.set(
+      document,
+      (this.mountedDocuments.get(document) ?? 0) + 1,
+    );
+
+    return () => {
+      const count = (this.mountedDocuments.get(document) ?? 0) - 1;
+
+      if (count > 0) {
+        this.mountedDocuments.set(document, count);
+      } else {
+        this.mountedDocuments.delete(document);
+      }
+    };
+  }
+
   public getCachedConnection(ref: unknown): ConnectionInfo | undefined {
     return typeof ref === "object" && ref != null
       ? this.connections.get(ref)
@@ -178,9 +199,9 @@ export class ClientCache {
     return { entry, stored: cacheKey ?? entry };
   }
 
-  // The selection sets of the `edges` fields under each connection field
-  // written to this connection, with their variables, including inline
-  // fragments that apply to the connection's type.
+  // The selection sets of the `edges` fields under each connection field of a
+  // mounted query written to this connection, with their variables,
+  // including inline fragments that apply to the connection's type.
   private getEdgesSelectionSets(
     info: ConnectionInfo,
   ): { selectionSet: SelectionSetNode; variables: AnyVariables }[] {
@@ -221,8 +242,10 @@ export class ClientCache {
       }
     };
 
-    info.readers.forEach((variables, field) => {
-      if (field.selectionSet != null) {
+    // A query that is not mounted can't miss now. If it mounts later and
+    // misses, it fetches again.
+    info.readers.forEach(({ document, variables }, field) => {
+      if (field.selectionSet != null && this.mountedDocuments.has(document)) {
         collect(field.selectionSet, variables);
       }
     });

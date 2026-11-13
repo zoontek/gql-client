@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 
 import { parse } from "@0no-co/graphql.web";
 
@@ -185,6 +185,50 @@ test("query drops rejected requests so a retry fetches again", async () => {
     await expect(second).rejects.toBeInstanceOf(ClientError);
     expect(fetchCount).toBe(2);
   } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a rejected suspense request is kept for 1 second at most", async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+
+  globalThis.fetch = (async () => {
+    fetchCount++;
+    return new Response("nope", { status: 500 });
+  }) as unknown as typeof fetch;
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+    });
+    const variables = { projectId: "p1" };
+
+    const first = client.query(brandingQuery, variables, { suspense: true });
+    await expect(first).rejects.toBeInstanceOf(ClientError);
+
+    // The render React runs right after the rejection gets it back, then it
+    // is dropped.
+    expect(client.query(brandingQuery, variables, { suspense: true })).toBe(
+      first,
+    );
+    await Promise.resolve();
+
+    const second = client.query(brandingQuery, variables, { suspense: true });
+    await expect(second).rejects.toBeInstanceOf(ClientError);
+    expect(fetchCount).toBe(2);
+
+    // Nothing asks for `second`, as if its component unmounted, so it
+    // expires.
+    setSystemTime(new Date(Date.now() + 2000));
+    const third = client.query(brandingQuery, variables, { suspense: true });
+    expect(third).not.toBe(second);
+
+    await expect(third).rejects.toBeInstanceOf(ClientError);
+    expect(fetchCount).toBe(3);
+  } finally {
+    setSystemTime();
     globalThis.fetch = originalFetch;
   }
 });

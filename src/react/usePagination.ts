@@ -1,5 +1,6 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 
+import type { ClientCache } from "../cache/cache";
 import { CONNECTION_REF, setConnectionRef } from "../cache/keys";
 import type { ConnectionRef } from "../cache/types";
 import type { Connection, JsonValue } from "../types";
@@ -20,50 +21,87 @@ const readJsonPathSegment = (value: JsonValue, key: PropertyKey): JsonValue => {
   return null;
 };
 
+// The pages merged by a pagination hook.
+type Pages<T> = {
+  refs: readonly ConnectionRef[];
+  // A connection read from a restored cache (see `Client#restore`) has no
+  // connection ref: registration only happens at write time. It is kept as
+  // the base page so pages fetched later still merge onto it.
+  basePage: T | undefined;
+};
+
+const NO_PAGES: Pages<never> = { refs: [], basePage: undefined };
+
+// The pages after `connection` is rendered, or `pages` itself if they don't
+// change.
+const getNextPages = <T>(
+  pages: Pages<T>,
+  connection: T,
+  cache: ClientCache,
+  direction: "after" | "before",
+): Pages<T> => {
+  if (connection == null) {
+    return pages.refs.length === 0 && pages.basePage === undefined
+      ? pages
+      : NO_PAGES;
+  }
+
+  if (typeof connection !== "object" || !(CONNECTION_REF in connection)) {
+    return pages.refs.length === 0 && pages.basePage === connection
+      ? pages
+      : { refs: [], basePage: connection };
+  }
+
+  const ref = connection[CONNECTION_REF];
+
+  if (typeof ref !== "object" || ref == null) {
+    return pages;
+  }
+
+  const info = cache.getCachedConnection(ref);
+
+  // A connection queried without its pagination cursor is a first page.
+  // Reset the accumulated references so pages from a previous connection
+  // (e.g. another film's characters) don't bleed into this one, and drop the
+  // base page: the registered chain covers it.
+  if (info == null || info.fieldVariables[direction] == null) {
+    return pages.refs.length === 1 &&
+      pages.refs[0] === ref &&
+      pages.basePage === undefined
+      ? pages
+      : { refs: [ref], basePage: undefined };
+  }
+
+  return pages.refs.includes(ref)
+    ? pages
+    : { refs: [...pages.refs, ref], basePage: pages.basePage };
+};
+
 const createPaginationHook = (direction: "after" | "before") => {
   const isForwardPagination = direction === "after";
   const cursor = isForwardPagination ? "endCursor" : "startCursor";
 
   return <A, T extends Connection<A>>(connection: T): T => {
     const client = useClient();
-    const connectionRefs = useRef<ConnectionRef[]>([]);
     const lastReturnedValueRef = useRef<T[] | undefined>(undefined);
 
-    // A connection read from a restored cache (see `Client#restore`) has no
-    // connection ref: registration only happens at write time. Keep it as
-    // the base page so pages fetched later still merge onto it.
-    const basePageRef = useRef<T | undefined>(undefined);
+    // Kept in state, not in a ref, so a render that React throws away can't
+    // change it. Adjusted during render, so the new pages are read in this
+    // render, not one render later.
+    const [pages, setPages] = useState<Pages<T>>(NO_PAGES);
+    const nextPages = getNextPages(pages, connection, client.cache, direction);
 
-    if (connection == null) {
-      connectionRefs.current = [];
-      basePageRef.current = undefined;
-    } else if (CONNECTION_REF in connection) {
-      const ref = connection[CONNECTION_REF];
-
-      if (typeof ref === "object" && ref != null) {
-        const info = client.cache.getCachedConnection(ref);
-
-        // A connection queried without its pagination cursor is a first page.
-        // Reset the accumulated references so pages from a previous connection
-        // (e.g. another film's characters) don't bleed into this one, and
-        // drop the base page: the registered chain covers it.
-        if (info == null || info.fieldVariables[direction] == null) {
-          connectionRefs.current = [ref];
-          basePageRef.current = undefined;
-        } else if (!connectionRefs.current.includes(ref)) {
-          connectionRefs.current.push(ref);
-        }
-      }
-    } else {
-      connectionRefs.current = [];
-      basePageRef.current = connection;
+    if (nextPages !== pages) {
+      setPages(nextPages);
     }
+
+    const { refs, basePage } = nextPages;
 
     // Get fresh data from cache
     const readSnapshot = useCallback(
       (watched: Map<object, Set<symbol>>) => {
-        const infos = filterMap(connectionRefs.current, (id) =>
-          client.cache.getCachedConnection(id),
+        const infos = filterMap(refs, (ref) =>
+          client.cache.getCachedConnection(ref),
         );
 
         const queries = filterMap(infos, (info) => {
@@ -106,14 +144,10 @@ const createPaginationHook = (direction: "after" | "before") => {
         lastReturnedValueRef.current = value;
         return value;
       },
-      // `connection` is not read inside, but the snapshot drills into
-      // `connectionRefs.current`, which is rebuilt from `connection` above.
       // `useCacheSubscription` only re-runs a read whose identity (or the
-      // cache version) changed, so switching to an already-cached connection
-      // (no write, same version) must change the read's identity or it would
-      // serve the previous connection's snapshot.
-      // oxlint-disable-next-line exhaustive-deps
-      [client, connection],
+      // cache version) changed. `refs` is a new array whenever the pages
+      // change, e.g. when switching to an already-cached connection.
+      [client, refs],
     );
 
     const data = useCacheSubscription(client, readSnapshot);
@@ -127,8 +161,7 @@ const createPaginationHook = (direction: "after" | "before") => {
     // Prepend the unregistered base page (restored cache), if any. The reduce
     // below deduplicates adjacent pages sharing the same cursor, so a base
     // page that later gets registered isn't counted twice.
-    const connections =
-      basePageRef.current != null ? [basePageRef.current, ...fetched] : fetched;
+    const connections = basePage != null ? [basePage, ...fetched] : fetched;
 
     if (connections.length === 0) {
       return connection;
