@@ -267,7 +267,7 @@ export class ClientCache {
     config:
       | { prepend: Edge<A>[] }
       | { append: Edge<A>[] }
-      | { remove: string[] },
+      | { remove: (string | number)[] },
     touched?: Map<object, Set<symbol>>,
   ): void {
     if (connection == null) {
@@ -314,7 +314,7 @@ export class ClientCache {
         return;
       }
 
-      const nodeIds = new Set(config.remove);
+      const nodeIds = new Set(config.remove.map(String));
       connectionConfig.cacheEntry[EDGES_KEY] = currentEdges.filter((edge) => {
         if (!isCachedEdge(edge)) {
           return true;

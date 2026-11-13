@@ -4,7 +4,7 @@
 
 ## How objects are identified
 
-The client adds `__typename` to every selection automatically. An object that also has a string `id` field is stored once, under a `Typename<id>` key, and every query reads from that single copy.
+The client adds `__typename` to every selection automatically. An object that also has a string or number `id` field is stored once, under a `Typename<id>` key, and every query reads from that single copy.
 
 An object without an `id` is stored inline instead, scoped to whichever cached parent holds it.
 

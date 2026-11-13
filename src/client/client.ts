@@ -50,7 +50,11 @@ type ActiveQuery = {
 
 type ConnectionUpdate<Node> = [
   Connection<Node>,
-  { prepend: Edge<Node>[] } | { append: Edge<Node>[] } | { remove: string[] },
+  (
+    | { prepend: Edge<Node>[] }
+    | { append: Edge<Node>[] }
+    | { remove: (string | number)[] }
+  ),
 ];
 
 const prepend = <A>(
@@ -69,7 +73,7 @@ const append = <A>(
 
 const remove = <A>(
   connection: Connection<A>,
-  ids: string[],
+  ids: (string | number)[],
 ): ConnectionUpdate<A> => {
   return [connection, { remove: ids }];
 };
@@ -103,7 +107,10 @@ export type GetConnectionUpdate<
     connection: Connection<A>,
     edges: Edge<A>[],
   ) => ConnectionUpdate<A>;
-  remove: <A>(connection: Connection<A>, ids: string[]) => ConnectionUpdate<A>;
+  remove: <A>(
+    connection: Connection<A>,
+    ids: (string | number)[],
+  ) => ConnectionUpdate<A>;
 }) => ConnectionUpdate<unknown> | undefined;
 
 /** Config accepted by `Client#mutate` and `useMutation`. */

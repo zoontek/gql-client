@@ -59,7 +59,11 @@ export const getCacheEntryKey = (json: unknown): symbol | undefined => {
         return Symbol.for(typename);
       }
 
-      if ("id" in json && typeof json.id === "string") {
+      // An `Int` id gets the same key as its string form, as `ID` does.
+      if (
+        "id" in json &&
+        (typeof json.id === "string" || typeof json.id === "number")
+      ) {
         return Symbol.for(`${typename}<${json.id}>`);
       }
     }

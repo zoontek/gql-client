@@ -126,6 +126,9 @@ type GetConnectionUpdate<Data, Variables> = (config: {
     connection: Connection<A>,
     edges: Edge<A>[],
   ) => ConnectionUpdate<A>;
-  remove: <A>(connection: Connection<A>, ids: string[]) => ConnectionUpdate<A>;
+  remove: <A>(
+    connection: Connection<A>,
+    ids: (string | number)[],
+  ) => ConnectionUpdate<A>;
 }) => ConnectionUpdate<unknown> | undefined;
 ```

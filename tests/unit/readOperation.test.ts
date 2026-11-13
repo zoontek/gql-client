@@ -896,6 +896,68 @@ describe("updateConnection", () => {
   });
 });
 
+describe("numeric ids", () => {
+  test("an entity with a number id is shared between queries", () => {
+    const { cache, read } = setup(`query Q { me { id name } }`, {
+      __typename: "Query",
+      me: { __typename: "User", id: 1, name: "Jo" },
+    });
+
+    cache.writeOperation(
+      doc(`query U { user(id: 1) { id name } }`),
+      {
+        __typename: "Query",
+        user: { __typename: "User", id: 1, name: "Bo" },
+      },
+      {},
+    );
+
+    expect(read()).toEqual({
+      __typename: "Query",
+      me: { __typename: "User", id: 1, name: "Bo" },
+    });
+  });
+
+  test("prepend and remove accept nodes with a number id", () => {
+    const { cache, read } = setup(
+      `query Q { items { edges { node { id } } } }`,
+      {
+        __typename: "Query",
+        items: {
+          __typename: "ItemConnection",
+          edges: [
+            { __typename: "ItemEdge", node: { __typename: "Item", id: 1 } },
+          ],
+        },
+      },
+    );
+
+    cache.writeOperation(
+      doc(`mutation M { addItem { id } }`),
+      { __typename: "Mutation", addItem: { __typename: "Item", id: 2 } },
+      {},
+    );
+
+    const result = read() as {
+      items: Connection<{ __typename: string; id: number }>;
+    };
+
+    cache.updateConnection(result.items, {
+      prepend: [{ node: { __typename: "Item", id: 2 } }],
+    });
+
+    type Read = { items: { edges: { node: { id: number } }[] } };
+    const ids = (): number[] =>
+      (read() as Read).items.edges.map((edge) => edge.node.id);
+
+    expect(ids()).toEqual([2, 1]);
+
+    cache.updateConnection(result.items, { remove: [1] });
+
+    expect(ids()).toEqual([2]);
+  });
+});
+
 describe("connection registration", () => {
   test("records the path of each connection in the query", () => {
     const pageInfo = { __typename: "PageInfo", hasNextPage: false };
