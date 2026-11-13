@@ -80,6 +80,18 @@ export type ReadDeps = {
   isTypeCompatible: (typename: string, typeCondition: string) => boolean;
 };
 
+// Per-read state, passed down so the read helpers are created once per
+// cache instead of on every read.
+type ReadContext = {
+  variables: AnyVariables;
+  watched: Map<object, Set<symbol>> | undefined;
+};
+
+const getEntryTypename = (entry: CacheEntry): string | undefined => {
+  const typename = entry[TYPENAME_KEY];
+  return typeof typename === "string" ? typename : undefined;
+};
+
 export const createReadOperation = (
   deps: ReadDeps,
 ): (<Data, Variables extends AnyVariables>(
@@ -100,302 +112,322 @@ export const createReadOperation = (
     WeakMap<AnyVariables, Map<string | undefined, Set<symbol>>>
   >();
 
+  const getRequiredKeys = (
+    node: FieldNode | OperationDefinitionNode,
+    typename: string | undefined,
+    variables: AnyVariables,
+  ): Set<symbol> => {
+    let byVariables = requiredKeysCache.get(node);
+    if (byVariables == null) {
+      byVariables = new WeakMap();
+      requiredKeysCache.set(node, byVariables);
+    }
+
+    let byTypename = byVariables.get(variables);
+    if (byTypename == null) {
+      byTypename = new Map();
+      byVariables.set(variables, byTypename);
+    }
+
+    const cached = byTypename.get(typename);
+    if (cached != null) {
+      return cached;
+    }
+
+    const requiredKeys = new Set<symbol>();
+
+    const collect = (selectionSet: SelectionSetNode): void => {
+      for (const selection of selectionSet.selections) {
+        if (selection.kind === Kind.FIELD) {
+          if (!isExcluded(selection, variables)) {
+            const key = getFieldNameWithArguments(selection, variables);
+
+            // `__typename` is never required: the spec guarantees it in
+            // every response, but a nonconforming response omitting it must
+            // not turn the entry into a permanent miss. (Same exclusion as
+            // `trackField`, see watch.ts.)
+            if (key !== TYPENAME_KEY) {
+              requiredKeys.add(key);
+            }
+          }
+        } else if (selection.kind === Kind.INLINE_FRAGMENT) {
+          const typeCondition = selection.typeCondition?.name.value;
+
+          if (
+            !isExcluded(selection, variables) &&
+            (typeCondition == null ||
+              typename == null ||
+              deps.isTypeCompatible(typename, typeCondition))
+          ) {
+            collect(selection.selectionSet);
+          }
+        }
+      }
+    };
+
+    if (node.selectionSet != null) {
+      collect(node.selectionSet);
+    }
+
+    byTypename.set(typename, requiredKeys);
+    return requiredKeys;
+  };
+
+  const getFromCache = (
+    cacheKey: symbol,
+    node: FieldNode | OperationDefinitionNode,
+    variables: AnyVariables,
+  ): CacheEntry | typeof MISS => {
+    const entry = deps.get(cacheKey);
+
+    if (entry === MISS) {
+      return MISS;
+    }
+
+    return containsAll(
+      entry[REQUESTED_KEYS],
+      getRequiredKeys(node, getEntryTypename(entry), variables),
+    )
+      ? entry
+      : MISS;
+  };
+
+  const getFromCacheOrReturnValue = (
+    valueOrKey: unknown,
+    node: FieldNode | OperationDefinitionNode,
+    variables: AnyVariables,
+  ): unknown => {
+    if (typeof valueOrKey === "symbol") {
+      return getFromCache(valueOrKey, node, variables);
+    }
+
+    if (isCacheEntry(valueOrKey)) {
+      return containsAll(
+        valueOrKey[REQUESTED_KEYS],
+        getRequiredKeys(node, getEntryTypename(valueOrKey), variables),
+      )
+        ? valueOrKey
+        : MISS;
+    }
+
+    return valueOrKey;
+  };
+
+  // Resolve a single cached value or key of `fieldNode`: pull it from the
+  // cache, then recurse into any nested selection set. Returns MISS on a
+  // cache miss. `existing` is what an earlier selection already resolved for
+  // this field: sub-selections merge into it instead of replacing it, so the
+  // fields it already holds are preserved.
+  const resolveValue = (
+    context: ReadContext,
+    fieldNode: FieldNode,
+    valueOrKey: unknown,
+    existing: unknown,
+  ): unknown => {
+    const value = getFromCacheOrReturnValue(
+      valueOrKey,
+      fieldNode,
+      context.variables,
+    );
+
+    if (value === MISS) {
+      return MISS;
+    }
+
+    if (isRecord(value) && fieldNode.selectionSet != null) {
+      // oxlint-disable-next-line no-use-before-define
+      return traverse(
+        context,
+        fieldNode.selectionSet,
+        value,
+        isRecord(existing) ? existing : {},
+      );
+    }
+
+    // Leaf values (custom scalar objects and arrays) are stored by
+    // reference at write time; return a copy so a caller mutating the
+    // result can't corrupt the cache.
+    return typeof value === "object" && value != null ? deepCopy(value) : value;
+  };
+
+  // Builds a clean, string-keyed result directly. `source` is read-only:
+  // a cache entry (field values under argument-qualified symbol keys) or a
+  // cached raw value. Values go into `result`, so there is no separate pass
+  // to strip the internal symbol keys afterward. A field shared across
+  // selections (e.g. between the base selection and an inline fragment) is
+  // re-read from `source` each time, and its sub-selections merge into the
+  // result object the first read created.
+  const applyField = (
+    context: ReadContext,
+    fieldNode: FieldNode,
+    source: Record<PropertyKey, unknown>,
+    result: Record<PropertyKey, unknown>,
+  ): boolean => {
+    const { variables, watched } = context;
+    const originalFieldName = getFieldName(fieldNode);
+    const fieldNameWithArguments = getFieldNameWithArguments(
+      fieldNode,
+      variables,
+    );
+
+    if (watched != null) {
+      // Record that this read depends on `source`'s value for this field,
+      // whether it is present or still missing: a write storing under the
+      // same key (always `fieldNameWithArguments`, see write.ts) must wake
+      // up whoever reads this, and a miss is resolved by exactly such a
+      // write. (`trackField` itself excludes `__typename`, see watch.ts.)
+      trackField(watched, source, fieldNameWithArguments);
+    }
+
+    if (!hasOwn(source, fieldNameWithArguments)) {
+      // A field excluded by `@include(if: false)` / `@skip(if: true)` is
+      // absent from the response, so its absence from the cache is not a
+      // miss, skip it. Same for `__typename` (see `getRequiredKeys`). Any
+      // other missing field is a genuine miss.
+      return (
+        fieldNameWithArguments === TYPENAME_KEY ||
+        isExcluded(fieldNode, variables)
+      );
+    }
+
+    const rawValue = source[fieldNameWithArguments];
+
+    if (rawValue == null) {
+      // Preserve a cached `null`; drop `undefined` (matches JSON output).
+      if (rawValue === null) {
+        result[originalFieldName] = null;
+      }
+      return true;
+    }
+
+    // Both reads of a shared field use the same `source` key, so on a
+    // second read the array length and item order line up with `existing`.
+    const existingValue = result[originalFieldName];
+
+    if (Array.isArray(rawValue)) {
+      const existingItems = Array.isArray(existingValue)
+        ? existingValue
+        : undefined;
+      const items: unknown[] = [];
+
+      for (let index = 0; index < rawValue.length; index++) {
+        const value = resolveValue(
+          context,
+          fieldNode,
+          rawValue[index],
+          existingItems?.[index],
+        );
+
+        if (value === MISS) {
+          return false;
+        }
+
+        items.push(value == null ? null : value);
+      }
+
+      result[originalFieldName] = items;
+      return true;
+    }
+
+    const value = resolveValue(context, fieldNode, rawValue, existingValue);
+
+    if (value === MISS) {
+      return false;
+    }
+
+    result[originalFieldName] = value;
+    return true;
+  };
+
+  const applyInlineFragment = (
+    context: ReadContext,
+    inlineFragmentNode: InlineFragmentNode,
+    source: Record<PropertyKey, unknown>,
+    result: Record<PropertyKey, unknown>,
+  ): boolean => {
+    // A fragment excluded by `@include(if: false)` / `@skip(if: true)`
+    // contributes nothing to the response, so its fields' absence from the
+    // cache is not a miss.
+    if (isExcluded(inlineFragmentNode, context.variables)) {
+      return true;
+    }
+
+    const typeCondition = inlineFragmentNode.typeCondition?.name.value;
+    // `__typename` is selected first in every selection set (see
+    // transform.ts), so by the time we reach an inline fragment it has
+    // already been written to `result`.
+    const dataTypename =
+      typeof result.__typename === "string" ? result.__typename : undefined;
+
+    // Per the spec, nothing inside a fragment with an incompatible type
+    // condition applies, nested fragments included. The write path skips
+    // it the same way (see write.ts).
+    if (
+      typeCondition != null &&
+      dataTypename != null &&
+      !deps.isTypeCompatible(dataTypename, typeCondition)
+    ) {
+      return true;
+    }
+
+    // oxlint-disable-next-line no-use-before-define
+    return applySelections(
+      context,
+      inlineFragmentNode.selectionSet,
+      source,
+      result,
+    );
+  };
+
+  const applySelections = (
+    context: ReadContext,
+    selectionSet: SelectionSetNode,
+    source: Record<PropertyKey, unknown>,
+    result: Record<PropertyKey, unknown>,
+  ): boolean => {
+    for (const selection of selectionSet.selections) {
+      if (selection.kind === Kind.FIELD) {
+        if (!applyField(context, selection, source, result)) {
+          return false;
+        }
+      } else if (selection.kind === Kind.INLINE_FRAGMENT) {
+        if (!applyInlineFragment(context, selection, source, result)) {
+          return false;
+        }
+      } else {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const traverse = (
+    context: ReadContext,
+    selections: SelectionSetNode,
+    source: Record<PropertyKey, unknown>,
+    result: Record<PropertyKey, unknown> = {},
+  ): unknown => {
+    if (!applySelections(context, selections, source, result)) {
+      return MISS;
+    }
+
+    // Carry over the connection reference (a string key, not a queried
+    // field) so consumers like `useForwardPagination`/`useBackwardPagination`
+    // and `updateConnection` can locate the registered connection.
+    if (hasOwn(source, CONNECTION_REF)) {
+      result[CONNECTION_REF] = source[CONNECTION_REF];
+    }
+
+    return result;
+  };
+
   return <Data, Variables extends AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: Variables,
     watched?: Map<object, Set<symbol>>,
   ): JsonValue | undefined => {
     const transformedDocument = transformDocument(document);
-
-    const getRequiredKeys = (
-      node: FieldNode | OperationDefinitionNode,
-      typename: string | undefined,
-    ): Set<symbol> => {
-      let byVariables = requiredKeysCache.get(node);
-      if (byVariables == null) {
-        byVariables = new WeakMap();
-        requiredKeysCache.set(node, byVariables);
-      }
-
-      let byTypename = byVariables.get(variables);
-      if (byTypename == null) {
-        byTypename = new Map();
-        byVariables.set(variables, byTypename);
-      }
-
-      const cached = byTypename.get(typename);
-      if (cached != null) {
-        return cached;
-      }
-
-      const requiredKeys = new Set<symbol>();
-
-      const collect = (selectionSet: SelectionSetNode): void => {
-        for (const selection of selectionSet.selections) {
-          if (selection.kind === Kind.FIELD) {
-            if (!isExcluded(selection, variables)) {
-              const key = getFieldNameWithArguments(selection, variables);
-
-              // `__typename` is never required: the spec guarantees it in
-              // every response, but a nonconforming response omitting it must
-              // not turn the entry into a permanent miss. (Same exclusion as
-              // `trackField`, see watch.ts.)
-              if (key !== TYPENAME_KEY) {
-                requiredKeys.add(key);
-              }
-            }
-          } else if (selection.kind === Kind.INLINE_FRAGMENT) {
-            const typeCondition = selection.typeCondition?.name.value;
-
-            if (
-              !isExcluded(selection, variables) &&
-              (typeCondition == null ||
-                typename == null ||
-                deps.isTypeCompatible(typename, typeCondition))
-            ) {
-              collect(selection.selectionSet);
-            }
-          }
-        }
-      };
-
-      if (node.selectionSet != null) {
-        collect(node.selectionSet);
-      }
-
-      byTypename.set(typename, requiredKeys);
-      return requiredKeys;
-    };
-
-    const getEntryTypename = (entry: CacheEntry): string | undefined => {
-      const typename = entry[TYPENAME_KEY];
-      return typeof typename === "string" ? typename : undefined;
-    };
-
-    const getFromCache = (
-      cacheKey: symbol,
-      node: FieldNode | OperationDefinitionNode,
-    ): CacheEntry | typeof MISS => {
-      const entry = deps.get(cacheKey);
-
-      if (entry === MISS) {
-        return MISS;
-      }
-
-      return containsAll(
-        entry[REQUESTED_KEYS],
-        getRequiredKeys(node, getEntryTypename(entry)),
-      )
-        ? entry
-        : MISS;
-    };
-
-    const getFromCacheOrReturnValue = (
-      valueOrKey: unknown,
-      node: FieldNode | OperationDefinitionNode,
-    ): unknown => {
-      if (typeof valueOrKey === "symbol") {
-        return getFromCache(valueOrKey, node);
-      }
-
-      if (isCacheEntry(valueOrKey)) {
-        return containsAll(
-          valueOrKey[REQUESTED_KEYS],
-          getRequiredKeys(node, getEntryTypename(valueOrKey)),
-        )
-          ? valueOrKey
-          : MISS;
-      }
-
-      return valueOrKey;
-    };
-
-    // Builds a clean, string-keyed result directly. `source` is read-only:
-    // a cache entry (field values under argument-qualified symbol keys) or a
-    // cached raw value. Values go into `result`, so there is no separate pass
-    // to strip the internal symbol keys afterward. A field shared across
-    // selections (e.g. between the base selection and an inline fragment) is
-    // re-read from `source` each time, and its sub-selections merge into the
-    // result object the first read created.
-    const applyField = (
-      fieldNode: FieldNode,
-      source: Record<PropertyKey, unknown>,
-      result: Record<PropertyKey, unknown>,
-    ): boolean => {
-      const originalFieldName = getFieldName(fieldNode);
-      const fieldNameWithArguments = getFieldNameWithArguments(
-        fieldNode,
-        variables,
-      );
-
-      if (watched != null) {
-        // Record that this read depends on `source`'s value for this field,
-        // whether it is present or still missing: a write storing under the
-        // same key (always `fieldNameWithArguments`, see write.ts) must wake
-        // up whoever reads this, and a miss is resolved by exactly such a
-        // write. (`trackField` itself excludes `__typename`, see watch.ts.)
-        trackField(watched, source, fieldNameWithArguments);
-      }
-
-      if (!hasOwn(source, fieldNameWithArguments)) {
-        // A field excluded by `@include(if: false)` / `@skip(if: true)` is
-        // absent from the response, so its absence from the cache is not a
-        // miss, skip it. Same for `__typename` (see `getRequiredKeys`). Any
-        // other missing field is a genuine miss.
-        return (
-          fieldNameWithArguments === TYPENAME_KEY ||
-          isExcluded(fieldNode, variables)
-        );
-      }
-
-      const rawValue = source[fieldNameWithArguments];
-
-      if (rawValue == null) {
-        // Preserve a cached `null`; drop `undefined` (matches JSON output).
-        if (rawValue === null) {
-          result[originalFieldName] = null;
-        }
-        return true;
-      }
-
-      // Resolve a single cached value or key: pull it from the cache, then
-      // recurse into any nested selection set. Returns MISS on a cache miss.
-      // `existing` is what an earlier selection already resolved for this
-      // field: sub-selections merge into it instead of replacing it, so the
-      // fields it already holds are preserved.
-      const resolve = (valueOrKey: unknown, existing: unknown): unknown => {
-        const value = getFromCacheOrReturnValue(valueOrKey, fieldNode);
-
-        if (value === MISS) {
-          return MISS;
-        }
-
-        if (isRecord(value) && fieldNode.selectionSet != null) {
-          // oxlint-disable-next-line no-use-before-define
-          return traverse(
-            fieldNode.selectionSet,
-            value,
-            isRecord(existing) ? existing : {},
-          );
-        }
-
-        // Leaf values (custom scalar objects and arrays) are stored by
-        // reference at write time; return a copy so a caller mutating the
-        // result can't corrupt the cache.
-        return typeof value === "object" && value != null
-          ? deepCopy(value)
-          : value;
-      };
-
-      // Both reads of a shared field use the same `source` key, so on a
-      // second read the array length and item order line up with `existing`.
-      const existingValue = result[originalFieldName];
-
-      if (Array.isArray(rawValue)) {
-        const existingItems = Array.isArray(existingValue)
-          ? existingValue
-          : undefined;
-        const items: unknown[] = [];
-
-        for (let index = 0; index < rawValue.length; index++) {
-          const value = resolve(rawValue[index], existingItems?.[index]);
-
-          if (value === MISS) {
-            return false;
-          }
-
-          items.push(value == null ? null : value);
-        }
-
-        result[originalFieldName] = items;
-        return true;
-      }
-
-      const value = resolve(rawValue, existingValue);
-
-      if (value === MISS) {
-        return false;
-      }
-
-      result[originalFieldName] = value;
-      return true;
-    };
-
-    const applyInlineFragment = (
-      inlineFragmentNode: InlineFragmentNode,
-      source: Record<PropertyKey, unknown>,
-      result: Record<PropertyKey, unknown>,
-    ): boolean => {
-      // A fragment excluded by `@include(if: false)` / `@skip(if: true)`
-      // contributes nothing to the response, so its fields' absence from the
-      // cache is not a miss.
-      if (isExcluded(inlineFragmentNode, variables)) {
-        return true;
-      }
-
-      const typeCondition = inlineFragmentNode.typeCondition?.name.value;
-      // `__typename` is selected first in every selection set (see
-      // transform.ts), so by the time we reach an inline fragment it has
-      // already been written to `result`.
-      const dataTypename =
-        typeof result.__typename === "string" ? result.__typename : undefined;
-
-      // Per the spec, nothing inside a fragment with an incompatible type
-      // condition applies, nested fragments included. The write path skips
-      // it the same way (see write.ts).
-      if (
-        typeCondition != null &&
-        dataTypename != null &&
-        !deps.isTypeCompatible(dataTypename, typeCondition)
-      ) {
-        return true;
-      }
-
-      // oxlint-disable-next-line no-use-before-define
-      return applySelections(inlineFragmentNode.selectionSet, source, result);
-    };
-
-    const applySelections = (
-      selectionSet: SelectionSetNode,
-      source: Record<PropertyKey, unknown>,
-      result: Record<PropertyKey, unknown>,
-    ): boolean => {
-      for (const selection of selectionSet.selections) {
-        if (selection.kind === Kind.FIELD) {
-          if (!applyField(selection, source, result)) {
-            return false;
-          }
-        } else if (selection.kind === Kind.INLINE_FRAGMENT) {
-          if (!applyInlineFragment(selection, source, result)) {
-            return false;
-          }
-        } else {
-          return false;
-        }
-      }
-
-      return true;
-    };
-
-    const traverse = (
-      selections: SelectionSetNode,
-      source: Record<PropertyKey, unknown>,
-      result: Record<PropertyKey, unknown> = {},
-    ): unknown => {
-      if (!applySelections(selections, source, result)) {
-        return MISS;
-      }
-
-      // Carry over the connection reference (a string key, not a queried
-      // field) so consumers like `useForwardPagination`/`useBackwardPagination`
-      // and `updateConnection` can locate the registered connection.
-      if (hasOwn(source, CONNECTION_REF)) {
-        result[CONNECTION_REF] = source[CONNECTION_REF];
-      }
-
-      return result;
-    };
-
     const operation = getOperationDefinition(transformedDocument);
 
     if (operation == null) {
@@ -408,13 +440,17 @@ export const createReadOperation = (
       return undefined;
     }
 
-    const cache = getFromCache(cacheKey, operation);
+    const cache = getFromCache(cacheKey, operation, variables);
 
     if (cache === MISS) {
       return undefined;
     }
 
-    const traversed = traverse(operation.selectionSet, cache);
+    const traversed = traverse(
+      { variables, watched },
+      operation.selectionSet,
+      cache,
+    );
 
     if (traversed === MISS) {
       return undefined;
