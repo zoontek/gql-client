@@ -391,3 +391,63 @@ test("a body that isn't JSON is a 'malformed' error caused by the parse error", 
     globalThis.fetch = originalFetch;
   }
 });
+
+// Some `fetch` implementations reject with a plain `AbortError` instead of
+// the signal's reason, before and during the body read.
+const abortError = (): DOMException =>
+  new DOMException("The operation was aborted.", "AbortError");
+
+test("a timeout before the response is a 'timeout' error, whatever fetch rejects with", async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = ((_request: Request, init: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => {
+        reject(abortError());
+      });
+    })) as unknown as typeof fetch;
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+      timeout: 10,
+    });
+
+    await expect(
+      client.query(parse(`query Me { me { id } }`), {}),
+    ).rejects.toMatchObject({ reason: "timeout" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a timeout during the body read is a 'timeout' error, not 'malformed'", async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async (_request: Request, init: RequestInit) =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          init.signal?.addEventListener("abort", () => {
+            controller.error(abortError());
+          });
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    )) as unknown as typeof fetch;
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+      timeout: 10,
+    });
+
+    await expect(
+      client.query(parse(`query Me { me { id } }`), {}),
+    ).rejects.toMatchObject({ reason: "timeout" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

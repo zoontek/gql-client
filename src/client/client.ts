@@ -319,32 +319,40 @@ export class Client {
       );
     }
 
+    let received: Response | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     if (Number.isFinite(timeout) && timeout >= 0) {
       timer = setTimeout(() => {
-        controller.abort(ClientError.timeout(this.url, timeout));
+        controller.abort();
       }, timeout);
     }
 
     return fetch(requestToSend, { signal: controller.signal })
-      .catch((error: unknown) => {
-        // A timeout aborts with its own `ClientError` as the reason.
-        throw error instanceof ClientError
-          ? error
-          : ClientError.network(this.url, error);
-      })
       .then(async (response) => {
+        received = response;
+
         if (!response.ok) {
           throw ClientError.status(response);
         }
 
-        const json: JsonValue = await response
-          .json()
-          .catch((error: unknown) => {
-            throw ClientError.malformed(this.url, response, error);
-          });
+        const json: JsonValue = await response.json();
+        return { response, json };
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) {
+          throw ClientError.timeout(this.url, timeout);
+        }
 
+        if (error instanceof ClientError) {
+          throw error;
+        }
+
+        throw received == null
+          ? ClientError.network(this.url, error)
+          : ClientError.malformed(this.url, received, error);
+      })
+      .then(({ response, json }) => {
         if (isRecord(json)) {
           if ("errors" in json && Array.isArray(json.errors)) {
             throw ClientError.graphQL(this.url, response, json.errors);
