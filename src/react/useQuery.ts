@@ -1,5 +1,5 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
-import { use, useCallback, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ClientError } from "../client/errors";
 import type { AnyVariables } from "../types";
@@ -171,8 +171,15 @@ export const useQuery = <Data, Variables extends AnyVariables>(
   // The cache read resolves to `JsonValue`, trusted to match `Data`, the
   // shape the caller's typed query declares, the same way any GraphQL
   // response is trusted to match its document's result type.
-  return [
-    { fetching, data: dataToExpose as Data },
-    { setVariables, refetch },
-  ];
+  const state = useMemo(
+    () => ({ fetching, data: dataToExpose as Data }),
+    [fetching, dataToExpose],
+  );
+
+  const actions = useMemo(
+    () => ({ setVariables, refetch }),
+    [setVariables, refetch],
+  );
+
+  return [state, actions];
 };
