@@ -35,12 +35,22 @@ const introspection = schemaPath.startsWith("http")
 introspection.then((introspection) => {
   const interfaceToTypes = new Map();
 
+  const add = (abstractType, concreteType) => {
+    const set = interfaceToTypes.get(abstractType) ?? new Set();
+    set.add(concreteType);
+    interfaceToTypes.set(abstractType, set);
+  };
+
   introspection.__schema.types.forEach((type) => {
     type.interfaces?.forEach((int) => {
-      const set = interfaceToTypes.get(int.name) ?? new Set();
-      set.add(type.name);
-      interfaceToTypes.set(int.name, set);
+      add(int.name, type.name);
     });
+
+    if (type.kind === "UNION") {
+      type.possibleTypes?.forEach((member) => {
+        add(type.name, member.name);
+      });
+    }
   });
 
   const json = {

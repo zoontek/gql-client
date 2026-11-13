@@ -112,17 +112,23 @@ export const transformDocument = (
     for (const node of nodes) {
       if (node.kind === Kind.FRAGMENT_SPREAD) {
         const name = node.name.value;
+        const fragment = fragmentDefinitions.get(name);
 
-        const selections =
-          fragmentDefinitions.get(name)?.selectionSet.selections;
-
-        if (selections == null) {
+        if (fragment == null) {
           throw new Error(`Fragment "${name}" is not defined.`);
         }
 
-        for (const node of inline(selections)) {
-          merge(map, node);
-        }
+        // An inline fragment, not flattened fields: the fragment's fields only
+        // apply to its type condition, and only when the spread's directives
+        // don't exclude it.
+        merge(map, {
+          kind: Kind.INLINE_FRAGMENT,
+          typeCondition: fragment.typeCondition,
+          ...(node.directives != null && { directives: node.directives }),
+          selectionSet: createSelectionSet(
+            inline(fragment.selectionSet.selections),
+          ),
+        });
       } else {
         const selections = node.selectionSet?.selections;
         const copy = { ...node };

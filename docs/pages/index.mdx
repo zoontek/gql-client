@@ -31,7 +31,7 @@ bun add @zoontek/gql-client
 
 ## 2. Generate the schema config
 
-The cache needs to know which concrete types implement each interface, to resolve fragment spreads like `... on Node { id }`. Generate that mapping once with the `gql-schema-config` CLI the package installs:
+The cache needs to know the concrete types of each interface and union, to match fragments on them like `... on Node { id }`. Generate that mapping once with the `gql-schema-config` CLI the package installs:
 
 ```bash
 gql-schema-config <schema> <output>

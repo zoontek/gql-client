@@ -13,7 +13,7 @@ import { ClientError } from "./errors";
 export type ClientConfig = {
   /** GraphQL endpoint URL. All requests are sent here as HTTP POST. */
   url: string;
-  /** Interface-to-implementing-types map, used by the cache to match fragments on interfaces. Generate it with `gql-schema-config`. */
+  /** Map from each interface and union to its concrete types, used by the cache to match fragments on them. Generate it with `gql-schema-config`. */
   schemaConfig: SchemaConfig;
   /** Request timeout in milliseconds. Defaults to `10_000`. Set to `Infinity` to disable. */
   timeout?: number;

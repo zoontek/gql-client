@@ -284,6 +284,67 @@ describe("readOperation", () => {
       expectNoSymbolKeys(result);
     });
 
+    test("applies a fragment spread only to its type condition", () => {
+      const { read } = setup(
+        `query Q {
+          pet { id ...DogFields ...CatFields }
+        }
+        fragment DogFields on Dog { barkVolume }
+        fragment CatFields on Cat { meowVolume }`,
+        {
+          __typename: "Query",
+          pet: { __typename: "Dog", id: "1", barkVolume: 11 },
+        },
+        {},
+        schemaConfig,
+      );
+
+      expect(read()).toEqual({
+        __typename: "Query",
+        pet: { __typename: "Dog", id: "1", barkVolume: 11 },
+      });
+    });
+
+    test("applies a fragment spread on an interface to its implementations", () => {
+      const { read } = setup(
+        `query Q {
+          pet { id ...AnimalFields }
+        }
+        fragment AnimalFields on Animal { name }`,
+        {
+          __typename: "Query",
+          pet: { __typename: "Dog", id: "1", name: "Rex" },
+        },
+        {},
+        schemaConfig,
+      );
+
+      expect(read()).toEqual({
+        __typename: "Query",
+        pet: { __typename: "Dog", id: "1", name: "Rex" },
+      });
+    });
+
+    test("skips a fragment spread excluded by @include(if: false)", () => {
+      const { read } = setup(
+        `query Q($withName: Boolean!) {
+          pet { id ...AnimalFields @include(if: $withName) }
+        }
+        fragment AnimalFields on Animal { name }`,
+        {
+          __typename: "Query",
+          pet: { __typename: "Dog", id: "1" },
+        },
+        { withName: false },
+        schemaConfig,
+      );
+
+      expect(read()).toEqual({
+        __typename: "Query",
+        pet: { __typename: "Dog", id: "1" },
+      });
+    });
+
     test("reads fields shared between the base selection and a matching fragment", () => {
       const { read } = setup(
         `query Q {

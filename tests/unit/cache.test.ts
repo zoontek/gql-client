@@ -137,7 +137,15 @@ test("Write & read in cache", () => {
   expect(a).toBeDefined();
   expect(a).toBe(b);
 
-  const cache2 = new ClientCache({ interfaceToTypes: {} });
+  const cache2 = new ClientCache({
+    interfaceToTypes: {
+      OnboardingStatusInfo: [
+        "OnboardingInvalidStatusInfo",
+        "OnboardingFinalizedStatusInfo",
+        "OnboardingValidStatusInfo",
+      ],
+    },
+  });
 
   cache2.writeOperation(preparedOnboardingInfo, onboardingInfoResponse, {
     id: "d26ed1ed-5f70-4096-9d8e-27ef258e26fa",

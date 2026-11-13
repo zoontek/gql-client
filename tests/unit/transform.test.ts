@@ -37,6 +37,22 @@ describe("transformDocument", () => {
     expect(printed.match(/\.\.\.on Dog/g)).toHaveLength(2);
   });
 
+  test("keeps a fragment spread's type condition and directives", () => {
+    const printed = printTransformed(
+      `query Q($x: Boolean!) {
+        hero { id ...DroidFields ...Named @include(if: $x) }
+      }
+      fragment DroidFields on Droid { primaryFunction }
+      fragment Named on Character { name }`,
+    );
+
+    expect(printed).toContain(
+      "hero{__typename id...on Droid{__typename primaryFunction}" +
+        "...on Character@include(if:$x){__typename name}}",
+    );
+    expect(printed).not.toContain("fragment");
+  });
+
   test("puts __typename first in every selection set", () => {
     const printed = printTransformed(
       `query Q {
