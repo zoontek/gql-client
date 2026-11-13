@@ -664,6 +664,55 @@ describe("updateConnection", () => {
   });
 });
 
+describe("connection registration", () => {
+  test("records the path of each connection in the query", () => {
+    const pageInfo = { __typename: "PageInfo", hasNextPage: false };
+    const characters = { __typename: "CharacterConnection", pageInfo };
+
+    const { cache, read } = setup(
+      `query Q {
+        items(first: 1) { pageInfo { hasNextPage } }
+        films {
+          id
+          ... on Film { characters(first: 2) { pageInfo { hasNextPage } } }
+        }
+      }`,
+      {
+        __typename: "Query",
+        items: { __typename: "ItemConnection", pageInfo },
+        films: [
+          { __typename: "Film", id: "1", characters },
+          null,
+          { __typename: "Film", id: "2", characters },
+        ],
+      },
+    );
+
+    type Ref = { __connectionRef: number };
+    const result = read() as {
+      items: Ref;
+      films: ({ characters: Ref } | null)[];
+    };
+
+    const pathOf = (connection: Ref | undefined) =>
+      connection == null
+        ? undefined
+        : cache.getCachedConnection(connection.__connectionRef)?.pathInQuery;
+
+    expect(pathOf(result.items)).toEqual(["items"]);
+    expect(pathOf(result.films[0]?.characters)).toEqual([
+      "films",
+      0,
+      "characters",
+    ]);
+    expect(pathOf(result.films[2]?.characters)).toEqual([
+      "films",
+      2,
+      "characters",
+    ]);
+  });
+});
+
 describe("purge", () => {
   test("drops all cached data", () => {
     const { cache, read } = setup(`query Q { user { id } }`, {

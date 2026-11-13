@@ -51,6 +51,10 @@ export const createWriteOperation = (
     variables: AnyVariables,
     touched?: Map<object, Set<symbol>>,
   ): void => {
+    // Response path of the field being written, as a push/pop stack.
+    // Copied only when registering a connection.
+    const path: PropertyKey[] = [];
+
     const registerConnection = (
       cacheEntry: CacheEntry,
       pathInQuery: PropertyKey[],
@@ -73,7 +77,6 @@ export const createWriteOperation = (
       field: FieldNode,
       parentJson: Record<PropertyKey, unknown>,
       parentCache: CacheEntry,
-      path: PropertyKey[],
     ): void => {
       const originalFieldName = getFieldName(field);
 
@@ -111,6 +114,7 @@ export const createWriteOperation = (
             : [];
         arrayCache.length = fieldValue.length;
         parentCache[fieldNameWithArguments] = arrayCache;
+        path.push(originalFieldName);
         fieldValue.forEach((item, index) => {
           if (item == null) {
             arrayCache[index] = item;
@@ -122,13 +126,12 @@ export const createWriteOperation = (
           );
           arrayCache[index] = stored;
 
+          path.push(index);
           // oxlint-disable-next-line no-use-before-define
-          cacheSelectionSet(subSelectionSet, item, cacheObject, [
-            ...path,
-            originalFieldName,
-            index,
-          ]);
+          cacheSelectionSet(subSelectionSet, item, cacheObject);
+          path.pop();
         });
+        path.pop();
         return;
       }
       if (!isRecord(fieldValue)) {
@@ -140,6 +143,7 @@ export const createWriteOperation = (
         parentCache[fieldNameWithArguments],
       );
       parentCache[fieldNameWithArguments] = stored;
+      path.push(originalFieldName);
 
       if (
         typeof record.__typename === "string" &&
@@ -147,23 +151,20 @@ export const createWriteOperation = (
       ) {
         registerConnection(
           cacheObject,
-          [...path, originalFieldName],
+          [...path],
           extractArguments(field, variables),
         );
       }
 
       // oxlint-disable-next-line no-use-before-define
-      return cacheSelectionSet(subSelectionSet, record, cacheObject, [
-        ...path,
-        originalFieldName,
-      ]);
+      cacheSelectionSet(subSelectionSet, record, cacheObject);
+      path.pop();
     };
 
     const cacheSelectionSet = (
       selectionSet: SelectionSetNode,
       json: Record<PropertyKey, unknown>,
       cached: CacheEntry,
-      path: PropertyKey[],
     ): void => {
       for (const selection of selectionSet.selections) {
         switch (selection.kind) {
@@ -186,11 +187,11 @@ export const createWriteOperation = (
               continue;
             }
 
-            cacheSelectionSet(selection.selectionSet, json, cached, path);
+            cacheSelectionSet(selection.selectionSet, json, cached);
             continue;
           }
           case Kind.FIELD:
-            cacheField(selection, json, cached, path);
+            cacheField(selection, json, cached);
             continue;
           default:
             continue;
@@ -213,6 +214,6 @@ export const createWriteOperation = (
         ? deps.getOrCreateEntry(cacheKey)
         : createEmptyCacheEntry();
 
-    cacheSelectionSet(operation.selectionSet, response, cacheEntry, []);
+    cacheSelectionSet(operation.selectionSet, response, cacheEntry);
   };
 };
