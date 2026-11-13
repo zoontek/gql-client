@@ -53,29 +53,47 @@ export const createWriteOperation = (
     variables: AnyVariables,
     touched?: Map<object, Set<symbol>>,
   ): void => {
+    const operation = getOperationDefinition(document);
+
+    if (operation == null || !isRecord(response)) {
+      return;
+    }
+
+    // A mutation root is never read back, so it has no cache key.
+    const cacheKey = getCacheKeyFromOperationNode(operation);
+
     // Response path of the field being written, as a push/pop stack.
     // Copied only when registering a connection.
     const path: PropertyKey[] = [];
+
+    // A copy of `variables` for connection readers, made once per write. The
+    // caller's object would keep the stored read results keyed by it alive.
+    let readerVariables: AnyVariables | undefined;
 
     const registerConnection = (
       cacheEntry: CacheEntry,
       field: FieldNode,
     ): void => {
-      const info = deps.getCachedConnection(cacheEntry[CONNECTION_REF]);
+      let info = deps.getCachedConnection(cacheEntry[CONNECTION_REF]);
 
-      if (info != null) {
-        info.readers.set(field, { document, variables });
-        return;
+      if (info == null) {
+        info = {
+          cacheEntry,
+          variables,
+          pathInQuery: [...path],
+          fieldVariables: extractArguments(field, variables),
+          document,
+          readers: new Map(),
+        };
+
+        cacheEntry[CONNECTION_REF] = deps.registerConnectionInfo(info);
       }
 
-      cacheEntry[CONNECTION_REF] = deps.registerConnectionInfo({
-        cacheEntry,
-        variables,
-        pathInQuery: [...path],
-        fieldVariables: extractArguments(field, variables),
-        document,
-        readers: new Map([[field, { document, variables }]]),
-      });
+      // A mutation is never read back, so it is not a reader.
+      if (cacheKey != null) {
+        readerVariables ??= { ...variables };
+        info.readers.set(field, { document, variables: readerVariables });
+      }
     };
 
     const cacheField = (
@@ -200,16 +218,8 @@ export const createWriteOperation = (
       }
     };
 
-    const operation = getOperationDefinition(document);
-
-    if (operation == null || !isRecord(response)) {
-      return;
-    }
-
-    // A mutation root is never read back, so it is written into a detached
-    // entry. Nested entities still land in the cache through `linkCacheEntry`.
-    const cacheKey = getCacheKeyFromOperationNode(operation);
-
+    // A mutation root is written into a detached entry. Nested entities
+    // still land in the cache through `linkCacheEntry`.
     const cacheEntry =
       cacheKey != null
         ? deps.getOrCreateEntry(cacheKey)

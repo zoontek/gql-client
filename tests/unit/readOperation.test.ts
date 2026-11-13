@@ -1090,6 +1090,74 @@ describe("numeric ids", () => {
 });
 
 describe("connection registration", () => {
+  const postQuery = doc(
+    `query Q($id: ID!) { post(id: $id) { id comments { edges { node { id } } } } }`,
+  );
+
+  const postResponse = {
+    __typename: "Query",
+    post: {
+      __typename: "Post",
+      id: "p1",
+      comments: {
+        __typename: "CommentConnection",
+        edges: [
+          {
+            __typename: "CommentEdge",
+            node: { __typename: "Comment", id: "c1" },
+          },
+        ],
+      },
+    },
+  };
+
+  test("a reader keeps a copy of the variables, not the caller's object", () => {
+    const cache = new ClientCache({ interfaceToTypes: {} });
+    const variables = { id: "p1" };
+    cache.writeOperation(postQuery, postResponse, variables);
+
+    const result = cache.readOperation(postQuery, variables) as {
+      post: { comments: { __connectionRef: object } };
+    };
+
+    const reader = cache
+      .getCachedConnection(result.post.comments.__connectionRef)
+      ?.readers.values()
+      .next().value;
+
+    expect(reader?.variables).toEqual(variables);
+    expect(reader?.variables).not.toBe(variables);
+  });
+
+  test("a mutation is not a reader of the connections it writes", () => {
+    const cache = new ClientCache({ interfaceToTypes: {} });
+    cache.writeOperation(postQuery, postResponse, { id: "p1" });
+
+    const mutation = doc(
+      `mutation M { addComment { post { id comments { edges { node { id } } } } } }`,
+    );
+
+    cache.writeOperation(
+      mutation,
+      { __typename: "Mutation", addComment: postResponse },
+      {},
+    );
+
+    const result = cache.readOperation(postQuery, { id: "p1" }) as {
+      post: { comments: { __connectionRef: object } };
+    };
+
+    const info = cache.getCachedConnection(
+      result.post.comments.__connectionRef,
+    );
+
+    const documents = [...(info?.readers.values() ?? [])].map(
+      (reader) => reader.document,
+    );
+
+    expect(documents).toEqual([postQuery]);
+  });
+
   test("keeps the connection ref out of the visible result", () => {
     const { read } = setup(`query Q { items { edges { node { id } } } }`, {
       __typename: "Query",
