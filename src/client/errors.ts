@@ -4,15 +4,17 @@ import type { JsonArray } from "../types";
 
 /**
  * Why a `ClientError` was thrown:
+ * - `"aborted"`: the request's `signal` was aborted.
  * - `"graphQL"`: the response had a top-level `errors` array.
  * - `"malformed"`: the response body wasn't valid GraphQL JSON.
- * - `"network"`: the request failed before a response was received.
+ * - `"network"`: the connection failed, before or during the response.
  * - `"status"`: the response status was not ok (outside 200-299).
  * - `"timeout"`: the request exceeded the client's configured `timeout`.
  * - `"transform"`: the client's `transformRequest` function threw or rejected.
  * - `"unknown"`: anything else threw, see `cause`.
  */
 export type ClientErrorReason =
+  | "aborted"
   | "graphQL"
   | "malformed"
   | "network"
@@ -92,6 +94,14 @@ export class ClientError extends Error {
   // They're used internally by `Client#mutate`; construct errors this way
   // rather than with `new ClientError(...)` directly.
 
+  static aborted(url: string, cause?: unknown): ClientError {
+    return new ClientError(`Request to ${url} was aborted`, {
+      reason: "aborted",
+      url,
+      cause,
+    });
+  }
+
   static network(url: string, cause?: unknown): ClientError {
     return new ClientError(`Request to ${url} failed`, {
       reason: "network",
@@ -111,12 +121,12 @@ export class ClientError extends Error {
     );
   }
 
-  static timeout(url: string, timeout?: number): ClientError {
+  static timeout(url: string, timeout?: number, cause?: unknown): ClientError {
     return new ClientError(
       timeout == null
         ? `Request to ${url} timed out`
         : `Request to ${url} timed out (> ${timeout}ms)`,
-      { reason: "timeout", url },
+      { reason: "timeout", url, cause },
     );
   }
 

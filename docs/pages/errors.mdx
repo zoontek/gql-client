@@ -4,9 +4,10 @@ Every failed request throws a `ClientError`, never a raw `fetch` or parsing exce
 
 | `reason`    | Meaning                                                         |
 | ----------- | --------------------------------------------------------------- |
+| `aborted`   | The request's `signal` was aborted.                             |
 | `graphQL`   | The response came back with a top-level `errors` array.         |
 | `malformed` | The response body wasn't valid GraphQL JSON.                    |
-| `network`   | The request couldn't reach the server.                          |
+| `network`   | The connection failed, before or during the response.           |
 | `status`    | The response status was outside the `200`-`299` range.          |
 | `timeout`   | The request took longer than the client's configured `timeout`. |
 | `transform` | The client's `transformRequest` function threw or rejected.     |
@@ -40,6 +41,7 @@ class ClientError extends Error {
 }
 
 type ClientErrorReason =
+  | "aborted"
   | "graphQL"
   | "malformed"
   | "network"

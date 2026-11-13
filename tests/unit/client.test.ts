@@ -451,3 +451,147 @@ test("a timeout during the body read is a 'timeout' error, not 'malformed'", asy
     globalThis.fetch = originalFetch;
   }
 });
+
+// Rejects like `fetch` when its signal aborts, and never resolves otherwise.
+const pendingFetch = ((_request: Request, init: RequestInit) =>
+  new Promise<Response>((_resolve, reject) => {
+    if (init.signal?.aborted === true) {
+      reject(abortError());
+      return;
+    }
+
+    init.signal?.addEventListener("abort", () => {
+      reject(abortError());
+    });
+  })) as unknown as typeof fetch;
+
+test("a timeout keeps the abort error as its cause", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = pendingFetch;
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+      timeout: 10,
+    });
+
+    const error = await client
+      .query(parse(`query Me { me { id } }`), {})
+      .catch((error: unknown) => error);
+
+    expect(error).toMatchObject({ reason: "timeout" });
+    expect((error as ClientError).cause).toBeInstanceOf(DOMException);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("aborting the signal set by transformRequest is an 'aborted' error", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = pendingFetch;
+
+  try {
+    const controller = new AbortController();
+
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+      transformRequest: (request) =>
+        new Request(request, { signal: controller.signal }),
+    });
+
+    const result = client.query(parse(`query Me { me { id } }`), {});
+    setTimeout(() => {
+      controller.abort();
+    }, 5);
+
+    await expect(result).rejects.toMatchObject({ reason: "aborted" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a signal already aborted by transformRequest is an 'aborted' error", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = pendingFetch;
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+      transformRequest: (request) =>
+        new Request(request, { signal: AbortSignal.abort() }),
+    });
+
+    await expect(
+      client.query(parse(`query Me { me { id } }`), {}),
+    ).rejects.toMatchObject({ reason: "aborted" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a connection drop during the body read is a 'network' error", async () => {
+  const originalFetch = globalThis.fetch;
+  const dropError = new TypeError("terminated");
+
+  globalThis.fetch = (async () =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"data":'));
+          controller.error(dropError);
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    )) as unknown as typeof fetch;
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+    });
+
+    await expect(
+      client.query(parse(`query Me { me { id } }`), {}),
+    ).rejects.toMatchObject({ reason: "network", cause: dropError });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("an unread error body is released when the timeout fires", async () => {
+  const originalFetch = globalThis.fetch;
+  let bodyAborted = false;
+
+  globalThis.fetch = (async (_request: Request, init: RequestInit) =>
+    new Response(
+      new ReadableStream({
+        start() {
+          init.signal?.addEventListener("abort", () => {
+            bodyAborted = true;
+          });
+        },
+      }),
+      { status: 500 },
+    )) as unknown as typeof fetch;
+
+  try {
+    const client = new Client({
+      url: "http://localhost/graphql",
+      schemaConfig: { interfaceToTypes: {} },
+      timeout: 10,
+    });
+
+    await expect(
+      client.query(parse(`query Me { me { id } }`), {}),
+    ).rejects.toMatchObject({ reason: "status" });
+    expect(bodyAborted).toBe(false);
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(bodyAborted).toBe(true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

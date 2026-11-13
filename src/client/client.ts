@@ -319,40 +319,69 @@ export class Client {
       );
     }
 
-    let received: Response | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
+    let keepTimer = false;
 
     if (Number.isFinite(timeout) && timeout >= 0) {
       timer = setTimeout(() => {
+        timedOut = true;
         controller.abort();
       }, timeout);
     }
 
-    return fetch(requestToSend, { signal: controller.signal })
-      .then(async (response) => {
-        received = response;
+    // `fetch` only listens to the `signal` passed below, so an abort of the
+    // request's own signal (set by `transformRequest`) is forwarded to it.
+    // A polyfilled `Request` may have no signal.
+    const requestSignal = requestToSend.signal as AbortSignal | undefined;
 
+    const forwardAbort = (): void => {
+      controller.abort();
+    };
+
+    if (requestSignal != null) {
+      if (requestSignal.aborted) {
+        controller.abort();
+      } else {
+        requestSignal.addEventListener("abort", forwardAbort);
+      }
+    }
+
+    // The rejection itself can't be trusted to tell an abort apart: some
+    // `fetch` implementations reject with a plain `AbortError`.
+    const getAbortError = (cause: unknown): ClientError | undefined => {
+      if (!controller.signal.aborted) {
+        return undefined;
+      }
+
+      return timedOut
+        ? ClientError.timeout(this.url, timeout, cause)
+        : ClientError.aborted(this.url, cause);
+    };
+
+    return fetch(requestToSend, { signal: controller.signal })
+      .catch((error: unknown) => {
+        throw getAbortError(error) ?? ClientError.network(this.url, error);
+      })
+      .then(async (response) => {
         if (!response.ok) {
+          // Callers may read the body from `error.response`. If they don't,
+          // the timeout aborts it, which frees the connection.
+          keepTimer = true;
           throw ClientError.status(response);
         }
 
-        const json: JsonValue = await response.json();
-        return { response, json };
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) {
-          throw ClientError.timeout(this.url, timeout);
-        }
+        const json: JsonValue = await response
+          .json()
+          .catch((error: unknown) => {
+            throw (
+              getAbortError(error) ??
+              (error instanceof SyntaxError
+                ? ClientError.malformed(this.url, response, error)
+                : ClientError.network(this.url, error))
+            );
+          });
 
-        if (error instanceof ClientError) {
-          throw error;
-        }
-
-        throw received == null
-          ? ClientError.network(this.url, error)
-          : ClientError.malformed(this.url, received, error);
-      })
-      .then(({ response, json }) => {
         if (isRecord(json)) {
           if ("errors" in json && Array.isArray(json.errors)) {
             throw ClientError.graphQL(this.url, response, json.errors);
@@ -412,7 +441,11 @@ export class Client {
           : ClientError.unknown(this.url, error);
       })
       .finally(() => {
-        clearTimeout(timer);
+        requestSignal?.removeEventListener("abort", forwardAbort);
+
+        if (!keepTimer) {
+          clearTimeout(timer);
+        }
       });
   }
 
