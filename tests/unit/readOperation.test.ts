@@ -1111,7 +1111,7 @@ describe("connection registration", () => {
     },
   };
 
-  test("a reader keeps a copy of the variables, not the caller's object", () => {
+  test("a connection keeps a copy of the variables, not the caller's object", () => {
     const cache = new ClientCache({ interfaceToTypes: {} });
     const variables = { id: "p1" };
     cache.writeOperation(postQuery, postResponse, variables);
@@ -1120,12 +1120,13 @@ describe("connection registration", () => {
       post: { comments: { __connectionRef: object } };
     };
 
-    const reader = cache
-      .getCachedConnection(result.post.comments.__connectionRef)
-      ?.readers.values()
-      .next().value;
+    const info = cache.getCachedConnection(
+      result.post.comments.__connectionRef,
+    );
+    const reader = info?.readers.values().next().value;
 
-    expect(reader?.variables).toEqual(variables);
+    expect(info?.variables).toEqual(variables);
+    expect(info?.variables).not.toBe(variables);
     expect(reader?.variables).not.toBe(variables);
   });
 

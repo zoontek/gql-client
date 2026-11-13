@@ -66,20 +66,22 @@ export const createWriteOperation = (
     // Copied only when registering a connection.
     const path: PropertyKey[] = [];
 
-    // A copy of `variables` for connection readers, made once per write. The
-    // caller's object would keep the stored read results keyed by it alive.
-    let readerVariables: AnyVariables | undefined;
+    // A copy of `variables` for connection infos and readers, made once per
+    // write. The caller's object would keep the stored read results keyed by
+    // it alive as long as the connection's entry.
+    let variablesCopy: AnyVariables | undefined;
 
     const registerConnection = (
       cacheEntry: CacheEntry,
       field: FieldNode,
     ): void => {
+      variablesCopy ??= { ...variables };
       let info = deps.getCachedConnection(cacheEntry[CONNECTION_REF]);
 
       if (info == null) {
         info = {
           cacheEntry,
-          variables,
+          variables: variablesCopy,
           pathInQuery: [...path],
           fieldVariables: extractArguments(field, variables),
           document,
@@ -91,8 +93,7 @@ export const createWriteOperation = (
 
       // A mutation is never read back, so it is not a reader.
       if (cacheKey != null) {
-        readerVariables ??= { ...variables };
-        info.readers.set(field, { document, variables: readerVariables });
+        info.readers.set(field, { document, variables: variablesCopy });
       }
     };
 
