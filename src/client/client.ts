@@ -163,7 +163,11 @@ export class Client {
   ): () => void {
     const activeQuery: ActiveQuery = { document, variables };
     this.activeQueries.add(activeQuery);
-    const release = this.cache.retainDocument(transformDocument(document));
+
+    const release = this.cache.retainQuery(
+      transformDocument(document),
+      variables,
+    );
 
     return () => {
       release();

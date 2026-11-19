@@ -177,4 +177,10 @@ export const transformDocument = (
   // oxlint-disable-next-line typescript/no-explicit-any
   document: TypedDocumentNode<any, any>,
 ): TypedDocumentNode =>
-  getOrInsert(transformDocumentCache, document, transformDocumentUncached);
+  getOrInsert(transformDocumentCache, document, () => {
+    const transformed = transformDocumentUncached(document);
+    // A transformed document gives itself back, so it is not transformed again.
+    // usePagination reads through the transformed documents of readers.
+    transformDocumentCache.set(transformed, transformed);
+    return transformed;
+  });

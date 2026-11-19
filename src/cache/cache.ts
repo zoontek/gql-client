@@ -97,8 +97,8 @@ type ReadContext = {
   watched: Map<object, Set<symbol>> | undefined;
 };
 
-type ScopedSelectionSet = {
-  selectionSet: SelectionSetNode;
+type MountedQuery = {
+  document: TypedDocumentNode;
   variables: AnyVariables;
 };
 
@@ -118,7 +118,7 @@ export class ClientCache {
   private connections = new WeakMap<ConnectionRef, ConnectionInfo>();
   private entries = new Map<symbol, CacheEntry>();
   private interfaceToTypes: Record<string, Set<string>>;
-  private mountedDocuments = new Map<TypedDocumentNode, number>();
+  private mountedQueries = new Set<MountedQuery>();
   private resultCache: ResultCache = new WeakMap();
 
   private requiredKeysCache = new WeakMap<
@@ -161,20 +161,15 @@ export class ClientCache {
     return this.entries;
   }
 
-  public retainDocument(document: TypedDocumentNode): () => void {
-    this.mountedDocuments.set(
-      document,
-      (this.mountedDocuments.get(document) ?? 0) + 1,
-    );
+  public retainQuery(
+    document: TypedDocumentNode,
+    variables: AnyVariables,
+  ): () => void {
+    const query: MountedQuery = { document, variables };
+    this.mountedQueries.add(query);
 
     return () => {
-      const count = (this.mountedDocuments.get(document) ?? 0) - 1;
-
-      if (count > 0) {
-        this.mountedDocuments.set(document, count);
-      } else {
-        this.mountedDocuments.delete(document);
-      }
+      this.mountedQueries.delete(query);
     };
   }
 
@@ -457,11 +452,12 @@ export class ClientCache {
     return result;
   }
 
-  public readOperation<Data, Variables extends AnyVariables>(
+  // Reads `document` without structural sharing. MISS when the cache misses.
+  private traverse<Data, Variables extends AnyVariables>(
     document: TypedDocumentNode<Data, Variables>,
     variables: Variables,
     watched?: Map<object, Set<symbol>>,
-  ): JsonValue | undefined {
+  ): unknown {
     let transformedDocument: TypedDocumentNode;
 
     try {
@@ -469,36 +465,45 @@ export class ClientCache {
     } catch {
       // A broken document (for example with a missing fragment) is a miss. The
       // request then fails with a ClientError.
-      return undefined;
+      return MISS;
     }
 
     const operation = getOperationDefinition(transformedDocument);
     const entryKey = operation != null ? getRootEntryKey(operation) : undefined;
 
     if (operation == null || entryKey == null) {
-      return undefined;
+      return MISS;
     }
 
     const root = this.resolveEntry(entryKey, operation, variables);
 
     if (!isRecord(root)) {
-      return undefined;
+      return MISS;
     }
 
-    const traversed = this.readSelectionSet(
+    return this.readSelectionSet(
       { variables, watched },
       operation.selectionSet,
       root,
     );
+  }
+
+  public readOperation<Data, Variables extends AnyVariables>(
+    document: TypedDocumentNode<Data, Variables>,
+    variables: Variables,
+    watched?: Map<object, Set<symbol>>,
+  ): JsonValue | undefined {
+    const traversed = this.traverse(document, variables, watched);
 
     if (traversed === MISS) {
       return undefined;
     }
 
     // Keeps the last result per document and variables, for structural sharing.
+    // `traverse` already transformed the document, so this call hits its cache.
     const documentCache = getOrInsert(
       this.resultCache,
-      transformedDocument,
+      transformDocument(document),
       () => new WeakMap<AnyVariables, JsonValue>(),
     );
 
@@ -679,54 +684,7 @@ export class ClientCache {
     writeSelectionSet(operation.selectionSet, response, entry);
   }
 
-  // The `edges` selections of the mounted queries that wrote this connection,
-  // with the inline fragments that match its type.
-  private getEdgesSelectionSets(info: ConnectionInfo): ScopedSelectionSet[] {
-    const typename = info.entry[TYPENAME_KEY];
-    const selectionSets: ScopedSelectionSet[] = [];
-
-    const collect = (
-      selectionSet: SelectionSetNode,
-      variables: AnyVariables,
-    ): void => {
-      for (const selection of selectionSet.selections) {
-        if (selection.kind === Kind.FIELD) {
-          if (
-            selection.selectionSet != null &&
-            !isExcluded(selection, variables) &&
-            getFieldKey(selection, variables) === EDGES_KEY
-          ) {
-            selectionSets.push({
-              selectionSet: selection.selectionSet,
-              variables,
-            });
-          }
-        } else if (
-          selection.kind === Kind.INLINE_FRAGMENT &&
-          this.fragmentApplies(selection, typename, variables)
-        ) {
-          collect(selection.selectionSet, variables);
-        }
-      }
-    };
-
-    info.readers.forEach(({ document, variables }, field) => {
-      // A query that is not mounted cannot miss now. If it mounts later and
-      // misses, it fetches again.
-      if (field.selectionSet != null && this.mountedDocuments.has(document)) {
-        collect(field.selectionSet, variables);
-      }
-    });
-
-    return selectionSets;
-  }
-
-  private createEdgeEntries<A>(
-    edges: EdgeList<A>,
-    info: ConnectionInfo,
-  ): CacheEntry[] {
-    const edgesSelectionSets = this.getEdgesSelectionSets(info);
-
+  private createEdgeEntries<A>(edges: EdgeList<A>): CacheEntry[] {
     return filterMap(edges, (item) => {
       if (item == null) {
         return undefined;
@@ -751,29 +709,6 @@ export class ClientCache {
 
       edge[NODE_KEY] = key;
       edge[CURSOR_KEY] = cursor ?? null;
-
-      const readable = edgesSelectionSets.every(
-        ({ selectionSet, variables }) =>
-          this.readSelectionSet(
-            { variables, watched: undefined },
-            selectionSet,
-            edge,
-          ) !== MISS,
-      );
-
-      // An edge that a mounted query cannot fully read would make that query a
-      // miss. This happens when the request that returned the node selected
-      // fewer fields.
-      if (!readable) {
-        if (process.env.NODE_ENV === "development") {
-          console.warn(
-            `GraphQL Client: skipped adding ${key.description ?? "a node"} to a connection. ` +
-              "The cache doesn't have every field the connection's query selects on its edges. " +
-              "Select the same fields in the request that returns the node.",
-          );
-        }
-        return undefined;
-      }
 
       return edge;
     });
@@ -803,17 +738,7 @@ export class ClientCache {
 
     trackField(touched, entry, EDGES_KEY);
 
-    if ("prepend" in update) {
-      entry[EDGES_KEY] = [
-        ...this.createEdgeEntries(update.prepend, info),
-        ...currentEdges,
-      ];
-    } else if ("append" in update) {
-      entry[EDGES_KEY] = [
-        ...currentEdges,
-        ...this.createEdgeEntries(update.append, info),
-      ];
-    } else {
+    if ("remove" in update) {
       const nodeIds = new Set(update.remove.map(String));
 
       // Items that are not cached edges (a `null` edge, a node without an id)
@@ -826,6 +751,56 @@ export class ClientCache {
         const id = getIdFromEntryKey(edge[NODE_KEY]);
         return id == null || !nodeIds.has(id);
       });
+
+      return;
     }
+
+    const withEdges = (edges: CacheEntry[]): unknown[] =>
+      "prepend" in update
+        ? [...edges, ...currentEdges]
+        : [...currentEdges, ...edges];
+
+    // The mounted queries that read this connection now. A query that misses
+    // before the update is not checked: useQuery fetches while data is missing.
+    const mountedReaders = [...this.mountedQueries].filter(
+      ({ document, variables }) => {
+        const watched = new Map<object, Set<symbol>>();
+
+        return (
+          this.traverse(document, variables, watched) !== MISS &&
+          watched.get(entry)?.has(EDGES_KEY) === true
+        );
+      },
+    );
+
+    const added: CacheEntry[] = [];
+
+    for (const edge of this.createEdgeEntries(
+      "prepend" in update ? update.prepend : update.append,
+    )) {
+      entry[EDGES_KEY] = withEdges([...added, edge]);
+
+      // An edge that makes a mounted query miss is skipped. This happens when
+      // the request that returned the node selected fewer fields, or when the
+      // query selects edge fields other than `cursor` and `node`.
+      const readable = mountedReaders.every(
+        ({ document, variables }) =>
+          this.traverse(document, variables) !== MISS,
+      );
+
+      if (readable) {
+        added.push(edge);
+      } else if (process.env.NODE_ENV === "development") {
+        const key = edge[NODE_KEY] as symbol;
+
+        console.warn(
+          `GraphQL Client: skipped adding ${key.description ?? "a node"} to a connection. ` +
+            "The cache doesn't have every field a mounted query selects on its edges. " +
+            "Select the same fields in the request that returns the node.",
+        );
+      }
+    }
+
+    entry[EDGES_KEY] = withEdges(added);
   }
 }

@@ -181,7 +181,7 @@ describe("updateConnection", () => {
 
     test("skips a new edge whose node misses fields the connection selects", () => {
       const { cache, document, read } = setup(itemQuery, itemResponse);
-      cache.retainDocument(document);
+      cache.retainQuery(document, {});
       const before = read();
 
       addItem(cache, { id: "i2", name: "b" });
@@ -214,7 +214,7 @@ describe("updateConnection", () => {
           },
         },
       );
-      cache.retainDocument(document);
+      cache.retainQuery(document, {});
       const items = readItems(read);
 
       addItem(cache, { id: "i2" });
@@ -232,7 +232,7 @@ describe("updateConnection", () => {
       const { cache, read } = setup(idsQuery, namesResponse);
 
       cache.writeOperation(namesQuery, namesResponse, {});
-      cache.retainDocument(namesQuery);
+      cache.retainQuery(namesQuery, {});
 
       addItem(cache, { id: "i2" });
 
@@ -247,10 +247,10 @@ describe("updateConnection", () => {
 
     test("adds a new edge when the query that selects more fields is not mounted", () => {
       const { cache, document, read } = setup(idsQuery, namesResponse);
-      cache.retainDocument(document);
+      cache.retainQuery(document, {});
 
       cache.writeOperation(namesQuery, namesResponse, {});
-      const release = cache.retainDocument(namesQuery);
+      const release = cache.retainQuery(namesQuery, {});
       release();
 
       addItem(cache, { id: "i2" });

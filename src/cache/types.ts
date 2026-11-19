@@ -21,8 +21,8 @@ export type ConnectionInfo = {
   // `before` in them.
   fieldArguments: AnyVariables;
   // Each query field that wrote this connection, with its last variables and
-  // the path to the connection in its result. updateConnection checks new edges
-  // against their selections. usePagination reads each page through them.
+  // the path to the connection in its result. usePagination reads each page
+  // through them.
   readers: Map<
     FieldNode,
     {
