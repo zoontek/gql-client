@@ -317,9 +317,9 @@ export class ClientCache {
       );
     }
 
-    // Custom scalar objects are stored by reference. A copy stops a caller from
-    // changing the cache.
-    return typeof value === "object" && value != null ? deepCopy(value) : value;
+    // A copy stops a caller from changing the cache through custom scalar
+    // objects and scalar lists.
+    return deepCopy(value);
   }
 
   private readField(
@@ -583,7 +583,7 @@ export class ClientCache {
       const subSelectionSet = field.selectionSet;
 
       if (subSelectionSet == null || fieldValue == null) {
-        parentEntry[fieldKey] = fieldValue;
+        parentEntry[fieldKey] = deepCopy(fieldValue);
         return;
       }
 
