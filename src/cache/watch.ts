@@ -1,40 +1,25 @@
+import { getOrInsert } from "../utils";
 import { TYPENAME_KEY } from "./keys";
 
-// Tracks which (cache entry, field) pairs a read touched, or a write
-// modified. The key is `object`, not `CacheEntry`, so this module doesn't
-// need to know the cache's internal entry shape, only its identity.
-//
-// `undefined` means "unscoped", matching any write. A subscriber stays
-// unscoped until it has a successful read (first fetch, or refetching
-// variables not yet cached), so its own eventual write still wakes it up.
-// Once a read succeeds, it switches to the precise field-level set below.
-export type WatchedEntries = Map<object, Set<symbol>> | undefined;
+// The (entry, field) pairs that a read used or a write changed. `undefined`
+// matches every write. A subscriber has no set until its first successful read,
+// so the write that fills its data still notifies it.
+type WatchedEntries = Map<object, Set<symbol>> | undefined;
 
-// A mutable box so a subscription (registered once) can be updated with a
-// fresh watched set after every read, without re-subscribing.
+// A mutable box, so a subscription can get a new set after each read without
+// subscribing again.
 export type WatchedEntriesBox = { current: WatchedEntries };
 
 export const trackField = (
-  watched: Map<object, Set<symbol>>,
+  watched: Map<object, Set<symbol>> | undefined,
   entry: object,
   field: symbol,
 ): void => {
-  // `transformDocument` injects `__typename` into every selection set,
-  // including the operation root. Tracking it would make every read/write on
-  // the shared Query/Mutation root look dependent on every other one, since
-  // it never changes for an existing entry there is nothing to invalidate.
-  if (field === TYPENAME_KEY) {
-    return;
+  // The `__typename` of an entry never changes. If it was tracked, all reads
+  // and writes of the shared root entry would overlap.
+  if (watched != null && field !== TYPENAME_KEY) {
+    getOrInsert(watched, entry, () => new Set<symbol>()).add(field);
   }
-
-  let fields = watched.get(entry);
-
-  if (fields == null) {
-    fields = new Set();
-    watched.set(entry, fields);
-  }
-
-  fields.add(field);
 };
 
 export const entriesOverlap = (

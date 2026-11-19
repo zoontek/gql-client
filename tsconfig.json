@@ -2,8 +2,8 @@
   "include": ["example", "src", "tests", "playwright.config.ts"],
   "compilerOptions": {
     "module": "esnext",
-    "target": "es2019",
-    "lib": ["DOM", "ES2019"],
+    "target": "es2021",
+    "lib": ["DOM", "ES2021"],
     "jsx": "react-jsx",
     "outDir": "dist/",
     "types": ["bun"],

@@ -2,20 +2,12 @@ import { useCallback, useRef, useState } from "react";
 
 import type { ClientError } from "../client/errors";
 
-/**
- * State shared by `useMutation` and `useDeferredQuery`. `status` narrows the
- * shape: `data` is only present on `"success"`, `error` only on `"error"`.
- * Reflects only the most recently started call.
- */
 export type AsyncOperationState<Data> =
   | { fetching: false; status: "idle" }
   | { fetching: true; status: "loading" }
   | { fetching: false; status: "success"; data: Data }
   | { fetching: false; status: "error"; error: ClientError };
 
-// Internal state machine behind `useMutation` and `useDeferredQuery`: run the
-// request, reflect only the most recently started call in state, and return
-// the request promise to the caller.
 export const useAsyncOperation = <Data, Variables>(
   run: (variables: Variables) => Promise<Data>,
 ): readonly [
@@ -27,8 +19,8 @@ export const useAsyncOperation = <Data, Variables>(
     fetching: false,
   });
 
-  // Identifies the most recent call so that out-of-order responses from
-  // overlapping calls can't overwrite the state with stale results.
+  // Only the latest call updates `state`, so a late response of an older call
+  // is ignored.
   const latestCallRef = useRef(0);
 
   const start = useCallback(
@@ -54,10 +46,9 @@ export const useAsyncOperation = <Data, Variables>(
         },
       );
 
-      // The error already lands in `state`; callers driving their UI from it
-      // alone would otherwise get an unhandled rejection for every failure.
-      // Attaching a no-op handler marks the promise as handled while awaiting
-      // callers still observe the rejection.
+      // The error is already in `state`. This handler prevents an unhandled
+      // rejection for callers that do not await. Callers that await still get
+      // the rejection.
       promise.catch(() => {});
 
       return promise;

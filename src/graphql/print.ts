@@ -4,6 +4,8 @@
 import { Kind, print, visit, type StringValueNode } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
+import { getOrInsert } from "../utils";
+
 const decodeText = TextDecoder.prototype.decode.bind(new TextDecoder());
 const encodeText = TextEncoder.prototype.encode.bind(new TextEncoder());
 
@@ -18,7 +20,7 @@ const toHex = (str: string): string => {
   return hex;
 };
 
-const toUTF8 = (hex: string): string => {
+const fromHex = (hex: string): string => {
   const bytes = new Uint8Array(hex.length / 2);
 
   for (let i = 0; i < hex.length; i += 2) {
@@ -30,13 +32,9 @@ const toUTF8 = (hex: string): string => {
 
 const printDocumentCache = new WeakMap<TypedDocumentNode, string>();
 
-export const printDocument = (document: TypedDocumentNode): string => {
-  const cachedDocument = printDocumentCache.get(document);
-
-  if (cachedDocument != null) {
-    return cachedDocument;
-  }
-
+const printDocumentUncached = (document: TypedDocumentNode): string => {
+  // Strings are hex-encoded first, so the whitespace regexes cannot change
+  // them. The last replace decodes them.
   const sanitizedDocument = visit(document, {
     [Kind.STRING]: (node): StringValueNode => ({
       ...node,
@@ -45,12 +43,13 @@ export const printDocument = (document: TypedDocumentNode): string => {
     }),
   });
 
-  const printedDocument = print(sanitizedDocument)
+  // Collapses whitespace, then keeps a space only between 2 name characters.
+  return print(sanitizedDocument)
     .replace(/\s+/g, " ")
     .replace(/([^_a-zA-Z0-9]) /g, (_, c) => c)
     .replace(/ ([^_a-zA-Z0-9])/g, (_, c) => c)
-    .replace(/"([a-f0-9]+)"/g, (_, hex) => JSON.stringify(toUTF8(hex)));
-
-  printDocumentCache.set(document, printedDocument);
-  return printedDocument;
+    .replace(/"([a-f0-9]+)"/g, (_, hex) => JSON.stringify(fromHex(hex)));
 };
+
+export const printDocument = (document: TypedDocumentNode): string =>
+  getOrInsert(printDocumentCache, document, printDocumentUncached);

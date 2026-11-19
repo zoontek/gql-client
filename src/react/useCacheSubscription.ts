@@ -1,29 +1,16 @@
-import { useCallback, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useRef, useSyncExternalStore } from "react";
 
 import type { WatchedEntriesBox } from "../cache/watch";
 import type { Client } from "../client/client";
 
-// Shared logic for a cache-backed React subscription: a stable box the
-// client's subscription reads from at notify time, updated after every read
-// so the subscription stays scoped to whatever `read` actually touched,
-// without needing to re-subscribe.
-//
-// On a miss (`read` returns `undefined`), the partial watched set is kept
-// when it is non-empty: the read path tracks the missing field itself before
-// bailing (see read.ts), so the write that resolves the miss overlaps with
-// it. An empty set (nothing could be read at all, e.g. the root entry does
-// not exist yet) falls back to unscoped, matching any write.
+// After each read, the watched box gets the fields that the read used, so only
+// writes to these fields cause a re-render.
 export const useCacheSubscription = <T>(
   client: Client,
   read: (watched: Map<object, Set<symbol>>) => T | undefined,
 ): T | undefined => {
-  const [watchedEntries] = useState<WatchedEntriesBox>(() => ({
-    current: undefined,
-  }));
+  const watchedEntries = useRef<WatchedEntriesBox["current"]>(undefined);
 
-  // The client bumps its version on every cache-affecting event, so a
-  // snapshot taken at the current version can be returned as-is instead of
-  // re-running the full cache traversal on every render.
   const lastSnapshotRef = useRef<
     | {
         read: (watched: Map<object, Set<symbol>>) => T | undefined;
@@ -37,6 +24,8 @@ export const useCacheSubscription = <T>(
     const version = client.getVersion();
     const last = lastSnapshotRef.current;
 
+    // The client version changes with each cache change, so the same version
+    // gives the same data without a new read.
     if (last != null && last.read === read && last.version === version) {
       return last.data;
     }
@@ -44,6 +33,9 @@ export const useCacheSubscription = <T>(
     const watched = new Map<object, Set<symbol>>();
     const data = read(watched);
 
+    // On a miss, the read tracked the missing field, so a non-empty set still
+    // catches the write that fills it. An empty set (for example, no root entry
+    // yet) matches every write.
     watchedEntries.current =
       data == null && watched.size === 0 ? undefined : watched;
     lastSnapshotRef.current = { read, version, data };
@@ -56,9 +48,7 @@ export const useCacheSubscription = <T>(
     [client, watchedEntries],
   );
 
-  // `getSnapshot` doubles as the server snapshot: on the server there are no
-  // subscriptions, so a server render is a plain cache read (of data the
-  // caller prefetched into the client). Without a server snapshot, React
-  // throws on any server render.
+  // `getSnapshot` is also the server snapshot, so a server render is a plain
+  // cache read. Without it, React throws on the server.
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 };

@@ -9,28 +9,21 @@ import {
   type AsyncOperationState,
 } from "./useAsyncOperation";
 
-/**
- * State of the mutation returned by `useMutation`. `status` narrows the
- * shape: `data` is only present on `"success"`, `error` only on `"error"`.
- * Reflects only the most recently started call to the mutate function.
- */
+/** State returned by `useMutation`. Narrow it on `status`. */
 export type MutationState<Data> = AsyncOperationState<Data>;
 
-/** Return type of `useMutation`: a `[state, mutate]` tuple. */
+/** `[state, mutate]` tuple returned by `useMutation`. */
 export type Mutation<Data, Variables extends AnyVariables> = readonly [
   MutationState<Data>,
   (variables: Variables) => Promise<Data>,
 ];
 
 /**
- * Returns a `mutate` function for `mutation` and its current `MutationState`.
- * Calling `mutate` sends the request and updates state as it resolves. If
- * `mutate` is called again before the first call resolves, only the most
- * recently started call's result is reflected in `state`.
+ * Returns a `mutate` function and its state. Nothing is sent until you call
+ * `mutate`. The response is written into the cache. If you call `mutate`
+ * again before the previous call settles, `state` shows only the latest call.
  *
- * @param mutation - The mutation document to run.
- * @param config - Optional. See `MutationConfig` for the available options.
- * @returns A `[state, mutate]` tuple; see `Mutation`.
+ * @see https://zoontek.github.io/gql-client/mutations
  */
 export const useMutation = <Data, Variables extends AnyVariables>(
   mutation: TypedDocumentNode<Data, Variables>,

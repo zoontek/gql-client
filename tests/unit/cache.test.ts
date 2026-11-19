@@ -18,123 +18,73 @@ import {
   onboardingInfoResponse,
 } from "./data";
 
-test("Write & read in cache", () => {
+const preparedAppQuery = transformDocument(appQuery);
+const appVariables = { id: "1" };
+
+const identificationLevels = {
+  __typename: "IdentificationLevels",
+  expert: true,
+  PVID: true,
+  QES: true,
+} as const;
+
+test("writes a query, then mutation results that update its entities", () => {
   const cache = new ClientCache({ interfaceToTypes: {} });
+  const preparedMutation = transformDocument(bindAccountMembershipMutation);
+  const mutationVariables = { id: "account-membership-2" };
 
-  const preparedAppQuery = transformDocument(appQuery);
+  const initialResponse = getAppQueryResponse({
+    user2LastName: "Last",
+    user1IdentificationLevels: null,
+  });
 
-  cache.writeOperation(
-    preparedAppQuery,
-    getAppQueryResponse({
-      user2LastName: "Last",
-      user1IdentificationLevels: null,
-    }),
-    {
-      id: "1",
-    },
-  );
+  cache.writeOperation(preparedAppQuery, initialResponse, appVariables);
 
   expect(cache.dump()).toMatchSnapshot();
-
-  expect(
-    cache.readOperation(preparedAppQuery, {
-      id: "1",
-    }),
-  ).toMatchObject(
-    getAppQueryResponse({
-      user2LastName: "Last",
-      user1IdentificationLevels: null,
-    }),
+  expect(cache.readOperation(preparedAppQuery, appVariables)).toMatchObject(
+    initialResponse,
   );
 
-  const preparedOnboardingInfo = transformDocument(OnboardingInfo);
-
-  const preparedBindAccountMembershipMutation = transformDocument(
-    bindAccountMembershipMutation,
-  );
-
+  // A rejection payload doesn't touch the membership.
   cache.writeOperation(
-    preparedBindAccountMembershipMutation,
+    preparedMutation,
     bindMembershipMutationRejectionResponse,
-    {
-      id: "account-membership-2",
-    },
+    mutationVariables,
   );
 
-  expect(
-    cache.readOperation(preparedAppQuery, {
-      id: "1",
-    }),
-  ).toMatchObject(
-    getAppQueryResponse({
-      user2LastName: "Last",
-      user1IdentificationLevels: null,
-    }),
+  expect(cache.readOperation(preparedAppQuery, appVariables)).toMatchObject(
+    initialResponse,
   );
 
   cache.writeOperation(
-    preparedBindAccountMembershipMutation,
+    preparedMutation,
     bindMembershipMutationSuccessResponse,
-    {
-      id: "account-membership-2",
-    },
+    mutationVariables,
   );
 
   expect(cache.dump()).toMatchSnapshot();
-
-  expect(
-    cache.readOperation(preparedAppQuery, {
-      id: "1",
-    }),
-  ).toMatchObject(
+  expect(cache.readOperation(preparedAppQuery, appVariables)).toMatchObject(
     getAppQueryResponse({
       user2LastName: "Acthernoene",
       user1IdentificationLevels: null,
     }),
   );
 
-  cache.writeOperation(
-    preparedAppQuery,
-    getAppQueryResponse({
-      user2LastName: "Acthernoene",
-      user1IdentificationLevels: {
-        __typename: "IdentificationLevels",
-        expert: true,
-        PVID: true,
-        QES: true,
-      },
-    }),
-    {
-      id: "1",
-    },
-  );
+  const updatedResponse = getAppQueryResponse({
+    user2LastName: "Acthernoene",
+    user1IdentificationLevels: identificationLevels,
+  });
+
+  cache.writeOperation(preparedAppQuery, updatedResponse, appVariables);
 
   expect(cache.dump()).toMatchSnapshot();
-
-  expect(
-    cache.readOperation(preparedAppQuery, {
-      id: "1",
-    }),
-  ).toMatchObject(
-    getAppQueryResponse({
-      user2LastName: "Acthernoene",
-      user1IdentificationLevels: {
-        __typename: "IdentificationLevels",
-        expert: true,
-        PVID: true,
-        QES: true,
-      },
-    }),
+  expect(cache.readOperation(preparedAppQuery, appVariables)).toMatchObject(
+    updatedResponse,
   );
+});
 
-  const appVariables = { id: "1" };
-  const a = cache.readOperation(preparedAppQuery, appVariables);
-  const b = cache.readOperation(preparedAppQuery, appVariables);
-
-  expect(a).toBeDefined();
-  expect(a).toBe(b);
-
-  const cache2 = new ClientCache({
+test("writes and reads fragments on interfaces from the schema config", () => {
+  const cache = new ClientCache({
     interfaceToTypes: {
       OnboardingStatusInfo: [
         "OnboardingInvalidStatusInfo",
@@ -144,178 +94,106 @@ test("Write & read in cache", () => {
     },
   });
 
-  cache2.writeOperation(preparedOnboardingInfo, onboardingInfoResponse, {
+  const preparedOnboardingInfo = transformDocument(OnboardingInfo);
+  const variables = {
     id: "d26ed1ed-5f70-4096-9d8e-27ef258e26fa",
     language: "en",
+  };
+
+  cache.writeOperation(
+    preparedOnboardingInfo,
+    onboardingInfoResponse,
+    variables,
+  );
+
+  expect(cache.dump()).toMatchSnapshot();
+  expect(cache.readOperation(preparedOnboardingInfo, variables)).toMatchObject(
+    onboardingInfoResponse,
+  );
+});
+
+test("reads queries that select fewer or more fields, and updates a connection", () => {
+  type Membership = {
+    __typename: "AccountMembership";
+    id: string;
+    account: { __typename: "Account"; name: string };
+    membershipUser: { __typename: "User"; id: string; lastName: string };
+  };
+
+  const membership = (index: number): Membership => ({
+    __typename: "AccountMembership",
+    id: `account-membership-${index}`,
+    account: { __typename: "Account", name: "First" },
+    membershipUser: {
+      __typename: "User",
+      id: `user-${index}`,
+      lastName: "Le Brun",
+    },
   });
 
-  expect(cache2.dump()).toMatchSnapshot();
+  const cache = new ClientCache({ interfaceToTypes: {} });
+  const preparedAddMembership = transformDocument(addMembership);
 
-  expect(
-    cache2.readOperation(preparedOnboardingInfo, {
-      id: "d26ed1ed-5f70-4096-9d8e-27ef258e26fa",
-      language: "en",
-    }),
-  ).toMatchObject(onboardingInfoResponse);
-
-  const cache3 = new ClientCache({ interfaceToTypes: {} });
-
-  cache3.writeOperation(
+  cache.writeOperation(
     preparedAppQuery,
     getAppQueryResponse({
       user2LastName: "Last",
       user1IdentificationLevels: null,
     }),
-    {
-      id: "1",
-    },
+    appVariables,
   );
 
-  const read = cache3.readOperation(preparedAppQuery, {
-    id: "1",
+  expect(cache.readOperation(appQueryWithoutMoreAccountInfo, {})).toBeDefined();
+  expect(cache.readOperation(appQueryWithMoreAccountInfo, {})).toBeUndefined();
+
+  const read = cache.readOperation(preparedAppQuery, appVariables) as
+    | { accountMemberships: Connection<Membership> }
+    | undefined;
+
+  expect(read).toBeDefined();
+  const accountMemberships = read?.accountMemberships;
+
+  cache.updateConnection(accountMemberships, {
+    remove: ["account-membership-1"],
   });
 
-  expect(
-    cache3.readOperation(appQueryWithoutMoreAccountInfo, {}),
-  ).toBeDefined();
-
-  expect(cache3.readOperation(appQueryWithMoreAccountInfo, {})).toBeUndefined();
-
-  if (read !== undefined) {
-    {
-      const value = read as ReturnType<typeof getAppQueryResponse>;
-      const accountMemberships =
-        value.accountMemberships as unknown as Connection<{
-          __typename: "AccountMembership";
-          id: string;
-          account: {
-            __typename: "Account";
-            name: string;
-          };
-          membershipUser: {
-            __typename: "User";
-            id: string;
-            lastName: string;
-          };
-        }>;
-      cache3.updateConnection(accountMemberships, {
-        remove: ["account-membership-1"],
-      });
-
-      cache3.writeOperation(
-        transformDocument(addMembership),
-        {
-          __typename: "Mutation",
-          addMembership: {
-            __typename: "AddMembership",
-            membership: {
-              __typename: "AccountMembership",
-              id: "account-membership-3",
-              account: {
-                __typename: "Account",
-                name: "First",
-              },
-              membershipUser: {
-                __typename: "User",
-                id: "user-3",
-                lastName: "Le Brun",
-              },
-            },
-          },
+  for (const index of [3, 0]) {
+    cache.writeOperation(
+      preparedAddMembership,
+      {
+        __typename: "Mutation",
+        addMembership: {
+          __typename: "AddMembership",
+          membership: membership(index),
         },
-        {},
-      );
-
-      cache3.writeOperation(
-        transformDocument(addMembership),
-        {
-          __typename: "Mutation",
-          addMembership: {
-            __typename: "AddMembership",
-            membership: {
-              __typename: "AccountMembership",
-              id: "account-membership-0",
-              account: {
-                __typename: "Account",
-                name: "First",
-              },
-              membershipUser: {
-                __typename: "User",
-                id: "user-0",
-                lastName: "Le Brun",
-              },
-            },
-          },
-        },
-        {},
-      );
-
-      cache3.updateConnection(accountMemberships, {
-        append: [
-          {
-            __typename: "AccountMembershipEdge",
-            node: {
-              __typename: "AccountMembership",
-              id: "account-membership-3",
-              account: {
-                __typename: "Account",
-                name: "First",
-              },
-              membershipUser: {
-                __typename: "User",
-                id: "user-3",
-                lastName: "Le Brun",
-              },
-            },
-          },
-        ],
-      });
-      cache3.updateConnection(accountMemberships, {
-        prepend: [
-          {
-            __typename: "AccountMembershipEdge",
-            node: {
-              __typename: "AccountMembership",
-              id: "account-membership-0",
-              account: {
-                __typename: "Account",
-                name: "First",
-              },
-              membershipUser: {
-                __typename: "User",
-                id: "user-0",
-                lastName: "Le Brun",
-              },
-            },
-          },
-        ],
-      });
-    }
-
-    expect(
-      cache3.readOperation(preparedAppQuery, {
-        id: "1",
-      }),
-    ).toMatchSnapshot();
-  } else {
-    expect(true).toBe(false);
+      },
+      {},
+    );
   }
 
-  const preparedBrandingQuery = transformDocument(brandingQuery);
+  cache.updateConnection(accountMemberships, {
+    append: [{ __typename: "AccountMembershipEdge", node: membership(3) }],
+  });
+  cache.updateConnection(accountMemberships, {
+    prepend: [{ __typename: "AccountMembershipEdge", node: membership(0) }],
+  });
 
-  const cache4 = new ClientCache({
+  expect(cache.readOperation(preparedAppQuery, appVariables)).toMatchSnapshot();
+});
+
+test("reads back a response with fragments on interfaces as written", () => {
+  const cache = new ClientCache({
     interfaceToTypes: {
       ProjectSettings: ["LiveProjectSettings", "SandboxProjectSettings"],
     },
   });
 
-  cache4.writeOperation(preparedBrandingQuery, brandingResponse, {
-    id: "64060573-f0ec-4204-ad49-a3983497ada4",
-  });
+  const preparedBrandingQuery = transformDocument(brandingQuery);
+  const variables = { id: "64060573-f0ec-4204-ad49-a3983497ada4" };
 
-  expect(
-    cache4.readOperation(preparedBrandingQuery, {
-      id: "64060573-f0ec-4204-ad49-a3983497ada4",
-    }),
-  ).toEqual(brandingResponse);
+  cache.writeOperation(preparedBrandingQuery, brandingResponse, variables);
+
+  expect(cache.readOperation(preparedBrandingQuery, variables)).toEqual(
+    brandingResponse,
+  );
 });

@@ -1,5 +1,3 @@
-import type { AnyVariables } from "./types";
-
 export const identity = <T>(value: T): T => value;
 
 export const containsAll = <T>(a: Set<T>, b: Set<T>): boolean => {
@@ -13,9 +11,8 @@ export const containsAll = <T>(a: Set<T>, b: Set<T>): boolean => {
 
 export const isRecord = (
   value: unknown,
-): value is Record<PropertyKey, unknown> => {
-  return value != null && typeof value === "object" && !Array.isArray(value);
-};
+): value is Record<PropertyKey, unknown> =>
+  value != null && typeof value === "object" && !Array.isArray(value);
 
 export const hasOwn = (obj: object, key: PropertyKey): boolean =>
   Object.prototype.hasOwnProperty.call(obj, key);
@@ -35,9 +32,6 @@ export const deepEqual = (a: any, b: any): boolean => {
     return false;
   }
 
-  // Array fast path, skips the Object.keys allocation and hasOwn checks
-  // below. Worth it: GraphQL results are array-heavy (lists, connection
-  // edges), and this runs on every cache read.
   if (Array.isArray(a) || Array.isArray(b)) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
       return false;
@@ -66,16 +60,36 @@ export const deepEqual = (a: any, b: any): boolean => {
   return true;
 };
 
-// A `BigInt` is written as a string that starts with `BIGINT_MARK`, so
-// building a key never throws. A string that starts with the mark gets a
-// second one, so the 2 can't share a key. The request body can't hold a
-// `BigInt`, so the request fails instead.
+export const getOrInsert = <K, V>(
+  map: { get(key: K): V | undefined; set(key: K, value: V): unknown },
+  key: K,
+  create: (key: K) => NoInfer<V>,
+): V => {
+  let value = map.get(key);
+
+  if (value === undefined) {
+    value = create(key);
+    map.set(key, value);
+  }
+
+  return value;
+};
+
+export const deleteIfUnchanged = <K, V>(
+  map: Map<K, V>,
+  key: K,
+  value: V,
+): void => {
+  if (map.get(key) === value) {
+    map.delete(key);
+  }
+};
+
+// Sorts object keys at each depth, so equal variables give the same string. A
+// bigint becomes "\0<value>n". A string that starts with "\0" gets one more
+// "\0", so it cannot look like a bigint.
 const BIGINT_MARK = "\u0000";
 
-// Deterministic serialization: object keys are sorted at every depth, so the
-// same logical value always produces the same string regardless of key
-// order. Sorting goes through a replacer function: a replacer array would
-// whitelist top-level keys at every depth and drop all nested values.
 export const stableStringify = (value: unknown): string =>
   JSON.stringify(value, (_key, val: unknown) => {
     if (isRecord(val)) {
@@ -96,25 +110,6 @@ export const stableStringify = (value: unknown): string =>
 
     return val;
   });
-
-// Memoized by object identity. Variables objects are never mutated in place
-// here, a change always produces a new object, so caching the serialized
-// form per reference is safe. Turns a JSON.stringify on every cache read and
-// in-flight lookup into a WeakMap hit when the same variables are reused
-// across renders, which is the common case.
-const serializedVariablesCache = new WeakMap<AnyVariables, string>();
-
-export const serializeVariables = (variables: AnyVariables): string => {
-  const cached = serializedVariablesCache.get(variables);
-
-  if (cached != null) {
-    return cached;
-  }
-
-  const serialized = stableStringify(variables);
-  serializedVariablesCache.set(variables, serialized);
-  return serialized;
-};
 
 export const deepCopy = <T>(value: T): T => {
   if (Array.isArray(value)) {
@@ -146,3 +141,9 @@ export const filterMap = <A, B>(
 
   return result;
 };
+
+export const shallowEqualArrays = <T>(
+  a: readonly T[],
+  b: readonly T[],
+): boolean =>
+  a.length === b.length && a.every((item, index) => Object.is(item, b[index]));

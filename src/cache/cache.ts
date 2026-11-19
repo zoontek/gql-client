@@ -1,126 +1,167 @@
-import { Kind, type SelectionSetNode } from "@0no-co/graphql.web";
+import {
+  Kind,
+  type FieldNode,
+  type InlineFragmentNode,
+  type OperationDefinitionNode,
+  type SelectionSetNode,
+} from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
-import { getFieldNameWithArguments, isExcluded } from "../graphql/ast";
+import {
+  extractArguments,
+  getFieldKey,
+  getOperationDefinition,
+  getResponseKey,
+  isExcluded,
+  memoizeByNodeAndVariables,
+} from "../graphql/ast";
+import { transformDocument } from "../graphql/transform";
 import type { AnyVariables, Connection, Edge, JsonValue } from "../types";
-import { filterMap } from "../utils";
+import {
+  containsAll,
+  deepCopy,
+  filterMap,
+  getOrInsert,
+  hasOwn,
+  isRecord,
+} from "../utils";
 import {
   CONNECTION_REF,
   CURSOR_KEY,
   EDGES_KEY,
+  getEntryKey,
+  getIdFromEntryKey,
+  getRootEntryKey,
+  MISS,
   NODE_KEY,
   REQUESTED_KEYS,
+  setConnectionRef,
   TYPENAME_KEY,
-  getCacheEntryKey,
-  getIdFromCacheKey,
 } from "./keys";
-import {
-  createReadOperation,
-  type CanReadSelection,
-  type ReadOperation,
-  type ResultCache,
-} from "./read";
 import { decodeEntry, encodeEntry, type SerializedCache } from "./serialize";
 import {
-  MISS,
-  createEmptyCacheEntry,
-  isCacheEntry,
+  createCacheEntry,
   isCachedEdge,
+  isCacheEntry,
+  isCacheEntryArrayItem,
   type CacheEntry,
   type ConnectionInfo,
   type ConnectionRef,
   type SchemaConfig,
 } from "./types";
 import { trackField } from "./watch";
-import { createWriteOperation } from "./write";
 
-export type { ConnectionInfo, SchemaConfig } from "./types";
+type ResultCache = WeakMap<TypedDocumentNode, WeakMap<AnyVariables, JsonValue>>;
 
-export class ClientCache {
-  private cache = new Map<symbol, CacheEntry>();
-  private interfaceToType: Record<string, Set<string>>;
-  // Keyed by the ref the connection's entry holds, so an info goes away with
-  // its entry. Replaced on `purge` and `restore`, so an older ref held by a
-  // mounted hook matches nothing.
-  private connections = new WeakMap<ConnectionRef, ConnectionInfo>();
-  private resultCache: ResultCache = new WeakMap();
-  // How many mounted queries use each transformed document.
-  private mountedDocuments = new Map<TypedDocumentNode, number>();
-
-  public readonly readOperation: ReadOperation;
-  private readonly canReadSelection: CanReadSelection;
-
-  public readonly writeOperation: (
-    document: TypedDocumentNode,
-    response: JsonValue,
-    variables: AnyVariables,
-    touched?: Map<object, Set<symbol>>,
-  ) => void;
-
-  public constructor(schemaConfig: SchemaConfig) {
-    this.interfaceToType = Object.fromEntries(
-      Object.entries(schemaConfig.interfaceToTypes).map(([key, value]) => [
-        key,
-        new Set<string>(value),
-      ]),
-    );
-
-    const { readOperation, canReadSelection } = createReadOperation({
-      get: (cacheKey) => this.get(cacheKey),
-      getResultCache: () => this.resultCache,
-      isTypeCompatible: (typename, typeCondition) =>
-        this.isTypeCompatible(typename, typeCondition),
-    });
-
-    this.readOperation = readOperation;
-    this.canReadSelection = canReadSelection;
-
-    this.writeOperation = createWriteOperation({
-      getOrCreateEntry: (cacheKey) => this.getOrCreateEntry(cacheKey),
-      isTypeCompatible: (typename, typeCondition) =>
-        this.isTypeCompatible(typename, typeCondition),
-      linkCacheEntry: (json, existing) => this.linkCacheEntry(json, existing),
-      getCachedConnection: (ref) => this.getCachedConnection(ref),
-      registerConnectionInfo: (info) => this.registerConnectionInfo(info),
-    });
+// Structural sharing. Each subtree of `next` that deeply equals its `prev`
+// counterpart is replaced by it, and `prev` is returned if all is equal. React
+// then re-renders only what changed. Mutates `next`.
+const shareEqualSubtrees = (prev: unknown, next: unknown): unknown => {
+  if (Object.is(prev, next)) {
+    return prev;
   }
 
-  // Drops every entry, registered connection, and stored read result.
-  // Exposed through `Client#purge`; see the rationale there.
+  if (Array.isArray(prev) && Array.isArray(next)) {
+    let equal = prev.length === next.length;
+
+    for (let index = 0; index < next.length; index++) {
+      const item = shareEqualSubtrees(prev[index], next[index]);
+      next[index] = item;
+      equal = equal && item === prev[index];
+    }
+
+    return equal ? prev : next;
+  }
+
+  if (isRecord(prev) && isRecord(next)) {
+    const keys = Object.keys(next);
+
+    // The connection ref is non-enumerable, so it is compared on its own.
+    let equal =
+      keys.length === Object.keys(prev).length &&
+      prev[CONNECTION_REF] === next[CONNECTION_REF];
+
+    for (const key of keys) {
+      const value = shareEqualSubtrees(prev[key], next[key]);
+      next[key] = value;
+      equal = equal && hasOwn(prev, key) && value === prev[key];
+    }
+
+    return equal ? prev : next;
+  }
+
+  return next;
+};
+
+type ReadContext = {
+  variables: AnyVariables;
+  watched: Map<object, Set<symbol>> | undefined;
+};
+
+type ScopedSelectionSet = {
+  selectionSet: SelectionSetNode;
+  variables: AnyVariables;
+};
+
+const getEntryTypename = (entry: CacheEntry): string | undefined => {
+  const typename = entry[TYPENAME_KEY];
+  return typeof typename === "string" ? typename : undefined;
+};
+
+export type EdgeList<Node> = (Edge<Node> | null | undefined)[];
+
+export type ConnectionUpdateConfig<Node> =
+  | { prepend: EdgeList<Node> }
+  | { append: EdgeList<Node> }
+  | { remove: (string | number)[] };
+
+export class ClientCache {
+  private connections = new WeakMap<ConnectionRef, ConnectionInfo>();
+  private entries = new Map<symbol, CacheEntry>();
+  private interfaceToTypes: Record<string, Set<string>>;
+  private mountedDocuments = new Map<TypedDocumentNode, number>();
+  private resultCache: ResultCache = new WeakMap();
+
+  private requiredKeysCache = new WeakMap<
+    FieldNode | OperationDefinitionNode,
+    WeakMap<AnyVariables, Map<string | undefined, Set<symbol>>>
+  >();
+
+  public constructor(schemaConfig: SchemaConfig) {
+    this.interfaceToTypes = Object.fromEntries(
+      Object.entries(schemaConfig.interfaceToTypes).map(([key, value]) => {
+        return [key, new Set<string>(value)];
+      }),
+    );
+  }
+
   public purge(): void {
-    this.cache = new Map();
     this.connections = new WeakMap();
+    this.entries = new Map();
     this.resultCache = new WeakMap();
   }
 
-  // Serializes every entry to a JSON-safe structure. Exposed through
-  // `Client#extract`; see the SSR flow there.
   public extract(): SerializedCache {
     return {
-      entries: [...this.cache].map(([key, entry]) => [
-        key.description ?? "",
-        encodeEntry(entry),
-      ]),
+      entries: [...this.entries].map(([key, entry]) => {
+        return [key.description ?? "", encodeEntry(entry)];
+      }),
     };
   }
 
-  // Replaces the cache content with a previously extracted structure.
-  // Connection registrations are not restored: they hold live references
-  // (documents, entries) and are rebuilt when a response is written.
   public restore(data: SerializedCache): void {
-    this.cache = new Map(
+    const cache = new Map(
       data.entries.map(([key, entry]) => [Symbol.for(key), decodeEntry(entry)]),
     );
-    this.connections = new WeakMap();
-    this.resultCache = new WeakMap();
+
+    this.purge();
+    this.entries = cache;
   }
 
   public dump(): Map<symbol, CacheEntry> {
-    return this.cache;
+    return this.entries;
   }
 
-  // Marks `document` as used by a mounted query. Returns a function that
-  // releases it.
   public retainDocument(document: TypedDocumentNode): () => void {
     this.mountedDocuments.set(
       document,
@@ -138,78 +179,504 @@ export class ClientCache {
     };
   }
 
-  public getCachedConnection(ref: unknown): ConnectionInfo | undefined {
+  public getConnectionInfo(ref: unknown): ConnectionInfo | undefined {
     return typeof ref === "object" && ref != null
       ? this.connections.get(ref)
       : undefined;
   }
 
-  public registerConnectionInfo(info: ConnectionInfo): ConnectionRef {
-    const ref: ConnectionRef = {};
-    this.connections.set(ref, info);
-    return ref;
+  private fragmentApplies(
+    fragment: InlineFragmentNode,
+    typename: unknown,
+    variables: AnyVariables,
+  ): boolean {
+    const typeCondition = fragment.typeCondition?.name.value;
+
+    const typeMatches =
+      typeCondition == null ||
+      typeof typename !== "string" ||
+      typename === typeCondition ||
+      this.interfaceToTypes[typeCondition]?.has(typename) === true;
+
+    return typeMatches && !isExcluded(fragment, variables);
   }
 
-  private isTypeCompatible(typename: string, typeCondition: string): boolean {
-    if (typename === typeCondition) {
-      return true;
-    }
-    const compatibleTypes = this.interfaceToType[typeCondition];
-    if (compatibleTypes == null) {
-      return false;
-    }
-    return compatibleTypes.has(typename);
+  private getOrCreateEntry(entryKey: symbol): CacheEntry {
+    return getOrInsert(this.entries, entryKey, createCacheEntry);
   }
 
-  // Raw map lookup, defaulting to the MISS sentinel. Shared by the read path
-  // (via `readOperation`'s injected `get`) and `mapEdgesToCacheEntries`.
-  private get(cacheKey: symbol): CacheEntry | typeof MISS {
-    const entry = this.cache.get(cacheKey);
-    return entry == null ? MISS : entry;
+  private linkEntry(
+    json: unknown,
+    existing: unknown,
+  ): { entry: CacheEntry; stored: symbol | CacheEntry } {
+    const entryKey = getEntryKey(json);
+
+    const entry =
+      entryKey != null
+        ? this.getOrCreateEntry(entryKey)
+        : isCacheEntry(existing)
+          ? existing
+          : createCacheEntry();
+
+    return { entry, stored: entryKey ?? entry };
   }
 
-  private getOrCreateEntry(cacheKey: symbol): CacheEntry {
-    const cached = this.cache.get(cacheKey);
+  // Field keys that an entry with this `typename` must have to be read with
+  // `node`. Fields excluded by @include/@skip, and fields of inline fragments
+  // that do not match `typename`, are not required, because the write path
+  // skips them too.
+  private getRequiredKeys(
+    node: FieldNode | OperationDefinitionNode,
+    typename: string | undefined,
+    variables: AnyVariables,
+  ): Set<symbol> {
+    const byTypename = memoizeByNodeAndVariables(
+      this.requiredKeysCache,
+      node,
+      variables,
+      () => new Map<string | undefined, Set<symbol>>(),
+    );
+
+    const cached = byTypename.get(typename);
 
     if (cached != null) {
       return cached;
     }
 
-    const entry = createEmptyCacheEntry();
-    this.cache.set(cacheKey, entry);
-    return entry;
+    const requiredKeys = new Set<symbol>();
+
+    const collect = (selectionSet: SelectionSetNode): void => {
+      for (const selection of selectionSet.selections) {
+        if (selection.kind === Kind.FIELD) {
+          if (!isExcluded(selection, variables)) {
+            const key = getFieldKey(selection, variables);
+
+            // `__typename` is never required, so a response without it does not
+            // make the entry a permanent miss.
+            if (key !== TYPENAME_KEY) {
+              requiredKeys.add(key);
+            }
+          }
+        } else if (
+          selection.kind === Kind.INLINE_FRAGMENT &&
+          this.fragmentApplies(selection, typename, variables)
+        ) {
+          collect(selection.selectionSet);
+        }
+      }
+    };
+
+    if (node.selectionSet != null) {
+      collect(node.selectionSet);
+    }
+
+    byTypename.set(typename, requiredKeys);
+    return requiredKeys;
   }
 
-  // Resolves the cache entry for a nested object (creating it if needed), and
-  // the value to store in the parent: a shared symbol key for identifiable
-  // entities (so they get deduplicated and updated in one place), or the
-  // inline entry otherwise. `existing` is the parent's current slot, reused
-  // for keyless entries.
-  private linkCacheEntry(
-    json: unknown,
+  private resolveEntry(
+    valueOrKey: unknown,
+    node: FieldNode | OperationDefinitionNode,
+    variables: AnyVariables,
+  ): unknown {
+    const value =
+      typeof valueOrKey === "symbol"
+        ? (this.entries.get(valueOrKey) ?? MISS)
+        : valueOrKey;
+
+    if (!isCacheEntry(value)) {
+      return value;
+    }
+
+    const isIncomplete = !containsAll(
+      value[REQUESTED_KEYS],
+      this.getRequiredKeys(node, getEntryTypename(value), variables),
+    );
+
+    return isIncomplete ? MISS : value;
+  }
+
+  private resolveValue(
+    context: ReadContext,
+    fieldNode: FieldNode,
+    valueOrKey: unknown,
     existing: unknown,
-  ): { entry: CacheEntry; stored: symbol | CacheEntry } {
-    const cacheKey = getCacheEntryKey(json);
-    const entry =
-      cacheKey != null
-        ? this.getOrCreateEntry(cacheKey)
-        : isCacheEntry(existing)
-          ? existing
-          : createEmptyCacheEntry();
-    return { entry, stored: cacheKey ?? entry };
+  ): unknown {
+    const value = this.resolveEntry(valueOrKey, fieldNode, context.variables);
+
+    if (value === MISS) {
+      return MISS;
+    }
+
+    if (isRecord(value) && fieldNode.selectionSet != null) {
+      return this.readSelectionSet(
+        context,
+        fieldNode.selectionSet,
+        value,
+        isRecord(existing) ? existing : {},
+      );
+    }
+
+    // Custom scalar objects are stored by reference. A copy stops a caller from
+    // changing the cache.
+    return typeof value === "object" && value != null ? deepCopy(value) : value;
   }
 
-  // The selection sets of the `edges` fields under each connection field of a
-  // mounted query written to this connection, with their variables,
-  // including inline fragments that apply to the connection's type.
-  private getEdgesSelectionSets(
-    info: ConnectionInfo,
-  ): { selectionSet: SelectionSetNode; variables: AnyVariables }[] {
-    const typename = info.cacheEntry[TYPENAME_KEY];
-    const selectionSets: {
-      selectionSet: SelectionSetNode;
-      variables: AnyVariables;
-    }[] = [];
+  private readField(
+    context: ReadContext,
+    fieldNode: FieldNode,
+    source: Record<PropertyKey, unknown>,
+    result: Record<PropertyKey, unknown>,
+  ): boolean {
+    const { variables, watched } = context;
+    const responseKey = getResponseKey(fieldNode);
+    const fieldKey = getFieldKey(fieldNode, variables);
+
+    // Tracked also when the field is missing, because the write that adds it
+    // must notify this reader.
+    trackField(watched, source, fieldKey);
+
+    if (!hasOwn(source, fieldKey)) {
+      // A field excluded by @include/@skip is not in the response, so its
+      // absence is not a miss. The same applies to `__typename`.
+      return fieldKey === TYPENAME_KEY || isExcluded(fieldNode, variables);
+    }
+
+    const rawValue = source[fieldKey];
+
+    // Keeps a cached `null` and drops `undefined`, as JSON does.
+    if (rawValue == null) {
+      if (rawValue === null) {
+        result[responseKey] = null;
+      }
+      return true;
+    }
+
+    // Another selection of this field (for example in an inline fragment) can
+    // already be in `result`. Sub-selections merge into that value.
+    const existingValue = result[responseKey];
+
+    if (Array.isArray(rawValue)) {
+      const existingItems = Array.isArray(existingValue)
+        ? existingValue
+        : undefined;
+
+      const items: unknown[] = [];
+
+      for (let index = 0; index < rawValue.length; index++) {
+        const value = this.resolveValue(
+          context,
+          fieldNode,
+          rawValue[index],
+          existingItems?.[index],
+        );
+
+        if (value === MISS) {
+          return false;
+        }
+
+        items.push(value == null ? null : value);
+      }
+
+      result[responseKey] = items;
+      return true;
+    }
+
+    const value = this.resolveValue(
+      context,
+      fieldNode,
+      rawValue,
+      existingValue,
+    );
+
+    if (value === MISS) {
+      return false;
+    }
+
+    result[responseKey] = value;
+    return true;
+  }
+
+  // `__typename` is the first selection (see transform.ts), so
+  // `result.__typename` is already set when an inline fragment is read.
+  private readInlineFragment(
+    context: ReadContext,
+    inlineFragmentNode: InlineFragmentNode,
+    source: Record<PropertyKey, unknown>,
+    result: Record<PropertyKey, unknown>,
+  ): boolean {
+    return (
+      !this.fragmentApplies(
+        inlineFragmentNode,
+        result.__typename,
+        context.variables,
+      ) ||
+      this.readSelections(
+        context,
+        inlineFragmentNode.selectionSet,
+        source,
+        result,
+      )
+    );
+  }
+
+  private readSelections(
+    context: ReadContext,
+    selectionSet: SelectionSetNode,
+    source: Record<PropertyKey, unknown>,
+    result: Record<PropertyKey, unknown>,
+  ): boolean {
+    for (const selection of selectionSet.selections) {
+      if (selection.kind === Kind.FIELD) {
+        if (!this.readField(context, selection, source, result)) {
+          return false;
+        }
+      } else if (selection.kind === Kind.INLINE_FRAGMENT) {
+        if (!this.readInlineFragment(context, selection, source, result)) {
+          return false;
+        }
+      } else {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private readSelectionSet(
+    context: ReadContext,
+    selections: SelectionSetNode,
+    source: Record<PropertyKey, unknown>,
+    result: Record<PropertyKey, unknown> = {},
+  ): unknown {
+    if (!this.readSelections(context, selections, source, result)) {
+      return MISS;
+    }
+
+    if (hasOwn(source, CONNECTION_REF)) {
+      setConnectionRef(result, source[CONNECTION_REF]);
+    }
+
+    return result;
+  }
+
+  public readOperation<Data, Variables extends AnyVariables>(
+    document: TypedDocumentNode<Data, Variables>,
+    variables: Variables,
+    watched?: Map<object, Set<symbol>>,
+  ): JsonValue | undefined {
+    let transformedDocument: TypedDocumentNode;
+
+    try {
+      transformedDocument = transformDocument(document);
+    } catch {
+      // A broken document (for example with a missing fragment) is a miss. The
+      // request then fails with a ClientError.
+      return undefined;
+    }
+
+    const operation = getOperationDefinition(transformedDocument);
+    const entryKey = operation != null ? getRootEntryKey(operation) : undefined;
+
+    if (operation == null || entryKey == null) {
+      return undefined;
+    }
+
+    const root = this.resolveEntry(entryKey, operation, variables);
+
+    if (!isRecord(root)) {
+      return undefined;
+    }
+
+    const traversed = this.readSelectionSet(
+      { variables, watched },
+      operation.selectionSet,
+      root,
+    );
+
+    if (traversed === MISS) {
+      return undefined;
+    }
+
+    // Keeps the last result per document and variables, for structural sharing.
+    const documentCache = getOrInsert(
+      this.resultCache,
+      transformedDocument,
+      () => new WeakMap<AnyVariables, JsonValue>(),
+    );
+
+    const shared = shareEqualSubtrees(
+      documentCache.get(variables),
+      traversed,
+    ) as JsonValue;
+
+    documentCache.set(variables, shared);
+    return shared;
+  }
+
+  public writeOperation(
+    document: TypedDocumentNode,
+    response: JsonValue,
+    variables: AnyVariables,
+    touched?: Map<object, Set<symbol>>,
+  ): void {
+    const operation = getOperationDefinition(document);
+
+    if (operation == null || !isRecord(response)) {
+      return;
+    }
+
+    const entryKey = getRootEntryKey(operation);
+
+    // Response path of the current field, as a stack. Copied when a connection
+    // is registered.
+    const path: PropertyKey[] = [];
+
+    // One copy per write. Connection infos that kept the caller's variables
+    // object would keep the read results keyed by it alive.
+    let variablesCopy: AnyVariables | undefined;
+
+    const registerConnection = (entry: CacheEntry, field: FieldNode): void => {
+      variablesCopy ??= { ...variables };
+      let info = this.getConnectionInfo(entry[CONNECTION_REF]);
+
+      if (info == null) {
+        info = {
+          entry,
+          variables: variablesCopy,
+          path: [...path],
+          fieldArguments: extractArguments(field, variables),
+          document,
+          readers: new Map(),
+        };
+
+        const ref: ConnectionRef = {};
+        this.connections.set(ref, info);
+        entry[CONNECTION_REF] = ref;
+      }
+
+      // A mutation is never read back, so it is not a reader.
+      if (entryKey != null) {
+        info.readers.set(field, { document, variables: variablesCopy });
+      }
+    };
+
+    const writeField = (
+      field: FieldNode,
+      parentJson: Record<PropertyKey, unknown>,
+      parentEntry: CacheEntry,
+    ): void => {
+      const responseKey = getResponseKey(field);
+
+      // A field that is not in the response (excluded by @include/@skip, or not
+      // sent) is not recorded. Else a later read would treat it as cached.
+      if (!hasOwn(parentJson, responseKey)) {
+        return;
+      }
+
+      const fieldKey = getFieldKey(field, variables);
+      const fieldValue = parentJson[responseKey];
+
+      parentEntry[REQUESTED_KEYS].add(fieldKey);
+      trackField(touched, parentEntry, fieldKey);
+
+      const subSelectionSet = field.selectionSet;
+
+      if (subSelectionSet == null || fieldValue == null) {
+        parentEntry[fieldKey] = fieldValue;
+        return;
+      }
+
+      if (Array.isArray(fieldValue)) {
+        // The stored array is reused, so inline entries at the same index are
+        // updated in place.
+        const existingArray = parentEntry[fieldKey];
+
+        const entryItems: (symbol | CacheEntry | null)[] =
+          Array.isArray(existingArray) &&
+          existingArray.every(isCacheEntryArrayItem)
+            ? existingArray
+            : [];
+
+        entryItems.length = fieldValue.length;
+        parentEntry[fieldKey] = entryItems;
+        path.push(responseKey);
+
+        fieldValue.forEach((item, index) => {
+          if (item == null) {
+            entryItems[index] = item;
+            return;
+          }
+
+          const { entry, stored } = this.linkEntry(item, entryItems[index]);
+          entryItems[index] = stored;
+
+          path.push(index);
+          // oxlint-disable-next-line no-use-before-define
+          writeSelectionSet(subSelectionSet, item, entry);
+          path.pop();
+        });
+
+        path.pop();
+        return;
+      }
+
+      if (!isRecord(fieldValue)) {
+        return;
+      }
+
+      const { entry, stored } = this.linkEntry(
+        fieldValue,
+        parentEntry[fieldKey],
+      );
+
+      parentEntry[fieldKey] = stored;
+      path.push(responseKey);
+
+      // A Relay connection, found by its typename. It gets a ref, so
+      // usePagination and updateConnection can find it.
+      if (
+        typeof fieldValue.__typename === "string" &&
+        fieldValue.__typename.endsWith("Connection")
+      ) {
+        registerConnection(entry, field);
+      }
+
+      // oxlint-disable-next-line no-use-before-define
+      writeSelectionSet(subSelectionSet, fieldValue, entry);
+      path.pop();
+    };
+
+    const writeSelectionSet = (
+      selectionSet: SelectionSetNode,
+      json: Record<PropertyKey, unknown>,
+      entry: CacheEntry,
+    ): void => {
+      for (const selection of selectionSet.selections) {
+        if (selection.kind === Kind.FIELD) {
+          writeField(selection, json, entry);
+        } else if (
+          selection.kind === Kind.INLINE_FRAGMENT &&
+          this.fragmentApplies(selection, json.__typename, variables)
+        ) {
+          writeSelectionSet(selection.selectionSet, json, entry);
+        }
+      }
+    };
+
+    // A mutation root goes to a detached entry. Nested objects with an id still
+    // go to the cache.
+    const entry =
+      entryKey != null ? this.getOrCreateEntry(entryKey) : createCacheEntry();
+
+    writeSelectionSet(operation.selectionSet, response, entry);
+  }
+
+  // The `edges` selections of the mounted queries that wrote this connection,
+  // with the inline fragments that match its type.
+  private getEdgesSelectionSets(info: ConnectionInfo): ScopedSelectionSet[] {
+    const typename = info.entry[TYPENAME_KEY];
+    const selectionSets: ScopedSelectionSet[] = [];
 
     const collect = (
       selectionSet: SelectionSetNode,
@@ -220,31 +687,25 @@ export class ClientCache {
           if (
             selection.selectionSet != null &&
             !isExcluded(selection, variables) &&
-            getFieldNameWithArguments(selection, variables) === EDGES_KEY
+            getFieldKey(selection, variables) === EDGES_KEY
           ) {
             selectionSets.push({
               selectionSet: selection.selectionSet,
               variables,
             });
           }
-        } else if (selection.kind === Kind.INLINE_FRAGMENT) {
-          const typeCondition = selection.typeCondition?.name.value;
-
-          if (
-            !isExcluded(selection, variables) &&
-            (typeCondition == null ||
-              typeof typename !== "string" ||
-              this.isTypeCompatible(typename, typeCondition))
-          ) {
-            collect(selection.selectionSet, variables);
-          }
+        } else if (
+          selection.kind === Kind.INLINE_FRAGMENT &&
+          this.fragmentApplies(selection, typename, variables)
+        ) {
+          collect(selection.selectionSet, variables);
         }
       }
     };
 
-    // A query that is not mounted can't miss now. If it mounts later and
-    // misses, it fetches again.
     info.readers.forEach(({ document, variables }, field) => {
+      // A query that is not mounted cannot miss now. If it mounts later and
+      // misses, it fetches again.
       if (field.selectionSet != null && this.mountedDocuments.has(document)) {
         collect(field.selectionSet, variables);
       }
@@ -253,31 +714,28 @@ export class ClientCache {
     return selectionSets;
   }
 
-  private mapEdgesToCacheEntries<A>(
-    edges: (Edge<A> | null | undefined)[],
+  private createEdgeEntries<A>(
+    edges: EdgeList<A>,
     info: ConnectionInfo,
   ): CacheEntry[] {
     const edgesSelectionSets = this.getEdgesSelectionSets(info);
 
     return filterMap(edges, (item) => {
-      // A `null` edge adds nothing.
       if (item == null) {
         return undefined;
       }
 
       const { node, __typename, cursor } = item;
-      const key = getCacheEntryKey(node);
+      const key = getEntryKey(node);
 
-      if (key == null || this.get(key) === MISS) {
+      if (key == null || !this.entries.has(key)) {
         return undefined;
       }
 
-      // A real cache entry, so later writes to this connection reuse the
-      // edges array and `extract` serializes it. `cursor` is kept alongside
-      // the node reference: without it, a query that selects
-      // `edges { cursor ... }` reads the synthesized edge as a miss and the
-      // whole connection read fails.
-      const edge = createEmptyCacheEntry();
+      // A real cache entry, so `extract` serializes it. `cursor` is stored too.
+      // Without it, a query that selects `edges { cursor }` reads this edge as
+      // a miss.
+      const edge = createCacheEntry();
       edge[REQUESTED_KEYS].add(NODE_KEY).add(CURSOR_KEY);
 
       if (typeof __typename === "string") {
@@ -287,13 +745,18 @@ export class ClientCache {
       edge[NODE_KEY] = key;
       edge[CURSOR_KEY] = cursor ?? null;
 
-      // An edge the connection's query can't fully read would turn the whole
-      // query into a cache miss. This happens when the request that returned
-      // the node selected fewer fields than the connection's query.
-      const readable = edgesSelectionSets.every(({ selectionSet, variables }) =>
-        this.canReadSelection(selectionSet, edge, variables),
+      const readable = edgesSelectionSets.every(
+        ({ selectionSet, variables }) =>
+          this.readSelectionSet(
+            { variables, watched: undefined },
+            selectionSet,
+            edge,
+          ) !== MISS,
       );
 
+      // An edge that a mounted query cannot fully read would make that query a
+      // miss. This happens when the request that returned the node selected
+      // fewer fields.
       if (!readable) {
         if (process.env.NODE_ENV === "development") {
           console.warn(
@@ -311,60 +774,49 @@ export class ClientCache {
 
   public updateConnection<A>(
     connection: Connection<A>,
-    config:
-      | { prepend: (Edge<A> | null | undefined)[] }
-      | { append: (Edge<A> | null | undefined)[] }
-      | { remove: (string | number)[] },
+    update: ConnectionUpdateConfig<A>,
     touched?: Map<object, Set<symbol>>,
   ): void {
-    if (connection == null) {
+    if (connection == null || !(CONNECTION_REF in connection)) {
       return;
     }
-    if (CONNECTION_REF in connection) {
-      const connectionConfig = this.getCachedConnection(
-        connection[CONNECTION_REF],
-      );
-      if (connectionConfig == null) {
-        return;
-      }
 
-      // `edges` may not be cached at all (e.g. the connection was queried with
-      // only `pageInfo`, or its edges haven't resolved yet), so default to an
-      // empty list rather than spreading/filtering `undefined`. Items that
-      // aren't cached edges (a `null` edge, a node cached without an id) are
-      // kept in place; only `remove` needs to identify individual edges.
-      const cachedEdges = connectionConfig.cacheEntry[EDGES_KEY];
-      const currentEdges: unknown[] = Array.isArray(cachedEdges)
-        ? cachedEdges
-        : [];
+    const info = this.getConnectionInfo(connection[CONNECTION_REF]);
 
-      if (touched != null) {
-        trackField(touched, connectionConfig.cacheEntry, EDGES_KEY);
-      }
+    if (info == null) {
+      return;
+    }
 
-      if ("prepend" in config) {
-        connectionConfig.cacheEntry[EDGES_KEY] = [
-          ...this.mapEdgesToCacheEntries(config.prepend, connectionConfig),
-          ...currentEdges,
-        ];
-        return;
-      }
+    const { entry } = info;
+    const cachedEdges = entry[EDGES_KEY];
 
-      if ("append" in config) {
-        connectionConfig.cacheEntry[EDGES_KEY] = [
-          ...currentEdges,
-          ...this.mapEdgesToCacheEntries(config.append, connectionConfig),
-        ];
-        return;
-      }
+    const currentEdges: unknown[] = Array.isArray(cachedEdges)
+      ? cachedEdges
+      : [];
 
-      const nodeIds = new Set(config.remove.map(String));
-      connectionConfig.cacheEntry[EDGES_KEY] = currentEdges.filter((edge) => {
+    trackField(touched, entry, EDGES_KEY);
+
+    if ("prepend" in update) {
+      entry[EDGES_KEY] = [
+        ...this.createEdgeEntries(update.prepend, info),
+        ...currentEdges,
+      ];
+    } else if ("append" in update) {
+      entry[EDGES_KEY] = [
+        ...currentEdges,
+        ...this.createEdgeEntries(update.append, info),
+      ];
+    } else {
+      const nodeIds = new Set(update.remove.map(String));
+
+      // Items that are not cached edges (a `null` edge, a node without an id)
+      // stay.
+      entry[EDGES_KEY] = currentEdges.filter((edge) => {
         if (!isCachedEdge(edge)) {
           return true;
         }
 
-        const id = getIdFromCacheKey(edge[NODE_KEY]);
+        const id = getIdFromEntryKey(edge[NODE_KEY]);
         return id == null || !nodeIds.has(id);
       });
     }

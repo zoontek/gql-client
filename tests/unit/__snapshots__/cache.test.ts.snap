@@ -1,6 +1,6 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
-exports[`Write & read in cache 1`] = `
+exports[`writes a query, then mutation results that update its entities 1`] = `
 Map {
   Symbol(Query) => {
     [Symbol(__requestedKeys)]:     
@@ -150,7 +150,7 @@ Set {
 }
 `;
 
-exports[`Write & read in cache 2`] = `
+exports[`writes a query, then mutation results that update its entities 2`] = `
 Map {
   Symbol(Query) => {
     [Symbol(__requestedKeys)]:     
@@ -317,7 +317,7 @@ Set {
 }
 `;
 
-exports[`Write & read in cache 3`] = `
+exports[`writes a query, then mutation results that update its entities 3`] = `
 Map {
   Symbol(Query) => {
     [Symbol(__requestedKeys)]:     
@@ -497,7 +497,7 @@ Set {
 }
 `;
 
-exports[`Write & read in cache 4`] = `
+exports[`writes and reads fragments on interfaces from the schema config 1`] = `
 Map {
   Symbol(Query) => {
     [Symbol(__requestedKeys)]:     
@@ -745,7 +745,7 @@ Set {
 }
 `;
 
-exports[`Write & read in cache 5`] = `
+exports[`reads queries that select fewer or more fields, and updates a connection 1`] = `
 {
   "__typename": "Query",
   "accountMembership": {

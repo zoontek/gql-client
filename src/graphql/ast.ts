@@ -9,14 +9,11 @@ import {
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
 import type { AnyVariables } from "../types";
-import { stableStringify } from "../utils";
+import { getOrInsert, stableStringify } from "../utils";
 
-// Key of the field in the response payload: its alias if present, else its
-// name. Cache keys use the name instead, see `getFieldNameWithArguments`.
 export const getResponseKey = (fieldNode: FieldNode): string =>
   fieldNode.alias != null ? fieldNode.alias.value : fieldNode.name.value;
 
-// Resolves a GraphQL AST value node to a plain JS value, inlining variables.
 const extractValue = (
   valueNode: ValueNode,
   variables: AnyVariables,
@@ -34,8 +31,8 @@ const extractValue = (
       return valueNode.values.map((value) => extractValue(value, variables));
     case Kind.OBJECT:
       return Object.fromEntries(
-        valueNode.fields.map(({ name: { value: name }, value }) => [
-          name,
+        valueNode.fields.map(({ name, value }) => [
+          name.value,
           extractValue(value, variables),
         ]),
       );
@@ -46,32 +43,27 @@ const extractValue = (
   }
 };
 
-// Two-level memoization keyed on the AST node (stable) and the variables
-// reference (stable across re-renders). The inner WeakMap is created lazily,
-// so a cache hit, the hot path, allocates nothing. Computed values are
-// treated as read-only by callers, so sharing them is safe.
-const memoizeByNodeAndVariables = <K extends object, V>(
+export const memoizeByNodeAndVariables = <K extends object, V>(
   cache: WeakMap<K, WeakMap<AnyVariables, V>>,
   node: K,
   variables: AnyVariables,
   compute: (node: K, variables: AnyVariables) => V,
 ): V => {
-  let byVariables = cache.get(node);
-  if (byVariables == null) {
-    byVariables = new WeakMap<AnyVariables, V>();
-    cache.set(node, byVariables);
-  }
-
+  const byVariables = getOrInsert(
+    cache,
+    node,
+    () => new WeakMap<AnyVariables, V>(),
+  );
   let value = byVariables.get(variables);
-  if (value == null) {
+
+  if (value === undefined) {
     value = compute(node, variables);
     byVariables.set(variables, value);
   }
+
   return value;
 };
 
-// Arguments are pure over `(fieldNode, variables)` and recomputed on every read
-// (via `getFieldNameWithArguments`) and write (connection registration).
 const argumentsCache = new WeakMap<
   FieldNode,
   WeakMap<AnyVariables, AnyVariables>
@@ -82,13 +74,12 @@ const computeArguments = (
   variables: AnyVariables,
 ): AnyVariables =>
   Object.fromEntries(
-    (fieldNode.arguments ?? []).map(({ name: { value: name }, value }) => [
-      name,
+    (fieldNode.arguments ?? []).map(({ name, value }) => [
+      name.value,
       extractValue(value, variables),
     ]),
   );
 
-// Record representation of the arguments passed to a given field.
 export const extractArguments = (
   fieldNode: FieldNode,
   variables: AnyVariables,
@@ -100,73 +91,41 @@ export const extractArguments = (
     computeArguments,
   );
 
-/**
- * Serializes the field name and arguments as a symbol. The alias is left
- * out: it only names the field in the response, so two aliases of the same
- * field share one cache slot, and one alias on two fields does not.
- *
- * { user {id} }
- * => Symbol(`user`)
- *
- * { user(id: "1") {id} }
- * => Symbol(`user({"id":"1"})`)
- *
- * { user(id: $id) {id} } with variables `{"id": "2"}`
- * => Symbol(`user({"id":"2"})`)
- *
- * { owner: user(id: "1") {id} }
- * => Symbol(`user({"id":"1"})`)
- *
- * @param fieldNode - The field to serialize.
- * @param variables - The operation's variables, used to resolve any
- * variable arguments.
- * @returns The field's symbol.
- */
-// Field symbols are pure over `(fieldNode, variables)` but recomputed per
-// field on every cache read/write (Symbol.for lookup, extractArguments, JSON
-// serialization). Both the AST node and the variables reference are stable
-// across renders, so memoize on both: a plain symbol for argument-less
-// fields, a per-variables symbol otherwise.
-const fieldSymbolCache = new WeakMap<FieldNode, symbol>();
-const fieldSymbolWithVariablesCache = new WeakMap<
-  FieldNode,
-  WeakMap<AnyVariables, symbol>
->();
+const plainFieldKeyCache = new WeakMap<FieldNode, symbol>();
 
-const computeFieldSymbol = (
+const fieldKeyCache = new WeakMap<FieldNode, WeakMap<AnyVariables, symbol>>();
+
+const computePlainFieldKey = (fieldNode: FieldNode): symbol =>
+  Symbol.for(fieldNode.name.value);
+
+const computeFieldKey = (
   fieldNode: FieldNode,
   variables: AnyVariables,
 ): symbol => {
   const fieldName = fieldNode.name.value;
   const args = extractArguments(fieldNode, variables);
-  // `stableStringify` sorts keys at every depth, so the same logical
-  // arguments produce the same symbol regardless of the order they were
-  // written in the document or in a variables object.
   return Object.keys(args).length === 0
     ? Symbol.for(fieldName)
     : Symbol.for(`${fieldName}(${stableStringify(args)})`);
 };
 
-export const getFieldNameWithArguments = (
+// Cache key of a field: its name and arguments, without the alias. With `{ id:
+// "2" }`, `user(id: $id)` gives `user({"id":"2"})`.
+export const getFieldKey = (
   fieldNode: FieldNode,
   variables: AnyVariables,
 ): symbol => {
   const fieldArguments = fieldNode.arguments;
 
   if (fieldArguments == null || fieldArguments.length === 0) {
-    let symbol = fieldSymbolCache.get(fieldNode);
-    if (symbol == null) {
-      symbol = Symbol.for(fieldNode.name.value);
-      fieldSymbolCache.set(fieldNode, symbol);
-    }
-    return symbol;
+    return getOrInsert(plainFieldKeyCache, fieldNode, computePlainFieldKey);
   }
 
   return memoizeByNodeAndVariables(
-    fieldSymbolWithVariablesCache,
+    fieldKeyCache,
     fieldNode,
     variables,
-    computeFieldSymbol,
+    computeFieldKey,
   );
 };
 
@@ -195,9 +154,6 @@ export const isExcluded = (
   return node.directives.some((directive: DirectiveNode) => {
     const name = directive.name.value;
 
-    // A field is excluded from the response by `@include(if: false)` or
-    // `@skip(if: true)`. Either keeps it out of the payload, so its absence
-    // from the cache must not be treated as a miss.
     if (name !== "include" && name !== "skip") {
       return false;
     }

@@ -15,23 +15,13 @@ type Props = {
   value: Client;
 };
 
-/**
- * Makes `value` (a `Client` instance) available to `useQuery`, `useMutation`,
- * and the pagination hooks in `children`. Render this once near the root of
- * your app.
- *
- * @param props.value - The `Client` instance to expose.
- * @param props.children - The subtree that can use `useQuery`, `useMutation`,
- * and the pagination hooks.
- * @returns The provider element.
- */
+/** Makes `value` available to the hooks in `children`. */
 export const ClientProvider = (props: Props): ReactElement =>
   createElement(ClientContext.Provider, props);
 
 /**
  * Returns the `Client` from the nearest `ClientProvider`.
- *
- * @returns The `Client` instance.
+ * Throws if there is no `ClientProvider`.
  */
 export const useClient = (): Client => {
   const client = useContext(ClientContext);

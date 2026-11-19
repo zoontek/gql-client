@@ -10,6 +10,8 @@ import {
 } from "@0no-co/graphql.web";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
 
+import { getOrInsert } from "../utils";
+
 type MergeableNode = Exclude<SelectionNode, FragmentSpreadNode>;
 
 const TYPENAME_NODE: FieldNode = {
@@ -27,10 +29,9 @@ const createSelectionSet = (
   selections,
 });
 
-const getNodeKey = (node: MergeableNode): string => {
-  // Directives are part of the key: `user @include(if: $a)` and `user` must
-  // stay separate selections, or the merged node would keep only one node's
-  // directives and apply its condition to both selections.
+const getSelectionKey = (node: MergeableNode): string => {
+  // Directives are part of the key, so `user @include(if: $a)` and `user` stay
+  // separate selections.
   const directives: string =
     node.directives?.map((directive) => print(directive)).join("") ?? "";
 
@@ -55,23 +56,11 @@ const transformDocumentCache = new WeakMap<
   TypedDocumentNode
 >();
 
-/**
- * Simplifies the query for internal processing by inlining all fragments and
- * adds `__typename` to all selection sets in the document.
- *
- * @param document - The document to transform.
- * @returns The transformed document.
- */
-export const transformDocument = (
-  // oxlint-disable-next-line typescript/no-explicit-any
-  document: TypedDocumentNode<any, any>,
+// Inlines fragment spreads, merges selections with the same key, keeps only the
+// first operation, and adds `__typename` to each selection set.
+const transformDocumentUncached = (
+  document: TypedDocumentNode,
 ): TypedDocumentNode => {
-  const cachedDocument = transformDocumentCache.get(document);
-
-  if (cachedDocument != null) {
-    return cachedDocument;
-  }
-
   const fragmentDefinitions = new Map<string, FragmentDefinitionNode>();
   let operationDefinitionFound = false;
 
@@ -81,11 +70,11 @@ export const transformDocument = (
     },
   });
 
-  const merge = (
+  const mergeSelection = (
     map: Map<string, MergeableNode>,
     node: MergeableNode,
   ): void => {
-    const key = getNodeKey(node);
+    const key = getSelectionKey(node);
     const prev = map.get(key);
 
     if (prev == null) {
@@ -95,7 +84,7 @@ export const transformDocument = (
         ...prev,
         selectionSet: createSelectionSet(
           // oxlint-disable-next-line no-use-before-define
-          inline([
+          inlineSelections([
             ...prev.selectionSet.selections,
             ...node.selectionSet.selections,
           ]),
@@ -104,7 +93,7 @@ export const transformDocument = (
     }
   };
 
-  const inline = (
+  const inlineSelections = (
     nodes: readonly SelectionNode[],
   ): readonly MergeableNode[] => {
     const map = new Map<string, MergeableNode>();
@@ -118,15 +107,14 @@ export const transformDocument = (
           throw new Error(`Fragment "${name}" is not defined.`);
         }
 
-        // An inline fragment, not flattened fields: the fragment's fields only
-        // apply to its type condition, and only when the spread's directives
-        // don't exclude it.
-        merge(map, {
+        // An inline fragment, not flat fields. Its fields apply only to the
+        // type condition, and only when the spread directives allow it.
+        mergeSelection(map, {
           kind: Kind.INLINE_FRAGMENT,
           typeCondition: fragment.typeCondition,
           ...(node.directives != null && { directives: node.directives }),
           selectionSet: createSelectionSet(
-            inline(fragment.selectionSet.selections),
+            inlineSelections(fragment.selectionSet.selections),
           ),
         });
       } else {
@@ -134,17 +122,17 @@ export const transformDocument = (
         const copy = { ...node };
 
         if (selections != null) {
-          copy.selectionSet = createSelectionSet(inline(selections));
+          copy.selectionSet = createSelectionSet(inlineSelections(selections));
         }
 
-        merge(map, copy);
+        mergeSelection(map, copy);
       }
     }
 
     return [...map.values()];
   };
 
-  const transformedDocument = visit(document, {
+  return visit(document, {
     [Kind.FRAGMENT_DEFINITION]: () => null,
 
     [Kind.OPERATION_DEFINITION]: (node) => {
@@ -168,11 +156,7 @@ export const transformDocument = (
     },
 
     [Kind.SELECTION_SET]: (node): SelectionSetNode => {
-      // Replace user-written (non-aliased) `__typename` selections with ours,
-      // always in first position: the read path resolves `__typename` before
-      // applying inline fragments (see read.ts), so it must never come after
-      // one. Aliased selections of `__typename` stay untouched.
-      const selections = inline(node.selections).filter(
+      const selections = inlineSelections(node.selections).filter(
         (selection) =>
           !(
             selection.kind === Kind.FIELD &&
@@ -181,10 +165,16 @@ export const transformDocument = (
           ),
       );
 
+      // `__typename` goes first, because the read path needs it before it reads
+      // inline fragments (see readInlineFragment in cache.ts). Aliased
+      // `__typename` selections stay.
       return createSelectionSet([TYPENAME_NODE, ...selections]);
     },
   });
-
-  transformDocumentCache.set(document, transformedDocument);
-  return transformedDocument;
 };
+
+export const transformDocument = (
+  // oxlint-disable-next-line typescript/no-explicit-any
+  document: TypedDocumentNode<any, any>,
+): TypedDocumentNode =>
+  getOrInsert(transformDocumentCache, document, transformDocumentUncached);

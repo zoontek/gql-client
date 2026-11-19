@@ -8,28 +8,22 @@ import {
   type AsyncOperationState,
 } from "./useAsyncOperation";
 
-/**
- * State of the query returned by `useDeferredQuery`. `status` narrows the
- * shape: `data` is only present on `"success"`, `error` only on `"error"`.
- * Reflects only the most recently started call to the query function.
- */
+/** State returned by `useDeferredQuery`. Narrow it on `status`. */
 export type DeferredQueryState<Data> = AsyncOperationState<Data>;
 
-/** Return type of `useDeferredQuery`: a `[state, query]` tuple. */
+/** `[state, run]` tuple returned by `useDeferredQuery`. */
 export type DeferredQuery<Data, Variables extends AnyVariables> = readonly [
   DeferredQueryState<Data>,
   (variables: NoInfer<Variables>) => Promise<Data>,
 ];
 
 /**
- * Returns a `query` function for `document` and its current
- * `DeferredQueryState`. Unlike `useQuery`, the request isn't sent
- * automatically: call `query` to send it. Calling `query` again before the
- * first call resolves reflects only the most recently started call's result
- * in `state`.
+ * Like `useQuery`, but sends nothing on render. Call the returned function to
+ * run the query. Each call sends a new request, unless a request for the same
+ * variables is in flight. If you call it again before the previous call
+ * settles, `state` shows only the latest call.
  *
- * @param document - The query document to run.
- * @returns A `[state, query]` tuple; see `DeferredQuery`.
+ * @see https://zoontek.github.io/gql-client/queries#usedeferredquery
  */
 export const useDeferredQuery = <Data, Variables extends AnyVariables>(
   document: TypedDocumentNode<Data, Variables>,
@@ -40,8 +34,6 @@ export const useDeferredQuery = <Data, Variables extends AnyVariables>(
 
   const run = useCallback(
     (variables: Variables) =>
-      // An explicit call means "fetch now": replace a stored settled
-      // response, but still join a request already in flight.
       client.query(stableDocument, variables, { refresh: true }),
     [client, stableDocument],
   );

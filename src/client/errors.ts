@@ -1,16 +1,18 @@
-import { type ASTNode, GraphQLError } from "@0no-co/graphql.web";
+import { GraphQLError, type ASTNode } from "@0no-co/graphql.web";
 
 import type { JsonArray } from "../types";
+import { isRecord } from "../utils";
 
 /**
- * Why a `ClientError` was thrown:
- * - `"aborted"`: the request's `signal` was aborted.
- * - `"graphQL"`: the response had a top-level `errors` array.
- * - `"malformed"`: the response body wasn't valid GraphQL JSON.
- * - `"network"`: the connection failed, before or during the response.
- * - `"status"`: the response status was not ok (outside 200-299).
- * - `"timeout"`: the request exceeded the client's configured `timeout`.
- * - `"unknown"`: anything else threw, see `cause`.
+ * Why a request failed:
+ *
+ * - `aborted`: the request `signal` was aborted.
+ * - `graphQL`: the response has a top-level `errors` array.
+ * - `malformed`: the response body is not valid GraphQL JSON.
+ * - `network`: the connection failed, before or during the response.
+ * - `status`: the response status is outside the 200-299 range.
+ * - `timeout`: the request took longer than the client `timeout`.
+ * - `unknown`: something else threw, see `cause`.
  */
 export type ClientErrorReason =
   | "aborted"
@@ -22,51 +24,39 @@ export type ClientErrorReason =
   | "unknown";
 
 const parseGraphQLError = (error: unknown): GraphQLError => {
-  if (
-    typeof error === "object" &&
-    error != null &&
-    "message" in error &&
-    typeof error.message === "string"
-  ) {
-    const originalError =
-      "error" in error &&
-      typeof error.error === "object" &&
-      error.error != null &&
-      "message" in error.error &&
-      typeof error.error.message === "string"
-        ? new Error(error.error.message)
-        : null;
-
-    // This reconstructs an error from an arbitrary network payload, so nothing
-    // short of a full runtime schema check could verify these fields actually
-    // hold the shapes below.
-    const field = <T>(key: string): T | undefined =>
-      key in error ? ((error as Record<string, unknown>)[key] as T) : undefined;
-
-    return new GraphQLError(
-      error.message,
-      field<readonly ASTNode[] | ASTNode | null | undefined>("nodes"),
-      "source" in error ? error.source : undefined,
-      field<readonly number[] | null | undefined>("positions"),
-      field<readonly (string | number)[] | null | undefined>("path"),
-      originalError,
-      field<{ [extension: string]: unknown } | null | undefined>("extensions"),
-    );
+  if (!isRecord(error) || typeof error.message !== "string") {
+    return new GraphQLError(JSON.stringify(error));
   }
 
-  return new GraphQLError(JSON.stringify(error));
+  const { message, nodes, source, positions, path, extensions } = error;
+  const originalError = error.error;
+
+  return new GraphQLError(
+    message,
+    nodes as readonly ASTNode[] | ASTNode | null | undefined,
+    source,
+    positions as readonly number[] | null | undefined,
+    path as readonly (string | number)[] | null | undefined,
+    isRecord(originalError) && typeof originalError.message === "string"
+      ? new Error(originalError.message)
+      : null,
+    extensions as { [extension: string]: unknown } | null | undefined,
+  );
 };
 
 /**
- * The error thrown by `Client#mutate`, `Client#query`, `useQuery`, and
- * `useMutation` for any failed request. Check `reason` to distinguish network
- * failures, timeouts, HTTP errors, and GraphQL errors; `graphQLErrors` holds
- * the parsed `errors` array for a `"graphQL"` reason.
+ * The error of every failed request made by the client.
+ *
+ * @see https://zoontek.github.io/gql-client/errors
  */
 export class ClientError extends Error {
+  /** Why the request failed. */
   reason: ClientErrorReason;
+  /** The request URL. */
   url: string;
+  /** The `fetch` response, when the client received one. */
   response: Response | undefined;
+  /** The parsed `errors` array. Empty unless `reason` is `"graphQL"`. */
   graphQLErrors: GraphQLError[];
 
   constructor(
@@ -88,10 +78,7 @@ export class ClientError extends Error {
     this.cause = options.cause;
   }
 
-  // The `static` factories below build a `ClientError` for each `reason`.
-  // They're used internally by `Client#mutate`; construct errors this way
-  // rather than with `new ClientError(...)` directly.
-
+  /** Creates an error with the `"aborted"` reason. */
   static aborted(url: string, cause?: unknown): ClientError {
     return new ClientError(`Request to ${url} was aborted`, {
       reason: "aborted",
@@ -100,6 +87,7 @@ export class ClientError extends Error {
     });
   }
 
+  /** Creates an error with the `"network"` reason. */
   static network(url: string, cause?: unknown): ClientError {
     return new ClientError(`Request to ${url} failed`, {
       reason: "network",
@@ -108,6 +96,7 @@ export class ClientError extends Error {
     });
   }
 
+  /** Creates an error with the `"timeout"` reason. */
   static timeout(url: string, timeout?: number, cause?: unknown): ClientError {
     return new ClientError(
       timeout == null
@@ -117,6 +106,7 @@ export class ClientError extends Error {
     );
   }
 
+  /** Creates an error with the `"status"` reason. */
   static status(response: Response): ClientError {
     return new ClientError(
       `Request to ${response.url} gave status ${response.status}`,
@@ -124,6 +114,7 @@ export class ClientError extends Error {
     );
   }
 
+  /** Creates an error with the `"malformed"` reason. */
   static malformed(
     url: string,
     response: Response,
@@ -137,6 +128,10 @@ export class ClientError extends Error {
     });
   }
 
+  /**
+   * Creates an error with the `"graphQL"` reason. Its message is the message
+   * of the first GraphQL error.
+   */
   static graphQL(
     url: string,
     response: Response,
@@ -150,6 +145,7 @@ export class ClientError extends Error {
     );
   }
 
+  /** Creates an error with the `"unknown"` reason. */
   static unknown(url: string, cause: unknown): ClientError {
     return new ClientError(`Request to ${url} failed with an unknown error`, {
       reason: "unknown",

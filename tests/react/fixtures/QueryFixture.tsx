@@ -1,20 +1,18 @@
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
-import { Suspense } from "react";
-import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
+import type { ReactNode } from "react";
 
-import { Client } from "../../../src/client/client";
-import { ClientProvider } from "../../../src/react/context";
+import { useClient } from "../../../src/react/context";
 import { useQuery } from "../../../src/react/useQuery";
+import type { GreetingVariables } from "../../shared";
+import { FixtureRoot } from "./FixtureRoot";
 
-type Variables = { id: string };
+type Props<Data> = {
+  query: TypedDocumentNode<Data, GreetingVariables>;
+  variables: GreetingVariables;
+};
 
-const QueryInner = <Data,>({
-  query,
-  variables,
-}: {
-  query: TypedDocumentNode<Data, Variables>;
-  variables: Variables;
-}) => {
+const QueryInner = <Data,>({ query, variables }: Props<Data>): ReactNode => {
+  const client = useClient();
   const [state, actions] = useQuery(query, variables);
 
   return (
@@ -38,41 +36,21 @@ const QueryInner = <Data,>({
       <button data-testid="refetch" onClick={() => actions.refetch()}>
         refetch
       </button>
+
+      <button
+        data-testid="refetch-all"
+        onClick={() => {
+          void client.refetch();
+        }}
+      >
+        refetch all
+      </button>
     </div>
   );
 };
 
-const ErrorFallback = ({
-  error,
-  resetErrorBoundary,
-}: FallbackProps): React.ReactNode => (
-  <div>
-    <pre data-testid="error">{(error as Error).message}</pre>
-
-    <button data-testid="reset" onClick={resetErrorBoundary}>
-      reset
-    </button>
-  </div>
+export const QueryFixture = <Data,>(props: Props<Data>): ReactNode => (
+  <FixtureRoot errorBoundary>
+    <QueryInner {...props} />
+  </FixtureRoot>
 );
-
-export const QueryFixture = <Data,>({
-  url,
-  query,
-  variables,
-}: {
-  url: string;
-  query: TypedDocumentNode<Data, Variables>;
-  variables: Variables;
-}) => {
-  const client = new Client({ url, schemaConfig: { interfaceToTypes: {} } });
-
-  return (
-    <ClientProvider value={client}>
-      <ErrorBoundary fallbackRender={ErrorFallback}>
-        <Suspense fallback={<div data-testid="loading">loading</div>}>
-          <QueryInner query={query} variables={variables} />
-        </Suspense>
-      </ErrorBoundary>
-    </ClientProvider>
-  );
-};

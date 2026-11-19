@@ -1,73 +1,60 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 
-import { PaginationFixture } from "./fixtures/PaginationFixture";
-import { PaginationRestoreFixture } from "./fixtures/PaginationRestoreFixture";
-import { PaginationSwitchFixture } from "./fixtures/PaginationSwitchFixture";
+import {
+  PaginationFixture,
+  PaginationRestoreFixture,
+  PaginationSwitchFixture,
+} from "./fixtures/PaginationFixture";
+import { routeGraphQL } from "./helpers";
+
+const filmEdge = (cursor: string, id: string, title: string) => ({
+  __typename: "FilmsEdge",
+  cursor,
+  node: { __typename: "Film", id, title },
+});
+
+type FilmEdge = ReturnType<typeof filmEdge>;
+
+const filmsPage = (
+  edges: FilmEdge[],
+  pageInfo: { hasPreviousPage: boolean; hasNextPage: boolean },
+) => ({
+  json: {
+    data: {
+      __typename: "Query",
+      films: {
+        __typename: "FilmsConnection",
+        edges,
+        pageInfo: {
+          ...pageInfo,
+          startCursor: edges[0]?.cursor ?? null,
+          endCursor: edges[edges.length - 1]?.cursor ?? null,
+        },
+      },
+    },
+  },
+});
 
 test("useForwardPagination merges a next page into the connection's edges", async ({
   mount,
   page,
 }) => {
-  await page.route("**/graphql", async (route) => {
-    const body = route.request().postDataJSON() as {
-      variables: { after?: string };
-    };
+  await routeGraphQL<{ after?: string }>(page, ({ after }) =>
+    after == null
+      ? filmsPage(
+          [
+            filmEdge("c1", "f1", "A New Hope"),
+            filmEdge("c2", "f2", "Empire Strikes Back"),
+          ],
+          { hasPreviousPage: false, hasNextPage: true },
+        )
+      : filmsPage([filmEdge("c3", "f3", "Return of the Jedi")], {
+          hasPreviousPage: true,
+          hasNextPage: false,
+        }),
+  );
 
-    const isFirstPage = body.variables.after == null;
-
-    await route.fulfill({
-      json: {
-        data: {
-          films: {
-            __typename: "FilmsConnection",
-            edges: isFirstPage
-              ? [
-                  {
-                    __typename: "FilmsEdge",
-                    cursor: "c1",
-                    node: { __typename: "Film", id: "f1", title: "A New Hope" },
-                  },
-                  {
-                    __typename: "FilmsEdge",
-                    cursor: "c2",
-                    node: {
-                      __typename: "Film",
-                      id: "f2",
-                      title: "Empire Strikes Back",
-                    },
-                  },
-                ]
-              : [
-                  {
-                    __typename: "FilmsEdge",
-                    cursor: "c3",
-                    node: {
-                      __typename: "Film",
-                      id: "f3",
-                      title: "Return of the Jedi",
-                    },
-                  },
-                ],
-            pageInfo: isFirstPage
-              ? {
-                  hasPreviousPage: false,
-                  hasNextPage: true,
-                  startCursor: "c1",
-                  endCursor: "c2",
-                }
-              : {
-                  hasPreviousPage: true,
-                  hasNextPage: false,
-                  startCursor: "c3",
-                  endCursor: "c3",
-                },
-          },
-        },
-      },
-    });
-  });
-
-  const component = await mount(<PaginationFixture url="/graphql" />);
+  const component = await mount(<PaginationFixture />);
 
   await expect(component.getByTestId("titles")).toContainText(
     "Empire Strikes Back",
@@ -86,42 +73,14 @@ test("switching to an already-cached connection shows that connection's pages", 
   mount,
   page,
 }) => {
-  await page.route("**/graphql", async (route) => {
-    const body = route.request().postDataJSON() as {
-      variables: { era: string };
-    };
-    const era = body.variables.era;
+  await routeGraphQL<{ era: string }>(page, ({ era }) =>
+    filmsPage([filmEdge(`${era}-c1`, `${era}-f1`, `${era}-film`)], {
+      hasPreviousPage: false,
+      hasNextPage: true,
+    }),
+  );
 
-    await route.fulfill({
-      json: {
-        data: {
-          __typename: "Query",
-          films: {
-            __typename: "FilmsConnection",
-            edges: [
-              {
-                __typename: "FilmsEdge",
-                cursor: `${era}-c1`,
-                node: {
-                  __typename: "Film",
-                  id: `${era}-f1`,
-                  title: `${era}-film`,
-                },
-              },
-            ],
-            pageInfo: {
-              hasPreviousPage: false,
-              hasNextPage: true,
-              startCursor: `${era}-c1`,
-              endCursor: `${era}-c1`,
-            },
-          },
-        },
-      },
-    });
-  });
-
-  const component = await mount(<PaginationSwitchFixture url="/graphql" />);
+  const component = await mount(<PaginationSwitchFixture />);
 
   await expect(component.getByTestId("titles")).toContainText("a-film");
 
@@ -138,41 +97,18 @@ test("pages fetched after a cache restore merge onto the restored first page", a
   mount,
   page,
 }) => {
-  let requestCount = 0;
+  const requests = await routeGraphQL(page, () =>
+    filmsPage([filmEdge("c2", "f2", "Second")], {
+      hasPreviousPage: true,
+      hasNextPage: false,
+    }),
+  );
 
-  await page.route("**/graphql", async (route) => {
-    requestCount++;
-
-    await route.fulfill({
-      json: {
-        data: {
-          __typename: "Query",
-          films: {
-            __typename: "FilmsConnection",
-            edges: [
-              {
-                __typename: "FilmsEdge",
-                cursor: "c2",
-                node: { __typename: "Film", id: "f2", title: "Second" },
-              },
-            ],
-            pageInfo: {
-              hasPreviousPage: true,
-              hasNextPage: false,
-              startCursor: "c2",
-              endCursor: "c2",
-            },
-          },
-        },
-      },
-    });
-  });
-
-  const component = await mount(<PaginationRestoreFixture url="/graphql" />);
+  const component = await mount(<PaginationRestoreFixture />);
 
   // The restored first page renders from the cache, without a request.
   await expect(component.getByTestId("titles")).toContainText('["First"]');
-  expect(requestCount).toBe(0);
+  expect(requests.count).toBe(0);
 
   await component.getByTestId("load-next").click();
   await expect(component.getByTestId("titles")).toContainText(

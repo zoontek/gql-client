@@ -11,35 +11,28 @@ import {
   TYPENAME_KEY,
 } from "./keys";
 
-// Sentinel used internally to signal a cache miss. It is distinct from a cached
-// `null`/`undefined` value, which are legitimate results that must be preserved.
-export const MISS = Symbol("MISS");
-
 export type SchemaConfig = {
   interfaceToTypes: Record<string, string[]>;
 };
 
 export type ConnectionInfo = {
-  // The connection's own entry, so updateConnection can edit its edges directly.
-  cacheEntry: CacheEntry;
-  // The full operation that produced this connection, so it can be re-read
-  // from cache after an update (variables and pathInQuery locate the
-  // connection within that operation's result).
+  entry: CacheEntry;
+  // The operation that wrote the connection, and the path to the connection in
+  // its result. usePagination reads each page with them.
   document: TypedDocumentNode;
   variables: AnyVariables;
-  pathInQuery: PropertyKey[];
-  fieldVariables: AnyVariables;
-  // Every query field written to this connection, with its document and the
-  // variables of its last write, so updateConnection can check that a new
-  // edge has every field each mounted query selects.
+  path: PropertyKey[];
+  // Arguments of the connection field. usePagination looks for `after` or
+  // `before` in them.
+  fieldArguments: AnyVariables;
+  // Each query field that wrote this connection, with its last variables.
+  // updateConnection checks new edges against their selections.
   readers: Map<
     FieldNode,
     { document: TypedDocumentNode; variables: AnyVariables }
   >;
 };
 
-// Opaque handle to a registered connection, held by the connection's entry
-// and by read results.
 export type ConnectionRef = object;
 
 export type CacheEntry = Record<PropertyKey, unknown> & {
@@ -47,7 +40,7 @@ export type CacheEntry = Record<PropertyKey, unknown> & {
   [CONNECTION_REF]?: ConnectionRef;
 };
 
-export const createEmptyCacheEntry = (): CacheEntry => ({
+export const createCacheEntry = (): CacheEntry => ({
   [REQUESTED_KEYS]: new Set<symbol>(),
 });
 
@@ -61,7 +54,7 @@ export const isCacheEntryArrayItem = (
 ): value is symbol | CacheEntry | null =>
   value === null || typeof value === "symbol" || isCacheEntry(value);
 
-export type CachedEdge = {
+type CachedEdge = {
   [TYPENAME_KEY]: string | null | undefined;
   [NODE_KEY]: symbol;
   [CURSOR_KEY]?: string | null | undefined;

@@ -1,15 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { parse } from "@0no-co/graphql.web";
-import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
-
 import { ClientCache } from "../../src/cache/cache";
 import { entriesOverlap } from "../../src/cache/watch";
-import { transformDocument } from "../../src/graphql/transform";
 import type { AnyVariables, Connection, JsonValue } from "../../src/types";
-
-const doc = (source: string): TypedDocumentNode =>
-  transformDocument(parse(source));
+import { doc } from "./helpers";
 
 const write = (
   cache: ClientCache,
