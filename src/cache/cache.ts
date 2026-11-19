@@ -537,16 +537,12 @@ export class ClientCache {
     let variablesCopy: AnyVariables | undefined;
 
     const registerConnection = (entry: CacheEntry, field: FieldNode): void => {
-      variablesCopy ??= { ...variables };
       let info = this.getConnectionInfo(entry[CONNECTION_REF]);
 
       if (info == null) {
         info = {
           entry,
-          variables: variablesCopy,
-          path: [...path],
           fieldArguments: extractArguments(field, variables),
-          document,
           readers: new Map(),
         };
 
@@ -557,7 +553,11 @@ export class ClientCache {
 
       // A mutation is never read back, so it is not a reader.
       if (entryKey != null) {
-        info.readers.set(field, { document, variables: variablesCopy });
+        info.readers.set(field, {
+          document,
+          variables: (variablesCopy ??= { ...variables }),
+          path: [...path],
+        });
       }
     };
 

@@ -101,16 +101,25 @@ const createPaginationHook = (direction: "after" | "before") => {
             continue;
           }
 
-          const query = client.cache.readOperation(
-            info.document,
-            info.variables,
-            watched,
-          );
+          let page: T | undefined;
 
-          if (query == null) {
+          for (const { document, variables, path } of info.readers.values()) {
+            const query = client.cache.readOperation(
+              document,
+              variables,
+              watched,
+            );
+
+            if (query != null) {
+              page = path.reduce(readJsonPathSegment, query) as T;
+              break;
+            }
+          }
+
+          if (page === undefined) {
             allResolved = false;
           } else {
-            value.push(info.path.reduce(readJsonPathSegment, query) as T);
+            value.push(page);
           }
         }
 

@@ -17,19 +17,19 @@ export type SchemaConfig = {
 
 export type ConnectionInfo = {
   entry: CacheEntry;
-  // The operation that wrote the connection, and the path to the connection in
-  // its result. usePagination reads each page with them.
-  document: TypedDocumentNode;
-  variables: AnyVariables;
-  path: PropertyKey[];
   // Arguments of the connection field. usePagination looks for `after` or
   // `before` in them.
   fieldArguments: AnyVariables;
-  // Each query field that wrote this connection, with its last variables.
-  // updateConnection checks new edges against their selections.
+  // Each query field that wrote this connection, with its last variables and
+  // the path to the connection in its result. updateConnection checks new edges
+  // against their selections. usePagination reads each page through them.
   readers: Map<
     FieldNode,
-    { document: TypedDocumentNode; variables: AnyVariables }
+    {
+      document: TypedDocumentNode;
+      path: PropertyKey[];
+      variables: AnyVariables;
+    }
   >;
 };
 

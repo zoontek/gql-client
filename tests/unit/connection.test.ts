@@ -306,8 +306,7 @@ describe("connection registration", () => {
     const info = getCommentsInfo(cache, variables);
     const reader = info?.readers.values().next().value;
 
-    expect(info?.variables).toEqual(variables);
-    expect(info?.variables).not.toBe(variables);
+    expect(reader?.variables).toEqual(variables);
     expect(reader?.variables).not.toBe(variables);
   });
 
@@ -376,7 +375,10 @@ describe("connection registration", () => {
     const pathOf = (connection: Ref | undefined) =>
       connection == null
         ? undefined
-        : cache.getConnectionInfo(connection.__connectionRef)?.path;
+        : cache
+            .getConnectionInfo(connection.__connectionRef)
+            ?.readers.values()
+            .next().value?.path;
 
     expect(pathOf(result.items)).toEqual(["items"]);
     expect(pathOf(result.films[0]?.characters)).toEqual([
