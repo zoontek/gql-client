@@ -43,7 +43,6 @@ import {
   createCacheEntry,
   isCachedEdge,
   isCacheEntry,
-  isCacheEntryArrayItem,
   type CacheEntry,
   type ConnectionInfo,
   type ConnectionRef,
@@ -322,6 +321,33 @@ export class ClientCache {
     return deepCopy(value);
   }
 
+  // Lists can be nested, for example `[[Cell]]`.
+  private readList(
+    context: ReadContext,
+    fieldNode: FieldNode,
+    list: unknown[],
+    existing: unknown,
+  ): unknown {
+    const existingItems = Array.isArray(existing) ? existing : undefined;
+    const items: unknown[] = [];
+
+    for (let index = 0; index < list.length; index++) {
+      const item = list[index];
+
+      const value = Array.isArray(item)
+        ? this.readList(context, fieldNode, item, existingItems?.[index])
+        : this.resolveValue(context, fieldNode, item, existingItems?.[index]);
+
+      if (value === MISS) {
+        return MISS;
+      }
+
+      items.push(value == null ? null : value);
+    }
+
+    return items;
+  }
+
   private readField(
     context: ReadContext,
     fieldNode: FieldNode,
@@ -356,38 +382,9 @@ export class ClientCache {
     // already be in `result`. Sub-selections merge into that value.
     const existingValue = result[responseKey];
 
-    if (Array.isArray(rawValue)) {
-      const existingItems = Array.isArray(existingValue)
-        ? existingValue
-        : undefined;
-
-      const items: unknown[] = [];
-
-      for (let index = 0; index < rawValue.length; index++) {
-        const value = this.resolveValue(
-          context,
-          fieldNode,
-          rawValue[index],
-          existingItems?.[index],
-        );
-
-        if (value === MISS) {
-          return false;
-        }
-
-        items.push(value == null ? null : value);
-      }
-
-      result[responseKey] = items;
-      return true;
-    }
-
-    const value = this.resolveValue(
-      context,
-      fieldNode,
-      rawValue,
-      existingValue,
-    );
+    const value = Array.isArray(rawValue)
+      ? this.readList(context, fieldNode, rawValue, existingValue)
+      : this.resolveValue(context, fieldNode, rawValue, existingValue);
 
     if (value === MISS) {
       return false;
@@ -561,6 +558,37 @@ export class ClientCache {
       }
     };
 
+    // Lists can be nested, for example `[[Cell]]`. Inline entries at the same
+    // index are reused, so they are updated in place.
+    const writeList = (
+      selectionSet: SelectionSetNode,
+      list: unknown[],
+      existing: unknown,
+    ): unknown[] => {
+      const existingItems = Array.isArray(existing) ? existing : [];
+
+      return list.map((item, index) => {
+        if (!Array.isArray(item) && !isRecord(item)) {
+          return item;
+        }
+
+        path.push(index);
+        let stored: unknown;
+
+        if (Array.isArray(item)) {
+          stored = writeList(selectionSet, item, existingItems[index]);
+        } else {
+          const linked = this.linkEntry(item, existingItems[index]);
+          stored = linked.stored;
+          // oxlint-disable-next-line no-use-before-define
+          writeSelectionSet(selectionSet, item, linked.entry);
+        }
+
+        path.pop();
+        return stored;
+      });
+    };
+
     const writeField = (
       field: FieldNode,
       parentJson: Record<PropertyKey, unknown>,
@@ -588,34 +616,13 @@ export class ClientCache {
       }
 
       if (Array.isArray(fieldValue)) {
-        // The stored array is reused, so inline entries at the same index are
-        // updated in place.
-        const existingArray = parentEntry[fieldKey];
-
-        const entryItems: (symbol | CacheEntry | null)[] =
-          Array.isArray(existingArray) &&
-          existingArray.every(isCacheEntryArrayItem)
-            ? existingArray
-            : [];
-
-        entryItems.length = fieldValue.length;
-        parentEntry[fieldKey] = entryItems;
         path.push(responseKey);
 
-        fieldValue.forEach((item, index) => {
-          if (item == null) {
-            entryItems[index] = item;
-            return;
-          }
-
-          const { entry, stored } = this.linkEntry(item, entryItems[index]);
-          entryItems[index] = stored;
-
-          path.push(index);
-          // oxlint-disable-next-line no-use-before-define
-          writeSelectionSet(subSelectionSet, item, entry);
-          path.pop();
-        });
+        parentEntry[fieldKey] = writeList(
+          subSelectionSet,
+          fieldValue,
+          parentEntry[fieldKey],
+        );
 
         path.pop();
         return;

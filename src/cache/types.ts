@@ -49,11 +49,6 @@ export const isCacheEntry = (value: unknown): value is CacheEntry =>
   REQUESTED_KEYS in value &&
   value[REQUESTED_KEYS] instanceof Set;
 
-export const isCacheEntryArrayItem = (
-  value: unknown,
-): value is symbol | CacheEntry | null =>
-  value === null || typeof value === "symbol" || isCacheEntry(value);
-
 type CachedEdge = {
   [TYPENAME_KEY]: string | null | undefined;
   [NODE_KEY]: symbol;
